@@ -23,7 +23,8 @@ const showConfigurationInterface = async (
   builderId: string,
   builderData: BuilderData,
   interaction: ButtonInteraction,
-  client: Client
+  client: Client,
+  useFollowUp = false
 ) => {
   const configEmbed = client.genEmbed({
     title: "🛠️ Reaction Role Builder",
@@ -97,10 +98,19 @@ const showConfigurationInterface = async (
       .setEmoji("❌")
   );
 
-  await interaction.update({
+  const messageOptions = {
     embeds: [configEmbed],
     components: [configButtons, actionButtons],
-  });
+  };
+
+  if (useFollowUp) {
+    await interaction.followUp({
+      ...messageOptions,
+      flags: MessageFlags.Ephemeral,
+    });
+  } else {
+    await interaction.update(messageOptions);
+  }
 };
 
 export default new ClientEvent("interactionCreate", async (interaction) => {
@@ -324,7 +334,7 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
         });
 
         // Show updated configuration
-        await showConfigurationInterface(builderId, builderData, interaction, client);
+        await showConfigurationInterface(builderId, builderData, interaction, client, true);
       } catch (error) {
         logger.verbose(`Message awaiter ended with error or timeout: ${error}`);
         await interaction.followUp({
@@ -723,7 +733,7 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
         });
 
         // Show updated configuration
-        await showConfigurationInterface(builderId, builderData, interaction, client);
+        await showConfigurationInterface(builderId, builderData, interaction, client, true);
       } catch (error) {
         logger.verbose(`Message awaiter ended with error or timeout: ${error}`);
         await interaction.followUp({
