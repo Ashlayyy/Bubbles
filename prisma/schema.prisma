@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DB_URL")
+}
+
+model GuildConfig {
+  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId              String   @unique
+  greetings            String[]
+  maxMessagesCleared   Int
+  musicChannelId       String
+  defaultRepeatMode    Int
+  reactionRoleChannels String[] @default([]) // Allowed channels, empty = all channels
+  logReactionRoles     Boolean  @default(false) // Enable/disable logging
+}
+
+model CommandPermission {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId            String
+  commandName        String
+  permissionLevel    String // PUBLIC, MODERATOR, ADMIN, OWNER, DEVELOPER, CUSTOM
+  discordPermissions String[] // Permission bit flags as strings
+  requiredRoles      String[] // Discord role IDs
+  allowedUsers       String[] // Discord user IDs  
+  deniedUsers        String[] // Discord user IDs (blacklist)
+  isConfigurable     Boolean  @default(true) // Toggle for unconfigurable commands
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  createdBy          String // User ID who created this rule
+
+  @@unique([guildId, commandName])
+}
+
+model PermissionAuditLog {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  commandName String? // null for system-wide changes
+  action      String // CREATE, UPDATE, DELETE, PERMISSION_DENIED
+  oldValue    Json? // Previous permission state
+  newValue    Json? // New permission state  
+  userId      String // User ID involved
+  reason      String? // Optional reason for change
+  timestamp   DateTime @default(now())
+
+  @@index([guildId, timestamp])
+}
+
+model MaintenanceMode {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String   @unique
+  isEnabled    Boolean  @default(false)
+  allowedUsers String[] // Users who can bypass maintenance mode
+  reason       String? // Reason for maintenance mode
+  enabledBy    String // User who enabled it
+  enabledAt    DateTime @default(now())
+}
+
+model ReactionRole {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  channelId String
+  messageId String
+  emoji     String // Unicode emoji or custom emoji ID:name format
+  roleIds   String[] // Multiple roles per reaction
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  createdBy String
+
+  @@unique([messageId, emoji])
+  @@index([guildId, messageId])
+}
+
+model ReactionRoleMessage {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  channelId   String
+  messageId   String   @unique
+  title       String
+  description String?
+  embedColor  String   @default("#5865F2")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  createdBy   String
+  updatedAt   DateTime @updatedAt
+}
+
+model ReactionRoleLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  messageId String
+  emoji     String
+  roleIds   String[]
+  action    String // "ADDED" | "REMOVED"
+  timestamp DateTime @default(now())
+
+  @@index([guildId, timestamp])
+}
