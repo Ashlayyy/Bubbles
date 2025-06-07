@@ -12,7 +12,7 @@ import {
   TextInputStyle,
 } from "discord.js";
 
-import { reactionRoleBuilder, type BuilderData } from "../../commands/admin/reactionroles.js";
+import { activeCollectors, reactionRoleBuilder, type BuilderData } from "../../commands/admin/reactionroles.js";
 import { createReactionRole, createReactionRoleMessage } from "../../database/ReactionRoles.js";
 import logger from "../../logger.js";
 import Client from "../../structures/Client.js";
@@ -259,9 +259,19 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
       await interaction.showModal(modal);
       return;
     } else if (inputMethod === "chat") {
-      // Set up message collector for single line format
+      // Check if there's already an active collector for this user
+      const userKey = `${interaction.user.id}-${interaction.channelId}`;
+      if (activeCollectors.has(userKey)) {
+        await interaction.reply({
+          content: "❌ You already have an active input session. Please complete or cancel it first.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      // Set up message collector for configuration input
       await interaction.reply({
-        content: `💬 **Please type your ${configType} in THIS channel** using this format:\nExample: For title: \`My Awesome Title\`\n\n⏰ You have 60 seconds to type your message.`,
+        content: `💬 **Please type your ${configType} in THIS channel**\nExample: For title: \`My Awesome Title\`\n\n⏰ You have 60 seconds to type your message.`,
         flags: MessageFlags.Ephemeral,
       });
 
@@ -274,15 +284,20 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
         return;
       }
 
+      // Register active collector
+      activeCollectors.set(userKey, { type: `config-${configType}`, builderId });
+
       const filter = (msg: Message) => {
         const isCorrectUser = msg.author.id === interaction.user.id;
         logger.verbose(
-          `Message filter check: user ${msg.author.id} === ${interaction.user.id} = ${isCorrectUser}, channel: ${msg.channel.id}`
+          `CONFIG Message filter check: user ${msg.author.id} === ${interaction.user.id} = ${isCorrectUser}, channel: ${msg.channel.id}, expecting: ${configType}`
         );
         return isCorrectUser && !msg.author.bot;
       };
 
-      logger.verbose(`Setting up message awaiter for user ${interaction.user.id} in channel ${channel.id}`);
+      logger.verbose(
+        `Setting up CONFIG message awaiter for user ${interaction.user.id} in channel ${channel.id} for ${configType}`
+      );
 
       try {
         const collected = await channel.awaitMessages({
@@ -301,7 +316,7 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
           return;
         }
 
-        logger.verbose(`Collected message: "${message.content}" from ${message.author.id}`);
+        logger.verbose(`Collected CONFIG message: "${message.content}" from ${message.author.id} for ${configType}`);
 
         let value: string = message.content.trim();
 
@@ -319,6 +334,7 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
         else if (configType === "color") builderData.embedColor = value;
 
         builderData.lastActivity = Date.now();
+        logger.info(`CONFIG UPDATE: ${configType} updated to "${value}" for builder ${builderId}`);
 
         // Delete the user's message
         try {
@@ -327,14 +343,94 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
           // Ignore deletion errors
         }
 
-        // Send success message
-        await interaction.followUp({
-          content: `✅ Updated ${configType}: ${value}`,
-          flags: MessageFlags.Ephemeral,
+        // Send success message with updated configuration interface
+        const successEmbed = client.genEmbed({
+          title: "✅ Updated Successfully!",
+          description: `Updated ${configType}: ${value}`,
+          color: 0x43b581, // Green color for success
         });
 
-        // Show updated configuration
-        await showConfigurationInterface(builderId, builderData, interaction, client, true);
+        const configEmbed = client.genEmbed({
+          title: "🛠️ Reaction Role Builder",
+          description: "Configure your reaction role message using the options below.",
+          fields: [
+            { name: "📝 Title", value: builderData.title || "*Not set*", inline: true },
+            { name: "📄 Description", value: builderData.description ?? "*Not set*", inline: true },
+            { name: "🎨 Color", value: builderData.embedColor, inline: true },
+            {
+              name: "⚡ Reactions",
+              value:
+                builderData.reactions.length > 0
+                  ? builderData.reactions
+                      .map(
+                        (r: BuilderData["reactions"][0], i: number) =>
+                          `${(i + 1).toString()}. ${r.emoji} → ${r.roleIds.length.toString()} role(s)`
+                      )
+                      .join("\n")
+                  : "*No reactions added*",
+              inline: false,
+            },
+          ],
+          color: parseInt(builderData.embedColor.replace("#", ""), 16),
+          footer: {
+            text: `Session expires in ${Math.floor((600000 - (Date.now() - builderData.createdAt)) / 60000).toString()} minutes`,
+          },
+        });
+
+        const configButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`config-title-${builderId}`)
+            .setLabel("Set Title")
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji("📝"),
+          new ButtonBuilder()
+            .setCustomId(`config-description-${builderId}`)
+            .setLabel("Set Description")
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji("📄"),
+          new ButtonBuilder()
+            .setCustomId(`config-color-${builderId}`)
+            .setLabel("Set Color")
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji("🎨")
+        );
+
+        const actionButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`add-reaction-${builderId}`)
+            .setLabel("Add Reaction")
+            .setStyle(ButtonStyle.Success)
+            .setEmoji("➕"),
+          new ButtonBuilder()
+            .setCustomId(`remove-reaction-${builderId}`)
+            .setLabel("Remove Reaction")
+            .setStyle(ButtonStyle.Danger)
+            .setEmoji("➖")
+            .setDisabled(builderData.reactions.length === 0),
+          new ButtonBuilder()
+            .setCustomId(`preview-${builderId}`)
+            .setLabel("Preview")
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji("👁️"),
+          new ButtonBuilder()
+            .setCustomId(`send-${builderId}`)
+            .setLabel("Send Message")
+            .setStyle(ButtonStyle.Success)
+            .setEmoji("📤")
+            .setDisabled(builderData.reactions.length === 0),
+          new ButtonBuilder()
+            .setCustomId(`cancel-builder-${builderId}`)
+            .setLabel("Cancel")
+            .setStyle(ButtonStyle.Danger)
+            .setEmoji("❌")
+        );
+
+        // Send success message with updated configuration
+        await interaction.followUp({
+          embeds: [successEmbed, configEmbed],
+          components: [configButtons, actionButtons],
+          flags: MessageFlags.Ephemeral,
+        });
       } catch (error) {
         logger.verbose(`Message awaiter ended with error or timeout: ${error}`);
         await interaction.followUp({
@@ -342,6 +438,9 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
             "⏰ Time expired! No message was received.\n\n💡 **Tip:** Make sure you're typing in the same channel where you used the command.",
           flags: MessageFlags.Ephemeral,
         });
+      } finally {
+        // Clean up active collector
+        activeCollectors.delete(userKey);
       }
       return;
     }
@@ -368,7 +467,7 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
       fields: [
         {
           name: "💬 Single Line Format",
-          value: "Type: `:emoji_name: - roleId1, roleId2`\nExample: `:tada: - 123456789, 987654321`",
+          value: "Type: `emoji - roleId1, roleId2`\nExample: `🎉 - 123456789, 987654321`",
           inline: false,
         },
         {
@@ -536,8 +635,9 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
       for (const reaction of builderData.reactions) {
         try {
           await sentMessage.react(reaction.emoji);
+          logger.verbose(`Successfully added reaction ${reaction.emoji} to message ${sentMessage.id}`);
         } catch (error) {
-          logger.error(`Failed to add reaction ${reaction.emoji}:`, error);
+          logger.error(`Failed to add reaction ${reaction.emoji} to message ${sentMessage.id}:`, error);
         }
       }
 
@@ -562,6 +662,9 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
           roleIds: reaction.roleIds,
           createdBy: builderData.userId,
         });
+        logger.verbose(
+          `Saved reaction role: ${reaction.emoji} -> ${reaction.roleIds.length} roles for message ${sentMessage.id}`
+        );
       }
 
       // Clean up builder data
@@ -603,15 +706,15 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
 
       const emojiInput = new TextInputBuilder()
         .setCustomId("emoji")
-        .setLabel("Custom Emoji (:name: format only)")
+        .setLabel("Discord Emoji (Unicode only)")
         .setStyle(TextInputStyle.Short)
-        .setMaxLength(100)
+        .setMaxLength(10)
         .setRequired(true)
-        .setPlaceholder(":custom_emoji:");
+        .setPlaceholder("🎉");
 
       const rolesInput = new TextInputBuilder()
         .setCustomId("roles")
-        .setLabel("Role IDs (comma/space separated)")
+        .setLabel("Role IDs (comma or space separated)")
         .setStyle(TextInputStyle.Paragraph)
         .setMaxLength(2000)
         .setRequired(true)
@@ -627,7 +730,7 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
     } else if (inputMethod === "chat") {
       // Set up message collector for single line format
       await interaction.reply({
-        content: `💬 **Please type your reaction in THIS channel** using this format:\n\`\`:emoji_name: - roleId1, roleId2\`\`\n\n**Example:** \`:tada: - 123456789, 987654321\`\n\n⏰ You have 60 seconds to type your message.`,
+        content: `💬 **Please type your reaction in THIS channel** using this format:\n\`\`emoji - roleId1, roleId2\`\`\n\n**Example:** \`🎉 - 123456789, 987654321\`\n\n⏰ You have 60 seconds to type your message.`,
         flags: MessageFlags.Ephemeral,
       });
 
@@ -643,12 +746,12 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
       const filter = (msg: Message) => {
         const isCorrectUser = msg.author.id === interaction.user.id;
         logger.verbose(
-          `Message filter check: user ${msg.author.id} === ${interaction.user.id} = ${isCorrectUser}, channel: ${msg.channel.id}`
+          `REACTION Message filter check: user ${msg.author.id} === ${interaction.user.id} = ${isCorrectUser}, channel: ${msg.channel.id}, expecting: reaction format`
         );
         return isCorrectUser && !msg.author.bot;
       };
 
-      logger.verbose(`Setting up message awaiter for user ${interaction.user.id} in channel ${channel.id}`);
+      logger.verbose(`Setting up REACTION message awaiter for user ${interaction.user.id} in channel ${channel.id}`);
 
       try {
         const collected = await channel.awaitMessages({
@@ -667,12 +770,12 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
           return;
         }
 
-        logger.verbose(`Collected message: "${message.content}" from ${message.author.id}`);
+        logger.verbose(`Collected REACTION message: "${message.content}" from ${message.author.id}`);
 
         const input = message.content.trim();
 
-        // Parse format: :emoji: - roleId1, roleId2
-        const formatRegex = /^(:[\w_]+:)\s*-\s*(.+)$/;
+        // Parse format: emoji - roleId1, roleId2
+        const formatRegex = /^(\p{Emoji})\s*-\s*(.+)$/u;
         const match = formatRegex.exec(input);
 
         if (!match) {
@@ -684,7 +787,7 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
 
           await interaction.followUp({
             content:
-              "❌ Invalid format! Please use: `:emoji_name: - roleId1, roleId2`\n\nExample: `:tada: - 123456789, 987654321`",
+              "❌ Invalid format! Please use: `emoji - roleId1, roleId2`\n\nExample: `🎉 - 123456789, 987654321`",
             flags: MessageFlags.Ephemeral,
           });
           return;
@@ -718,6 +821,8 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
         });
 
         builderData.lastActivity = Date.now();
+        logger.verbose(`Added reaction via chat: ${emoji} -> ${roleIds.length} roles for builder ${builderId}`);
+        logger.info(`CHAT REACTION ADDED - Builder ${builderId} now has ${builderData.reactions.length} reactions`);
 
         // Delete the user's message
         try {
@@ -726,19 +831,98 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
           // Ignore deletion errors
         }
 
-        // Send success message
-        await interaction.followUp({
-          content: `✅ Added reaction: ${emoji} → ${roleIds.length.toString()} role(s)`,
-          flags: MessageFlags.Ephemeral,
+        // Send success message with updated configuration interface
+        const successEmbed = client.genEmbed({
+          title: "✅ Reaction Added Successfully!",
+          description: `Added reaction: ${emoji} → ${roleIds.length.toString()} role(s) to builder ${builderId}`,
+          color: 0x43b581, // Green color for success
         });
 
-        // Show updated configuration
-        await showConfigurationInterface(builderId, builderData, interaction, client, true);
+        const configEmbed = client.genEmbed({
+          title: "🛠️ Reaction Role Builder",
+          description: "Configure your reaction role message using the options below.",
+          fields: [
+            { name: "📝 Title", value: builderData.title || "*Not set*", inline: true },
+            { name: "📄 Description", value: builderData.description ?? "*Not set*", inline: true },
+            { name: "🎨 Color", value: builderData.embedColor, inline: true },
+            {
+              name: "⚡ Reactions",
+              value:
+                builderData.reactions.length > 0
+                  ? builderData.reactions
+                      .map(
+                        (r, i: number) => `${(i + 1).toString()}. ${r.emoji} → ${r.roleIds.length.toString()} role(s)`
+                      )
+                      .join("\n")
+                  : "*No reactions added*",
+              inline: false,
+            },
+          ],
+          color: parseInt(builderData.embedColor.replace("#", ""), 16),
+          footer: {
+            text: `Session expires in ${Math.floor((600000 - (Date.now() - builderData.createdAt)) / 60000).toString()} minutes`,
+          },
+        });
+
+        const configButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`config-title-${builderId}`)
+            .setLabel("Set Title")
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji("📝"),
+          new ButtonBuilder()
+            .setCustomId(`config-description-${builderId}`)
+            .setLabel("Set Description")
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji("📄"),
+          new ButtonBuilder()
+            .setCustomId(`config-color-${builderId}`)
+            .setLabel("Set Color")
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji("🎨")
+        );
+
+        const actionButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`add-reaction-${builderId}`)
+            .setLabel("Add Reaction")
+            .setStyle(ButtonStyle.Success)
+            .setEmoji("➕"),
+          new ButtonBuilder()
+            .setCustomId(`remove-reaction-${builderId}`)
+            .setLabel("Remove Reaction")
+            .setStyle(ButtonStyle.Danger)
+            .setEmoji("➖")
+            .setDisabled(builderData.reactions.length === 0),
+          new ButtonBuilder()
+            .setCustomId(`preview-${builderId}`)
+            .setLabel("Preview")
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji("👁️"),
+          new ButtonBuilder()
+            .setCustomId(`send-${builderId}`)
+            .setLabel("Send Message")
+            .setStyle(ButtonStyle.Success)
+            .setEmoji("📤")
+            .setDisabled(builderData.reactions.length === 0),
+          new ButtonBuilder()
+            .setCustomId(`cancel-builder-${builderId}`)
+            .setLabel("Cancel")
+            .setStyle(ButtonStyle.Danger)
+            .setEmoji("❌")
+        );
+
+        // Send success message with updated configuration
+        await interaction.followUp({
+          embeds: [successEmbed, configEmbed],
+          components: [configButtons, actionButtons],
+          flags: MessageFlags.Ephemeral,
+        });
       } catch (error) {
         logger.verbose(`Message awaiter ended with error or timeout: ${error}`);
         await interaction.followUp({
           content:
-            "⏰ Time expired! No message was received.\n\n💡 **Tip:** Make sure you're typing in the same channel where you used the command, and use the exact format: `:emoji_name: - roleId1, roleId2`",
+            "⏰ Time expired! No message was received.\n\n💡 **Tip:** Make sure you're typing in the same channel where you used the command, and use the exact format: `emoji - roleId1, roleId2`",
           flags: MessageFlags.Ephemeral,
         });
       }

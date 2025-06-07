@@ -47,7 +47,12 @@ interface RoleValidation {
 
 // Store temporary reaction role data with enhanced session management
 export const reactionRoleBuilder = new Map<string, BuilderData>();
+
+// Add collector state tracking to prevent conflicts
+export const activeCollectors = new Map<string, { type: string; builderId: string }>();
+
 export type { BuilderData, ReactionData, RoleValidation };
+
 const BUILDER_SESSION_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 
 // Gaming and notification focused templates

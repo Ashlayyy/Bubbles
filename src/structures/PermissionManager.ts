@@ -1,7 +1,7 @@
 import type { GuildMember } from "discord.js";
 import { PermissionsBitField } from "discord.js";
 
-import { prisma } from "../database/index";
+import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import Client from "./Client.js";
 import type { CommandPermissionConfig, PermissionCheckResult } from "./PermissionTypes.js";

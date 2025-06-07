@@ -47,7 +47,9 @@ export async function forNestedDirsFiles(
         throw new Error(`Unexpected file system entity at "${esmFilePath}"`);
       }
 
-      await callback(esmFilePath, subDir, esmFile);
+      // Normalize path separators to forward slashes before calling callback
+      const normalizedPath = esmFilePath.replace(/\\/g, "/");
+      await callback(normalizedPath, subDir, esmFile);
     }
   }
 }
@@ -64,7 +66,9 @@ type AssertFunction<T> = (input: unknown) => input is T;
  */
 export async function importDefaultESM<T>(path: string, assertFn: AssertFunction<T>) {
   // Convert path to file URL for proper import on Windows
-  const absolutePath = resolve(path);
+  // Normalize path separators to forward slashes for ES modules
+  const normalizedPath = path.replace(/\\/g, "/");
+  const absolutePath = resolve(normalizedPath);
   const fileUrl = pathToFileURL(absolutePath).href;
 
   const file: unknown = await import(fileUrl);

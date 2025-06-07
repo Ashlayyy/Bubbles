@@ -1,5 +1,6 @@
 import type { EmbedField } from "discord.js";
 
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { reactionRoleBuilder } from "../../commands/admin/reactionroles.js";
 import logger from "../../logger.js";
 import Client from "../../structures/Client.js";
@@ -87,10 +88,92 @@ export default new ClientEvent("interactionCreate", async (interaction) => {
 
           // Remove the reaction from the builder data
           builderData.reactions.splice(reactionIndex, 1);
+          builderData.lastActivity = Date.now();
+
+          // Send success message with updated configuration interface
+          const successEmbed = client.genEmbed({
+            title: "✅ Reaction Removed Successfully!",
+            description: `Removed reaction: ${removedReaction.emoji}`,
+            color: 0x43b581, // Green color for success
+          });
+
+          const configEmbed = client.genEmbed({
+            title: "🛠️ Reaction Role Builder",
+            description: "Configure your reaction role message using the options below.",
+            fields: [
+              { name: "📝 Title", value: builderData.title || "*Not set*", inline: true },
+              { name: "📄 Description", value: builderData.description ?? "*Not set*", inline: true },
+              { name: "🎨 Color", value: builderData.embedColor, inline: true },
+              {
+                name: "⚡ Reactions",
+                value:
+                  builderData.reactions.length > 0
+                    ? builderData.reactions
+                        .map(
+                          (r, i: number) => `${(i + 1).toString()}. ${r.emoji} → ${r.roleIds.length.toString()} role(s)`
+                        )
+                        .join("\n")
+                    : "*No reactions added*",
+                inline: false,
+              },
+            ],
+            color: parseInt(builderData.embedColor.replace("#", ""), 16),
+            footer: {
+              text: `Session expires in ${Math.floor((600000 - (Date.now() - builderData.createdAt)) / 60000).toString()} minutes`,
+            },
+          });
+
+          const configButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`config-title-${builderId}`)
+              .setLabel("Set Title")
+              .setStyle(ButtonStyle.Primary)
+              .setEmoji("📝"),
+            new ButtonBuilder()
+              .setCustomId(`config-description-${builderId}`)
+              .setLabel("Set Description")
+              .setStyle(ButtonStyle.Secondary)
+              .setEmoji("📄"),
+            new ButtonBuilder()
+              .setCustomId(`config-color-${builderId}`)
+              .setLabel("Set Color")
+              .setStyle(ButtonStyle.Secondary)
+              .setEmoji("🎨")
+          );
+
+          const actionButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`add-reaction-${builderId}`)
+              .setLabel("Add Reaction")
+              .setStyle(ButtonStyle.Success)
+              .setEmoji("➕"),
+            new ButtonBuilder()
+              .setCustomId(`remove-reaction-${builderId}`)
+              .setLabel("Remove Reaction")
+              .setStyle(ButtonStyle.Danger)
+              .setEmoji("➖")
+              .setDisabled(builderData.reactions.length === 0),
+            new ButtonBuilder()
+              .setCustomId(`preview-${builderId}`)
+              .setLabel("Preview")
+              .setStyle(ButtonStyle.Secondary)
+              .setEmoji("👁️"),
+            new ButtonBuilder()
+              .setCustomId(`send-${builderId}`)
+              .setLabel("Send Message")
+              .setStyle(ButtonStyle.Success)
+              .setEmoji("📤")
+              .setDisabled(builderData.reactions.length === 0),
+            new ButtonBuilder()
+              .setCustomId(`cancel-builder-${builderId}`)
+              .setLabel("Cancel")
+              .setStyle(ButtonStyle.Danger)
+              .setEmoji("❌")
+          );
 
           await interaction.editReply({
-            content: `✅ Removed reaction: ${removedReaction.emoji}`,
-            components: [],
+            embeds: [successEmbed, configEmbed],
+            components: [configButtons, actionButtons],
           });
 
           return;
