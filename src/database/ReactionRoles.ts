@@ -264,10 +264,35 @@ export async function removeReactionRole(
     return { count: 0 };
   }
 
-  return prisma.reactionRole.deleteMany({
+  // Use soft delete approach for consistency
+  const result = await prisma.reactionRole.updateMany({
     where: {
       messageId,
       emoji: emoji.identifier,
+      isActive: true, // Only update active records
+    },
+    data: {
+      isActive: false,
     },
   });
+
+  return { count: result.count };
+}
+
+// Add utility function for permanent cleanup of soft-deleted records
+export async function permanentlyDeleteReactionRoles(guildId?: string, olderThanDays = 30): Promise<{ count: number }> {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+
+  const result = await prisma.reactionRole.deleteMany({
+    where: {
+      isActive: false,
+      createdAt: {
+        lt: cutoffDate,
+      },
+      ...(guildId && { guildId }),
+    },
+  });
+
+  return { count: result.count };
 }

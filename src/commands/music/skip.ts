@@ -2,9 +2,10 @@ import { SlashCommandBuilder } from "discord.js";
 
 import getQueue from "../../functions/music/getQueue.js";
 import Command from "../../structures/Command.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 export default new Command(
-  new SlashCommandBuilder().setName("skip").setDescription("Skip the current track."),
+  new SlashCommandBuilder().setName("skip").setDescription("ADMIN ONLY: Skip the current track."),
   async (_client, interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const guildQueue = await getQueue(interaction);
@@ -22,5 +23,11 @@ export default new Command(
         content: `Could not skip track!`,
       });
     }
+  },
+  {
+    permissions: {
+      level: PermissionLevel.ADMIN,
+      isConfigurable: true,
+    },
   }
 );

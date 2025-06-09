@@ -6,12 +6,13 @@ import getQueue from "../../functions/music/getQueue.js";
 import { isQueueRepeatMode } from "../../functions/music/queueRepeatMode.js";
 import logger from "../../logger.js";
 import Command from "../../structures/Command.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import QueueMetadata from "../../structures/QueueMetadata.js";
 
 export default new Command(
   new SlashCommandBuilder()
     .setName("play")
-    .setDescription("Play/search music.")
+    .setDescription("ADMIN ONLY: Play/search music.")
     .addStringOption((option) =>
       option.setName("query").setDescription("Song title or YouTube link.").setRequired(true)
     ),
@@ -69,5 +70,11 @@ export default new Command(
         requestedBy: interaction.user,
       });
     }
+  },
+  {
+    permissions: {
+      level: PermissionLevel.ADMIN,
+      isConfigurable: true,
+    },
   }
 );

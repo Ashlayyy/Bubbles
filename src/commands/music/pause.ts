@@ -1,10 +1,11 @@
 import { SlashCommandBuilder } from "discord.js";
 
+import { PermissionLevel } from "@/structures/PermissionTypes.js";
 import getQueue from "../../functions/music/getQueue.js";
 import Command from "../../structures/Command.js";
 
 export default new Command(
-  new SlashCommandBuilder().setName("pause").setDescription("Pause music."),
+  new SlashCommandBuilder().setName("pause").setDescription("ADMIN ONLY: Pause music."),
 
   async (_client, interaction) => {
     if (!interaction.isChatInputCommand()) return;
@@ -21,5 +22,11 @@ export default new Command(
         content: "Paused the music queue!",
       });
     }
+  },
+  {
+    permissions: {
+      level: PermissionLevel.ADMIN,
+      isConfigurable: true,
+    },
   }
 );

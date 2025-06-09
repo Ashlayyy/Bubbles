@@ -4,11 +4,12 @@ import { SlashCommandBuilder } from "discord.js";
 import getQueue from "../../functions/music/getQueue.js";
 import { isQueueRepeatMode, toDisplayString } from "../../functions/music/queueRepeatMode.js";
 import Command from "../../structures/Command.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 export default new Command(
   new SlashCommandBuilder()
     .setName("repeat")
-    .setDescription("Set the repeat mode of the music queue.")
+    .setDescription("ADMIN ONLY: Set the repeat mode of the music queue.")
     .addIntegerOption((option) =>
       option
         .setName("option")
@@ -46,5 +47,11 @@ export default new Command(
         content: `Set music queue repeat mode to: ${repeatModeDisplay}!`,
       });
     }
+  },
+  {
+    permissions: {
+      level: PermissionLevel.ADMIN,
+      isConfigurable: true,
+    },
   }
 );

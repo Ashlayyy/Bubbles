@@ -4,6 +4,7 @@ import {
   ContextMenuCommandBuilder,
   MessageFlags,
   ModalBuilder,
+  PermissionsBitField,
   RoleSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
@@ -12,6 +13,7 @@ import { addReactionRole } from "../../../database/ReactionRoles.js";
 import { parseEmoji } from "../../../functions/general/emojis.js";
 import logger from "../../../logger.js";
 import Command from "../../../structures/Command.js";
+import { PermissionLevel } from "../../../structures/PermissionTypes.js";
 
 export default new Command(
   new ContextMenuCommandBuilder().setName("Add Reaction Role").setType(ApplicationCommandType.Message),
@@ -67,5 +69,12 @@ export default new Command(
         await interaction.followUp({ content: "You did not select a role in time.", ephemeral: true });
       }
     }
+  },
+  {
+    permissions: {
+      level: PermissionLevel.ADMIN,
+      discordPermissions: [PermissionsBitField.Flags.ManageRoles],
+      isConfigurable: true,
+    },
   }
 );

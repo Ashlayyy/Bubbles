@@ -2,9 +2,12 @@ import { SlashCommandBuilder } from "discord.js";
 
 import getQueue from "../../functions/music/getQueue.js";
 import Command from "../../structures/Command.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 export default new Command(
-  new SlashCommandBuilder().setName("shuffle").setDescription("Shuffles the tracks currently in the music queue."),
+  new SlashCommandBuilder()
+    .setName("shuffle")
+    .setDescription("ADMIN ONLY: Shuffles the tracks currently in the music queue."),
   async (_client, interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const guildQueue = await getQueue(interaction);
@@ -20,5 +23,11 @@ export default new Command(
         content: "The queue has only one song in it! Use `/play` to queue more songs.",
       });
     }
+  },
+  {
+    permissions: {
+      level: PermissionLevel.ADMIN,
+      isConfigurable: true,
+    },
   }
 );

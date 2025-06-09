@@ -2,6 +2,7 @@ import type { ReactionRole } from "@prisma/client";
 import { ApplicationCommandType, ContextMenuCommandBuilder, EmbedBuilder } from "discord.js";
 import { getReactionRolesByMessage } from "../../../database/ReactionRoles.js";
 import Command from "../../../structures/Command.js";
+import { PermissionLevel } from "../../../structures/PermissionTypes.js";
 
 export default new Command(
   new ContextMenuCommandBuilder().setName("List Reaction Roles").setType(ApplicationCommandType.Message),
@@ -34,5 +35,11 @@ export default new Command(
       .setFooter({ text: `Message ID: ${message.id}` });
 
     await interaction.followUp({ embeds: [embed] });
+  },
+  {
+    permissions: {
+      level: PermissionLevel.ADMIN,
+      isConfigurable: true,
+    },
   }
 );

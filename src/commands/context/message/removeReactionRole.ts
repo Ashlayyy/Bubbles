@@ -3,6 +3,7 @@ import {
   ApplicationCommandType,
   ContextMenuCommandBuilder,
   ModalBuilder,
+  PermissionsBitField,
   TextInputBuilder,
   TextInputStyle,
 } from "discord.js";
@@ -10,6 +11,7 @@ import { removeReactionRole } from "../../../database/ReactionRoles.js";
 import { parseEmoji } from "../../../functions/general/emojis.js";
 import logger from "../../../logger.js";
 import Command from "../../../structures/Command.js";
+import { PermissionLevel } from "../../../structures/PermissionTypes.js";
 
 export default new Command(
   new ContextMenuCommandBuilder().setName("Remove Reaction Role").setType(ApplicationCommandType.Message),
@@ -48,5 +50,12 @@ export default new Command(
         await submitted.reply({ content: "❌ Failed to remove role.", ephemeral: true });
       }
     }
+  },
+  {
+    permissions: {
+      level: PermissionLevel.ADMIN,
+      discordPermissions: [PermissionsBitField.Flags.ManageRoles],
+      isConfigurable: true,
+    },
   }
 );

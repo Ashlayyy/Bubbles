@@ -83,6 +83,68 @@ export default new Command(
     )
     .addSubcommand((sub) =>
       sub
+        .setName("quick-set")
+        .setDescription("Quickly set permissions using simplified syntax")
+        .addStringOption((opt) =>
+          opt.setName("command").setDescription("Command name").setRequired(true).setAutocomplete(true)
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("type")
+            .setDescription("Permission type")
+            .setRequired(true)
+            .addChoices(
+              { name: "Public Access", value: "public" },
+              { name: "Effective Level", value: "effective-level" },
+              { name: "Discord Permission", value: "discord-permission" },
+              { name: "Custom Role", value: "custom-role" },
+              { name: "Specific Users", value: "users" }
+            )
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("value")
+            .setDescription("Permission value (role ID, permission name, user ID, etc.)")
+            .setRequired(true)
+            .setAutocomplete(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("bulk-set")
+        .setDescription("Set permissions for multiple commands at once")
+        .addStringOption((opt) =>
+          opt
+            .setName("target")
+            .setDescription("Target scope")
+            .setRequired(true)
+            .addChoices({ name: "Command List", value: "commands" }, { name: "Category", value: "category" })
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("value")
+            .setDescription("Comma-separated command names or single category")
+            .setRequired(true)
+            .setAutocomplete(true)
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("type")
+            .setDescription("Permission type")
+            .setRequired(true)
+            .addChoices(
+              { name: "Public Access", value: "public" },
+              { name: "Effective Level", value: "effective-level" },
+              { name: "Discord Permission", value: "discord-permission" },
+              { name: "Custom Role", value: "custom-role" }
+            )
+        )
+        .addStringOption((opt) =>
+          opt.setName("permission").setDescription("Permission value").setRequired(true).setAutocomplete(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
         .setName("audit")
         .setDescription("View permission audit log")
         .addStringOption((opt) => opt.setName("command").setDescription("Filter by command"))
@@ -443,6 +505,180 @@ export default new Command(
 
           await interaction.followUp({
             content: `✅ Command \`${commandName}\` reset to default permissions.`,
+            flags: MessageFlags.Ephemeral,
+          });
+          break;
+        }
+
+        case "quick-set": {
+          const commandName = interaction.options.getString("command", true);
+          const type = interaction.options.getString("type", true);
+          const value = interaction.options.getString("value", true);
+
+          // Check if command exists
+          const command = client.commands.get(commandName);
+          if (!command) {
+            await interaction.followUp({
+              content: `❌ Command \`${commandName}\` not found.`,
+              flags: MessageFlags.Ephemeral,
+            });
+            return;
+          }
+
+          // Set permissions based on the type
+          switch (type) {
+            case "public": {
+              await permissionManager.setCommandPermission(
+                interaction.guildId,
+                commandName,
+                {
+                  level: PermissionLevel.PUBLIC,
+                  isConfigurable: true,
+                },
+                interaction.user.id
+              );
+              await interaction.followUp({
+                content: `✅ Set \`${commandName}\` to public access.`,
+                flags: MessageFlags.Ephemeral,
+              });
+              break;
+            }
+            case "effective-level": {
+              const level = value.toUpperCase();
+              if (!Object.values(PermissionLevel).includes(level as PermissionLevel)) {
+                await interaction.followUp({
+                  content: `❌ Invalid permission level: ${value}. Valid levels: ${Object.values(PermissionLevel).join(", ")}`,
+                  flags: MessageFlags.Ephemeral,
+                });
+                return;
+              }
+              await permissionManager.setCommandPermission(
+                interaction.guildId,
+                commandName,
+                {
+                  level: level as PermissionLevel,
+                  isConfigurable: true,
+                },
+                interaction.user.id
+              );
+              await interaction.followUp({
+                content: `✅ Set \`${commandName}\` to effective level: \`${level}\`.`,
+                flags: MessageFlags.Ephemeral,
+              });
+              break;
+            }
+            case "custom-role": {
+              const roleId = value;
+              await permissionManager.setCommandPermission(
+                interaction.guildId,
+                commandName,
+                {
+                  level: PermissionLevel.CUSTOM,
+                  requiredRoles: [roleId],
+                  isConfigurable: true,
+                },
+                interaction.user.id
+              );
+              await interaction.followUp({
+                content: `✅ Set \`${commandName}\` to require role: <@&${roleId}>.`,
+                flags: MessageFlags.Ephemeral,
+              });
+              break;
+            }
+            case "users": {
+              const userIds = value.split(",").map((s) => s.trim());
+              await permissionManager.setCommandPermission(
+                interaction.guildId,
+                commandName,
+                {
+                  level: PermissionLevel.CUSTOM,
+                  allowedUsers: userIds,
+                  isConfigurable: true,
+                },
+                interaction.user.id
+              );
+              await interaction.followUp({
+                content: `✅ Set \`${commandName}\` to allow users: ${userIds.map((id) => `<@${id}>`).join(", ")}.`,
+                flags: MessageFlags.Ephemeral,
+              });
+              break;
+            }
+            default: {
+              await interaction.followUp({
+                content: "❌ Unknown permission type",
+                flags: MessageFlags.Ephemeral,
+              });
+            }
+          }
+          break;
+        }
+
+        case "bulk-set": {
+          const target = interaction.options.getString("target", true);
+          const value = interaction.options.getString("value", true);
+          const type = interaction.options.getString("type", true);
+          const permission = interaction.options.getString("permission", true);
+
+          let targetCommands: string[] = [];
+
+          if (target === "commands") {
+            targetCommands = value.split(",").map((s) => s.trim());
+          } else if (target === "category") {
+            const category = value;
+            targetCommands = Array.from(client.commands.values())
+              .filter((c) => c.category === category)
+              .map((c) => c.builder.name);
+          }
+
+          if (targetCommands.length === 0) {
+            await interaction.followUp({
+              content: "❌ No commands found for the specified target.",
+              flags: MessageFlags.Ephemeral,
+            });
+            return;
+          }
+
+          let successCount = 0;
+          for (const commandName of targetCommands) {
+            try {
+              // Apply the same logic as quick-set
+              switch (type) {
+                case "public":
+                  await permissionManager.setCommandPermission(
+                    interaction.guildId,
+                    commandName,
+                    { level: PermissionLevel.PUBLIC, isConfigurable: true },
+                    interaction.user.id
+                  );
+                  break;
+                case "effective-level":
+                  const level = permission.toUpperCase() as PermissionLevel;
+                  if (Object.values(PermissionLevel).includes(level)) {
+                    await permissionManager.setCommandPermission(
+                      interaction.guildId,
+                      commandName,
+                      { level: level, isConfigurable: true },
+                      interaction.user.id
+                    );
+                  }
+                  break;
+                case "custom-role":
+                  await permissionManager.setCommandPermission(
+                    interaction.guildId,
+                    commandName,
+                    { level: PermissionLevel.CUSTOM, requiredRoles: [permission], isConfigurable: true },
+                    interaction.user.id
+                  );
+                  break;
+              }
+              successCount++;
+            } catch (error) {
+              logger.error(`Error setting permissions for command ${commandName}:`, error);
+            }
+          }
+
+          await interaction.followUp({
+            content: `✅ Updated permissions for ${successCount}/${targetCommands.length} commands.`,
             flags: MessageFlags.Ephemeral,
           });
           break;

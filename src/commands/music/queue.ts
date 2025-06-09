@@ -4,9 +4,10 @@ import { SlashCommandBuilder } from "discord.js";
 import getQueue from "../../functions/music/getQueue.js";
 import { toDisplayString } from "../../functions/music/queueRepeatMode.js";
 import Command from "../../structures/Command.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 export default new Command(
-  new SlashCommandBuilder().setName("queue").setDescription("Display music queue."),
+  new SlashCommandBuilder().setName("queue").setDescription("ADMIN ONLY: Display music queue."),
   async (client, interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const guildQueue = await getQueue(interaction);
@@ -51,5 +52,11 @@ export default new Command(
       },
       otherReplyOptions: { files: ["assets/icons/music.png"] },
     });
+  },
+  {
+    permissions: {
+      level: PermissionLevel.ADMIN,
+      isConfigurable: true,
+    },
   }
 );
