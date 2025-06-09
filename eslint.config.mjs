@@ -39,6 +39,7 @@ export default tsEslint.config(
     rules: {
       "no-unused-vars": "off",
       "no-fallthrough": "off",
+      "@typescript-eslint/no-explicit-any": "off",
 
       "@typescript-eslint/no-unused-vars": [
         "warn",

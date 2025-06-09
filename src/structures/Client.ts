@@ -35,6 +35,8 @@ import logger from "../logger.js";
 import type Command from "./Command.js";
 import { isCommand } from "./Command.js";
 import { EventEmitterType, eventEmitterTypeFromDir, isBaseEvent } from "./Event.js";
+import LogManager from "./LogManager.js";
+import ModerationManager from "./ModerationManager.js";
 import PermissionManager from "./PermissionManager.js";
 
 export enum DiscordAPIAction {
@@ -61,6 +63,10 @@ export default class Client extends DiscordClient {
 
   readonly commands: Collection<string, Command> = new Collection<string, Command>();
   readonly commandCategories: string[] = [];
+
+  // Add the managers
+  readonly logManager: LogManager;
+  readonly moderationManager: ModerationManager;
 
   /** Get/Generate singleton instance */
   static async get() {
@@ -146,6 +152,11 @@ export default class Client extends DiscordClient {
       logger.info("Loading config file");
       this.config = getConfigFile();
       logger.info(`Loaded config for "${this.config.name}"`);
+
+      // Initialize managers
+      logger.info("Initializing managers");
+      this.logManager = new LogManager(this);
+      this.moderationManager = new ModerationManager(this, this.logManager);
     } catch (error) {
       logger.error(error);
       logger.error(new Error("Could not construct bot!"));

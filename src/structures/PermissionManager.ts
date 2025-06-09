@@ -1,11 +1,11 @@
 import type { GuildMember } from "discord.js";
 import { PermissionsBitField } from "discord.js";
 
-import { prisma } from "../database/index";
-import logger from "../logger";
-import Client from "../structures/Client";
-import type { CommandPermissionConfig, PermissionCheckResult } from "../structures/PermissionTypes";
-import { AuditAction, PermissionLevel } from "../structures/PermissionTypes";
+import { prisma } from "../database/index.js";
+import logger from "../logger.js";
+import Client from "../structures/Client.js";
+import type { CommandPermissionConfig, PermissionCheckResult } from "../structures/PermissionTypes.js";
+import { AuditAction, PermissionLevel } from "../structures/PermissionTypes.js";
 
 // Proper TypeScript interfaces for database models
 interface CommandPermissionDB {

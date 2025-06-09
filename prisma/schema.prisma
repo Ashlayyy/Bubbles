@@ -1,3 +1,5 @@
+// Enhanced Prisma Schema for Comprehensive Moderation & Logging
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -19,64 +21,463 @@ model GuildConfig {
   reactionRoleLogChannelId   String?
   welcomeChannelId           String?
   goodbyeChannelId           String?
+
+  // New comprehensive logging settings
+  moderationLogChannelId String? // Default moderation log channel
+  memberLogChannelId     String? // Member join/leave events
+  messageLogChannelId    String? // Message edit/delete
+  roleLogChannelId       String? // Role changes
+  channelLogChannelId    String? // Channel modifications
+  voiceLogChannelId      String? // Voice channel events
+  serverLogChannelId     String? // Server settings changes
+
+  // Advanced logging settings
+  logSettings      LogSettings?    @relation(fields: [logSettingsId], references: [id])
+  appealSettings   AppealSettings? @relation(fields: [appealSettingsId], references: [id])
+  logSettingsId    String?         @db.ObjectId
+  appealSettingsId String?         @db.ObjectId
 }
 
+// Comprehensive log configuration
+model LogSettings {
+  id      String @id @default(auto()) @map("_id") @db.ObjectId
+  guildId String @unique
+
+  // Channel routing for each log type
+  channelRouting Json // Map of log types to channel IDs
+
+  // Ignore lists
+  ignoredUsers    String[] @default([])
+  ignoredRoles    String[] @default([])
+  ignoredChannels String[] @default([])
+
+  // Log type toggles (100+ types)
+  enabledLogTypes String[] @default([])
+
+  // Message formatting
+  customFormats Json? // Custom message templates
+
+  // Filtering rules
+  filterRules Json? // Advanced filtering conditions
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  GuildConfig GuildConfig[]
+}
+
+// Appeals system configuration
+model AppealSettings {
+  id      String @id @default(auto()) @map("_id") @db.ObjectId
+  guildId String @unique
+
+  // Appeal methods enabled
+  discordBotEnabled     Boolean @default(true)
+  webFormEnabled        Boolean @default(false)
+  emailEnabled          Boolean @default(false)
+  separateServerEnabled Boolean @default(false)
+
+  // Configuration
+  appealChannelId String? // Where appeals are reviewed
+  appealServerId  String? // Separate server for appeals
+  webFormUrl      String? // Custom web form URL
+  appealEmail     String? // Appeal email address
+
+  // Auto-responses
+  appealReceived String? // DM sent when appeal received
+  appealApproved String? // DM sent when appeal approved
+  appealDenied   String? // DM sent when appeal denied
+
+  // Restrictions
+  appealCooldown    Int @default(86400) // 24 hours in seconds
+  maxAppealsPerUser Int @default(3)
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  GuildConfig GuildConfig[]
+}
+
+// Core moderation case system
+model ModerationCase {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  caseNumber  Int // Auto-incrementing per guild
+  guildId     String
+  userId      String // Target user
+  moderatorId String // Staff member who took action
+  type        String // KICK, BAN, WARN, TIMEOUT, NOTE, etc.
+  reason      String?
+  evidence    String[] // Screenshots, message links, etc.
+  duration    Int? // Duration in seconds for temporary actions
+  expiresAt   DateTime? // When temporary action expires
+  isActive    Boolean   @default(true)
+  severity    String    @default("LOW") // LOW, MEDIUM, HIGH, CRITICAL
+  points      Int       @default(0) // Infraction points
+
+  // Appeal data
+  canAppeal    Boolean   @default(true)
+  appealedAt   DateTime?
+  appealStatus String? // PENDING, APPROVED, DENIED
+
+  // Metadata
+  context    Json? // Additional context data
+  dmSent     Boolean @default(false) // Was user notified via DM
+  publicNote String? // Note visible to user
+  staffNote  String? // Note only visible to staff
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  notes   CaseNote[]
+  appeals CaseAppeal[]
+  logs    ModerationLog[]
+
+  @@unique([guildId, caseNumber])
+  @@index([guildId, userId])
+  @@index([guildId, type])
+  @@index([expiresAt])
+}
+
+// Case notes system
+model CaseNote {
+  id         String         @id @default(auto()) @map("_id") @db.ObjectId
+  caseId     String         @db.ObjectId
+  case       ModerationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  authorId   String // Who added the note
+  content    String
+  isInternal Boolean        @default(false) // Internal staff note vs public note
+  createdAt  DateTime       @default(now())
+
+  @@index([caseId])
+}
+
+// Appeals system
+model CaseAppeal {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  caseId       String         @db.ObjectId
+  case         ModerationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  userId       String // User appealing
+  appealMethod String // DISCORD_BOT, WEB_FORM, EMAIL, etc.
+  reason       String
+  status       String         @default("PENDING") // PENDING, APPROVED, DENIED, WITHDRAWN
+  reviewedBy   String? // Moderator who reviewed
+  reviewedAt   DateTime?
+  reviewNotes  String? // Staff notes on the appeal
+  evidence     String[] // Additional evidence provided
+
+  // Communication log
+  communications Json[] @default([]) // Log of all communications
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([caseId])
+  @@index([userId, status])
+}
+
+// Comprehensive activity logging
+model ModerationLog {
+  id      String @id @default(auto()) @map("_id") @db.ObjectId
+  guildId String
+  logType String // MESSAGE_DELETE, MEMBER_JOIN, ROLE_UPDATE, etc.
+
+  // Related entities
+  userId    String? // User involved
+  channelId String? // Channel involved
+  roleId    String? // Role involved
+  caseId    String?         @db.ObjectId // Related case if applicable
+  case      ModerationCase? @relation(fields: [caseId], references: [id])
+
+  // Event data
+  before   Json? // State before change
+  after    Json? // State after change
+  metadata Json? // Additional context
+
+  // Message/content data
+  content     String? // Message content
+  attachments String[] // File URLs
+  embeds      Json[] // Embed data
+
+  // Audit info
+  executorId String? // Who performed the action
+  reason     String? // Reason provided
+
+  // Routing info
+  sentToChannels String[] @default([]) // Which log channels this was sent to
+
+  timestamp DateTime @default(now())
+
+  @@index([guildId, logType])
+  @@index([guildId, timestamp])
+  @@index([userId])
+  @@index([channelId])
+}
+
+// Ticket system
+model Ticket {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketNumber Int // Auto-incrementing per guild
+  guildId      String
+  userId       String // Ticket creator
+  channelId    String // Discord channel for this ticket
+  threadId     String? // Thread ID if using threads
+  category     String // Support category
+  title        String
+  description  String?
+  status       String   @default("OPEN") // OPEN, PENDING, CLOSED, LOCKED
+  priority     String   @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  assignedTo   String? // Staff member assigned
+  tags         String[] @default([]) // Custom tags
+
+  // Metadata
+  closedReason String?
+  closedBy     String?
+  closedAt     DateTime?
+  lastActivity DateTime  @default(now())
+
+  // Settings
+  allowUserClose Boolean @default(true)
+  isAnonymous    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  messages TicketMessage[]
+
+  @@unique([guildId, ticketNumber])
+  @@index([guildId, status])
+  @@index([assignedTo])
+}
+
+// Ticket message history
+model TicketMessage {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId    String   @db.ObjectId
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  messageId   String // Discord message ID
+  userId      String
+  content     String
+  attachments String[] // URLs to attachments
+  embeds      Json[] // Embed data
+  isSystemMsg Boolean  @default(false) // System generated message
+  createdAt   DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([messageId])
+}
+
+// Alias system for quick responses
+model Alias {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String
+  name            String // Alias name (e.g., "NSFW")
+  content         String // Full text content
+  category        String   @default("GENERAL") // GENERAL, MODERATION, SUPPORT, etc.
+  variables       String[] @default([]) // Available variables like {user}, {server}
+  permissions     String[] @default([]) // Who can use this alias
+  usageCount      Int      @default(0)
+  isGlobal        Boolean  @default(false) // Available in all channels
+  allowedChannels String[] @default([]) // Specific channels where it can be used
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([guildId, name])
+  @@index([guildId, category])
+}
+
+// AutoMod configuration
+model AutoModRule {
+  id      String  @id @default(auto()) @map("_id") @db.ObjectId
+  guildId String
+  name    String
+  type    String // SPAM, CAPS, LINKS, WORDS, INVITES, etc.
+  enabled Boolean @default(true)
+
+  // Trigger configuration
+  triggers    Json // Trigger patterns/settings
+  whitelist   String[] @default([]) // Exceptions
+  sensitivity String   @default("MEDIUM") // LOW, MEDIUM, HIGH
+
+  // Action configuration
+  actions    Json // Actions to take when triggered
+  escalation Json? // Escalation rules
+
+  // Scope configuration
+  exemptRoles    String[] @default([])
+  exemptChannels String[] @default([])
+  exemptUsers    String[] @default([])
+  targetChannels String[] @default([]) // Only apply in these channels
+
+  // Logging
+  logChannel String?
+  logActions Boolean @default(true)
+
+  // Statistics
+  triggerCount  Int       @default(0)
+  lastTriggered DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String
+
+  @@unique([guildId, name])
+  @@index([guildId, enabled])
+}
+
+// Scheduled actions (temporary bans, etc.)
+model ScheduledAction {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  userId       String
+  type         String // UNBAN, UNTIMEOUT, REMOVE_ROLE, etc.
+  caseId       String?   @db.ObjectId
+  data         Json? // Additional data needed for action
+  scheduledFor DateTime
+  isExecuted   Boolean   @default(false)
+  executedAt   DateTime?
+  error        String? // Error message if execution failed
+  retryCount   Int       @default(0)
+  maxRetries   Int       @default(3)
+  createdAt    DateTime  @default(now())
+
+  @@index([scheduledFor, isExecuted])
+  @@index([guildId, userId])
+}
+
+// User infraction points system
+model UserInfractions {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  userId       String
+  totalPoints  Int       @default(0)
+  strikes      Int       @default(0) // Number of major infractions
+  lastIncident DateTime?
+
+  // Point decay system
+  pointDecay Json? // Configuration for automatic point reduction
+
+  // Temporary restrictions
+  restrictions Json[] @default([]) // Temporary channel/role restrictions
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([guildId, totalPoints])
+}
+
+// Comprehensive log type definitions
+model LogType {
+  id             String  @id @default(auto()) @map("_id") @db.ObjectId
+  name           String  @unique // MESSAGE_DELETE, MEMBER_JOIN, etc.
+  category       String // MESSAGE, MEMBER, ROLE, CHANNEL, etc.
+  description    String
+  severity       String  @default("INFO") // DEBUG, INFO, WARN, ERROR, CRITICAL
+  defaultChannel String? // Default channel type for this log
+  isEnabled      Boolean @default(true)
+
+  // Template configuration
+  embedTemplate   Json? // Default embed template
+  messageTemplate String? // Default message template
+}
+
+// Permission management system
 model CommandPermission {
   id                 String   @id @default(auto()) @map("_id") @db.ObjectId
   guildId            String
   commandName        String
-  permissionLevel    String // PUBLIC, MODERATOR, ADMIN, OWNER, DEVELOPER, CUSTOM
-  discordPermissions String[] // Permission bit flags as strings
-  requiredRoles      String[] // Discord role IDs
-  allowedUsers       String[] // Discord user IDs  
-  deniedUsers        String[] // Discord user IDs (blacklist)
-  isConfigurable     Boolean  @default(true) // Toggle for unconfigurable commands
+  permissionLevel    String // Enum as string
+  discordPermissions String[] @default([])
+  requiredRoles      String[] @default([])
+  allowedUsers       String[] @default([])
+  deniedUsers        String[] @default([])
+  isConfigurable     Boolean  @default(true)
+  createdBy          String
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
-  createdBy          String // User ID who created this rule
 
   @@unique([guildId, commandName])
+  @@index([guildId])
 }
 
-model PermissionAuditLog {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  guildId     String
-  commandName String? // null for system-wide changes
-  action      String // CREATE, UPDATE, DELETE, PERMISSION_DENIED
-  oldValue    Json? // Previous permission state
-  newValue    Json? // New permission state  
-  userId      String // User ID involved
-  reason      String? // Optional reason for change
-  timestamp   DateTime @default(now())
-
-  @@index([guildId, timestamp])
-}
-
+// Maintenance mode
 model MaintenanceMode {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
   guildId      String   @unique
   isEnabled    Boolean  @default(false)
-  allowedUsers String[] // Users who can bypass maintenance mode
-  reason       String? // Reason for maintenance mode
-  enabledBy    String // User who enabled it
+  allowedUsers String[] @default([])
+  reason       String?
+  enabledBy    String
   enabledAt    DateTime @default(now())
 }
 
+// Permission audit log
+model PermissionAuditLog {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  commandName String?
+  action      String
+  oldValue    Json?
+  newValue    Json?
+  userId      String
+  reason      String?
+  timestamp   DateTime @default(now())
+
+  @@index([guildId])
+  @@index([timestamp])
+}
+
+// Custom roles system for RBAC
+model CustomRole {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  name        String
+  permissions String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignments CustomRoleAssignment[]
+
+  @@unique([guildId, name])
+  @@index([guildId])
+}
+
+// Custom role assignments
+model CustomRoleAssignment {
+  id         String     @id @default(auto()) @map("_id") @db.ObjectId
+  guildId    String
+  userId     String
+  roleId     String     @db.ObjectId
+  role       CustomRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedBy String
+  assignedAt DateTime   @default(now())
+
+  @@unique([userId, roleId])
+  @@index([guildId])
+  @@index([userId])
+}
+
+// Reaction Role System
 model ReactionRole {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   guildId   String
   channelId String
   messageId String
-  emoji     String // Unicode emoji or custom emoji ID:name format
-  roleIds   String[] // Multiple roles per reaction
+  emoji     String // Unicode or custom emoji ID
+  roleIds   String[] // Multiple roles can be assigned to one reaction
   isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
   createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  logs ReactionRoleLog[]
 
   @@unique([messageId, emoji])
-  @@index([guildId, messageId])
+  @@index([guildId])
+  @@index([messageId])
 }
 
+// Reaction Role Messages (for builder-created embeds)
 model ReactionRoleMessage {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   guildId     String
@@ -84,45 +485,29 @@ model ReactionRoleMessage {
   messageId   String   @unique
   title       String
   description String?
-  embedColor  String   @default("#5865F2")
+  embedColor  String?
   isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
   createdBy   String
-  updatedAt   DateTime @updatedAt
-}
-
-model ReactionRoleLog {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  guildId   String
-  userId    String
-  messageId String
-  emoji     String
-  roleIds   String[]
-  action    String // "ADDED" | "REMOVED"
-  timestamp DateTime @default(now())
-
-  @@index([guildId, timestamp])
-}
-
-model CustomRole {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  guildId     String
-  name        String
-  permissions String[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@unique([guildId, name])
+  @@index([guildId])
 }
 
-model CustomRoleAssignment {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  guildId    String
-  userId     String
-  roleId     String   @db.ObjectId
-  assignedAt DateTime @default(now())
-  assignedBy String
+// Reaction Role Activity Logs
+model ReactionRoleLog {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  guildId        String
+  userId         String
+  messageId      String
+  emoji          String
+  roleIds        String[]
+  action         String // "ADDED" or "REMOVED"
+  reactionRole   ReactionRole @relation(fields: [reactionRoleId], references: [id])
+  reactionRoleId String       @db.ObjectId
+  timestamp      DateTime     @default(now())
 
-  @@unique([userId, roleId])
   @@index([guildId])
+  @@index([userId])
+  @@index([messageId])
 }

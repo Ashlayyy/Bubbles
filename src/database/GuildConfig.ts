@@ -14,6 +14,17 @@ export const defaults: Omit<GuildConfig, "guildId" | "id"> = {
   reactionRoleLogChannelId: null,
   welcomeChannelId: null,
   goodbyeChannelId: null,
+  // New logging channel fields
+  moderationLogChannelId: null,
+  memberLogChannelId: null,
+  messageLogChannelId: null,
+  roleLogChannelId: null,
+  channelLogChannelId: null,
+  voiceLogChannelId: null,
+  serverLogChannelId: null,
+  // Relations
+  logSettingsId: null,
+  appealSettingsId: null,
 };
 export const descriptions: Record<string, string> = {
   maxMessagesCleared: "Maximum number of messages `/clear` can delete in one command call.",

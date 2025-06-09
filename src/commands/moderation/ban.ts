@@ -1,0 +1,121 @@
+import { SlashCommandBuilder } from "discord.js";
+
+import Command from "../../structures/Command.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
+
+export default new Command(
+  new SlashCommandBuilder()
+    .setName("ban")
+    .setDescription("Ban a user from the server")
+    .addUserOption((option) => option.setName("user").setDescription("The user to ban").setRequired(true))
+    .addStringOption((option) => option.setName("reason").setDescription("Reason for the ban").setRequired(false))
+    .addStringOption((option) =>
+      option
+        .setName("duration")
+        .setDescription("Duration (e.g., 1d, 3h, 30m) - leave empty for permanent")
+        .setRequired(false)
+    )
+    .addStringOption((option) =>
+      option.setName("evidence").setDescription("Evidence links (comma-separated)").setRequired(false)
+    )
+    .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false)),
+
+  async (client, interaction) => {
+    if (!interaction.isChatInputCommand() || !interaction.guild) return;
+
+    const targetUser = interaction.options.getUser("user", true);
+    const reason = interaction.options.getString("reason") ?? "No reason provided";
+    const durationStr = interaction.options.getString("duration");
+    const evidence =
+      interaction.options
+        .getString("evidence")
+        ?.split(",")
+        .map((s) => s.trim()) ?? [];
+    const silent = interaction.options.getBoolean("silent") ?? false;
+
+    try {
+      // Parse duration if provided
+      let duration: number | undefined;
+      if (durationStr) {
+        const parsedDuration = parseDuration(durationStr);
+        if (parsedDuration === null) {
+          await interaction.reply({
+            content: "❌ Invalid duration format. Use format like: 1d, 3h, 30m",
+            ephemeral: true,
+          });
+          return;
+        }
+        duration = parsedDuration;
+      }
+
+      // Execute the ban
+      const case_ = await client.moderationManager.ban(
+        interaction.guild,
+        targetUser.id,
+        interaction.user.id,
+        reason,
+        duration,
+        evidence.length > 0 ? evidence : undefined
+      );
+
+      if (silent) {
+        await client.moderationManager.updateCaseNotification(case_.id, false);
+      }
+
+      const durationText = duration ? ` for ${formatDuration(duration)}` : " permanently";
+
+      await interaction.reply({
+        content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber}** created.`,
+        ephemeral: true,
+      });
+    } catch (error) {
+      await interaction.reply({
+        content: `❌ Failed to ban **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      });
+    }
+  },
+  {
+    permissions: {
+      level: PermissionLevel.MODERATOR,
+      isConfigurable: true,
+    },
+  }
+);
+
+function parseDuration(durationStr: string): number | null {
+  const regex = /^(\d+)([smhdw])$/;
+  const match = regex.exec(durationStr);
+  if (!match) return null;
+
+  const value = parseInt(match[1]);
+  const unit = match[2];
+
+  const multipliers = {
+    s: 1,
+    m: 60,
+    h: 60 * 60,
+    d: 60 * 60 * 24,
+    w: 60 * 60 * 24 * 7,
+  };
+
+  return value * multipliers[unit as keyof typeof multipliers];
+}
+
+function formatDuration(seconds: number): string {
+  const units = [
+    { name: "week", seconds: 604800 },
+    { name: "day", seconds: 86400 },
+    { name: "hour", seconds: 3600 },
+    { name: "minute", seconds: 60 },
+  ];
+
+  for (const unit of units) {
+    const count = Math.floor(seconds / unit.seconds);
+    if (count > 0) {
+      return `${count} ${unit.name}${count !== 1 ? "s" : ""}`;
+    }
+  }
+
+  return `${seconds} second${seconds !== 1 ? "s" : ""}`;
+}

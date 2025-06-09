@@ -1,0 +1,529 @@
+import type { Guild } from "discord.js";
+import { EmbedBuilder } from "discord.js";
+
+import { prisma } from "../database/index.js";
+import logger from "../logger.js";
+import type Client from "./Client.js";
+import type LogManager from "./LogManager.js";
+
+export interface ModerationAction {
+  type: "KICK" | "BAN" | "WARN" | "TIMEOUT" | "NOTE" | "UNBAN" | "UNTIMEOUT";
+  userId: string;
+  moderatorId: string;
+  reason?: string;
+  duration?: number; // in seconds
+  evidence?: string[];
+  severity?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  points?: number;
+  publicNote?: string;
+  staffNote?: string;
+  notifyUser?: boolean;
+}
+
+export interface ModerationCase {
+  id: string;
+  caseNumber: number;
+  guildId: string;
+  userId: string;
+  moderatorId: string;
+  type: string;
+  reason?: string;
+  evidence: string[];
+  duration?: number;
+  expiresAt?: Date;
+  isActive: boolean;
+  severity: string;
+  points: number;
+  canAppeal: boolean;
+  appealedAt?: Date;
+  appealStatus?: string;
+  context?: any;
+  dmSent: boolean;
+  publicNote?: string;
+  staffNote?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export default class ModerationManager {
+  private client: Client;
+  private logManager: LogManager;
+
+  constructor(client: Client, logManager: LogManager) {
+    this.client = client;
+    this.logManager = logManager;
+  }
+
+  /**
+   * Main moderation method - handles any moderation action
+   * Super easy to use: moderationManager.moderate(guild, action)
+   */
+  async moderate(guild: Guild, action: ModerationAction): Promise<ModerationCase> {
+    try {
+      // Get next case number for this guild
+      const caseNumber = await this.getNextCaseNumber(guild.id);
+
+      // Create the moderation case first
+      const moderationCase = await this.createCase(guild.id, caseNumber, action);
+
+      // Execute the Discord action
+      await this.executeDiscordAction(guild, action, moderationCase);
+
+      // Send DM to user if requested
+      if (action.notifyUser !== false) {
+        await this.notifyUser(action.userId, moderationCase, guild);
+      }
+
+      // Update infraction points
+      await this.updateInfractionPoints(guild.id, action.userId, action.points || 0);
+
+      // Schedule automatic actions if needed (unban, untimeout, etc.)
+      if (action.duration && action.type !== "WARN") {
+        await this.scheduleAction(guild.id, action.userId, action.type, action.duration, moderationCase.id);
+      }
+
+      // Log to comprehensive logging system
+      await this.logManager.log(guild.id, `MOD_${action.type}_ISSUED`, {
+        userId: action.userId,
+        executorId: action.moderatorId,
+        reason: action.reason,
+        caseId: moderationCase.id,
+        metadata: {
+          caseNumber: moderationCase.caseNumber,
+          severity: action.severity,
+          points: action.points,
+          duration: action.duration,
+        },
+      });
+
+      logger.info(
+        `Moderation action ${action.type} executed for user ${action.userId} in guild ${guild.id}, case #${caseNumber}`
+      );
+
+      return moderationCase;
+    } catch (error) {
+      logger.error("Error in moderation action:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Quick methods for common moderation actions
+   */
+  async kick(
+    guild: Guild,
+    userId: string,
+    moderatorId: string,
+    reason?: string,
+    evidence?: string[]
+  ): Promise<ModerationCase> {
+    return this.moderate(guild, {
+      type: "KICK",
+      userId,
+      moderatorId,
+      reason,
+      evidence,
+      severity: "MEDIUM",
+      points: 3,
+    });
+  }
+
+  async ban(
+    guild: Guild,
+    userId: string,
+    moderatorId: string,
+    reason?: string,
+    duration?: number,
+    evidence?: string[]
+  ): Promise<ModerationCase> {
+    return this.moderate(guild, {
+      type: "BAN",
+      userId,
+      moderatorId,
+      reason,
+      duration,
+      evidence,
+      severity: duration ? "HIGH" : "CRITICAL",
+      points: duration ? 5 : 10,
+    });
+  }
+
+  async warn(
+    guild: Guild,
+    userId: string,
+    moderatorId: string,
+    reason: string,
+    evidence?: string[],
+    points = 1
+  ): Promise<ModerationCase> {
+    return this.moderate(guild, {
+      type: "WARN",
+      userId,
+      moderatorId,
+      reason,
+      evidence,
+      severity: "LOW",
+      points,
+    });
+  }
+
+  async timeout(
+    guild: Guild,
+    userId: string,
+    moderatorId: string,
+    duration: number,
+    reason?: string,
+    evidence?: string[]
+  ): Promise<ModerationCase> {
+    return this.moderate(guild, {
+      type: "TIMEOUT",
+      userId,
+      moderatorId,
+      reason,
+      duration,
+      evidence,
+      severity: "MEDIUM",
+      points: 2,
+    });
+  }
+
+  async note(
+    guild: Guild,
+    userId: string,
+    moderatorId: string,
+    note: string,
+    isInternal = false
+  ): Promise<ModerationCase> {
+    return this.moderate(guild, {
+      type: "NOTE",
+      userId,
+      moderatorId,
+      reason: note,
+      severity: "LOW",
+      points: 0,
+      staffNote: isInternal ? note : undefined,
+      publicNote: !isInternal ? note : undefined,
+      notifyUser: !isInternal,
+    });
+  }
+
+  /**
+   * Get user's moderation history
+   */
+  async getUserHistory(guildId: string, userId: string, limit = 10): Promise<ModerationCase[]> {
+    try {
+      const cases = await prisma.moderationCase.findMany({
+        where: { guildId, userId },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        include: {
+          notes: true,
+          appeals: true,
+        },
+      });
+
+      return cases as unknown as ModerationCase[];
+    } catch (error) {
+      logger.error("Error getting user history:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Get case by number
+   */
+  async getCase(guildId: string, caseNumber: number): Promise<ModerationCase | null> {
+    try {
+      const case_ = await prisma.moderationCase.findUnique({
+        where: {
+          guildId_caseNumber: { guildId, caseNumber },
+        },
+        include: {
+          notes: true,
+          appeals: true,
+        },
+      });
+
+      return case_ as unknown as ModerationCase | null;
+    } catch (error) {
+      logger.error("Error getting case:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Add note to case
+   */
+  async addCaseNote(caseId: string, authorId: string, content: string, isInternal = false): Promise<void> {
+    try {
+      await prisma.caseNote.create({
+        data: {
+          caseId,
+          authorId,
+          content,
+          isInternal,
+        },
+      });
+
+      // Log the note addition
+      const case_ = await prisma.moderationCase.findUnique({ where: { id: caseId } });
+      if (case_) {
+        await this.logManager.log(case_.guildId, "MOD_CASE_NOTE_ADD", {
+          caseId,
+          executorId: authorId,
+          metadata: { isInternal, content },
+        });
+      }
+    } catch (error) {
+      logger.error("Error adding case note:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user's current infraction points
+   */
+  async getInfractionPoints(guildId: string, userId: string): Promise<number> {
+    try {
+      const infractions = await prisma.userInfractions.findUnique({
+        where: { guildId_userId: { guildId, userId } },
+      });
+      return infractions?.totalPoints || 0;
+    } catch (error) {
+      logger.error("Error getting infraction points:", error);
+      return 0;
+    }
+  }
+
+  /**
+   * Private helper methods
+   */
+  private async getNextCaseNumber(guildId: string): Promise<number> {
+    const lastCase = await prisma.moderationCase.findFirst({
+      where: { guildId },
+      orderBy: { caseNumber: "desc" },
+      select: { caseNumber: true },
+    });
+
+    return (lastCase?.caseNumber || 0) + 1;
+  }
+
+  private async createCase(guildId: string, caseNumber: number, action: ModerationAction): Promise<ModerationCase> {
+    const expiresAt = action.duration ? new Date(Date.now() + action.duration * 1000) : undefined;
+
+    const case_ = await prisma.moderationCase.create({
+      data: {
+        caseNumber,
+        guildId,
+        userId: action.userId,
+        moderatorId: action.moderatorId,
+        type: action.type,
+        reason: action.reason,
+        evidence: action.evidence || [],
+        duration: action.duration,
+        expiresAt,
+        severity: action.severity || "LOW",
+        points: action.points || 0,
+        publicNote: action.publicNote,
+        staffNote: action.staffNote,
+      },
+    });
+
+    return case_ as unknown as ModerationCase;
+  }
+
+  private async executeDiscordAction(guild: Guild, action: ModerationAction, case_: ModerationCase): Promise<void> {
+    try {
+      switch (action.type) {
+        case "KICK": {
+          const member = await guild.members.fetch(action.userId);
+          await member.kick(action.reason);
+          break;
+        }
+
+        case "BAN": {
+          await guild.members.ban(action.userId, {
+            reason: action.reason,
+            deleteMessageDays: 1, // Delete messages from last day
+          });
+          break;
+        }
+
+        case "TIMEOUT": {
+          const member = await guild.members.fetch(action.userId);
+          const timeoutDuration = action.duration! * 1000; // Convert to milliseconds
+          await member.timeout(timeoutDuration, action.reason);
+          break;
+        }
+
+        case "UNBAN": {
+          await guild.members.unban(action.userId, action.reason);
+          break;
+        }
+
+        case "UNTIMEOUT": {
+          const member = await guild.members.fetch(action.userId);
+          await member.timeout(null, action.reason);
+          break;
+        }
+
+        case "WARN":
+        case "NOTE":
+          // No Discord action needed, just case creation
+          break;
+      }
+
+      // Update case to mark DM as sent (we'll try to send it)
+      await prisma.moderationCase.update({
+        where: { id: case_.id },
+        data: { dmSent: true },
+      });
+    } catch (error) {
+      logger.error(`Error executing Discord action ${action.type}:`, error);
+
+      // Update case to mark DM as failed
+      await prisma.moderationCase.update({
+        where: { id: case_.id },
+        data: { dmSent: false },
+      });
+
+      throw error;
+    }
+  }
+
+  private async notifyUser(userId: string, case_: ModerationCase, guild: Guild): Promise<void> {
+    try {
+      const user = await this.client.users.fetch(userId);
+
+      const embed = new EmbedBuilder()
+        .setTitle(`📋 Moderation Action - ${guild.name}`)
+        .setColor(this.getActionColor(case_.type))
+        .addFields(
+          { name: "Action", value: case_.type, inline: true },
+          { name: "Case #", value: case_.caseNumber.toString(), inline: true },
+          { name: "Reason", value: case_.reason || "No reason provided", inline: false }
+        )
+        .setTimestamp()
+        .setFooter({ text: `Case ID: ${case_.id}` });
+
+      if (case_.duration) {
+        const duration = this.formatDuration(case_.duration);
+        embed.addFields({ name: "Duration", value: duration, inline: true });
+      }
+
+      if (case_.canAppeal) {
+        embed.addFields({
+          name: "Appeal",
+          value: "You can appeal this action by DMing this bot with `/appeal submit`",
+          inline: false,
+        });
+      }
+
+      await user.send({ embeds: [embed] });
+    } catch (error) {
+      logger.warn(`Could not send DM to user ${userId}:`, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  private async updateInfractionPoints(guildId: string, userId: string, points: number): Promise<void> {
+    if (points === 0) return;
+
+    try {
+      await prisma.userInfractions.upsert({
+        where: { guildId_userId: { guildId, userId } },
+        update: {
+          totalPoints: { increment: points },
+          lastIncident: new Date(),
+        },
+        create: {
+          guildId,
+          userId,
+          totalPoints: points,
+          lastIncident: new Date(),
+        },
+      });
+    } catch (error) {
+      logger.error("Error updating infraction points:", error);
+    }
+  }
+
+  private async scheduleAction(
+    guildId: string,
+    userId: string,
+    actionType: string,
+    duration: number,
+    caseId: string
+  ): Promise<void> {
+    try {
+      const scheduledFor = new Date(Date.now() + duration * 1000);
+      const reverseAction = this.getReverseAction(actionType);
+
+      if (reverseAction) {
+        await prisma.scheduledAction.create({
+          data: {
+            guildId,
+            userId,
+            type: reverseAction,
+            caseId,
+            scheduledFor,
+          },
+        });
+      }
+    } catch (error) {
+      logger.error("Error scheduling action:", error);
+    }
+  }
+
+  private getReverseAction(actionType: string): string | null {
+    const reverseMap = {
+      BAN: "UNBAN",
+      TIMEOUT: "UNTIMEOUT",
+    };
+    return reverseMap[actionType as keyof typeof reverseMap] || null;
+  }
+
+  private getActionColor(actionType: string): number {
+    const colors = {
+      KICK: 0xf39c12, // Orange
+      BAN: 0xe74c3c, // Red
+      WARN: 0xf1c40f, // Yellow
+      TIMEOUT: 0xe67e22, // Dark orange
+      NOTE: 0x3498db, // Blue
+      UNBAN: 0x2ecc71, // Green
+      UNTIMEOUT: 0x2ecc71, // Green
+    };
+    return colors[actionType as keyof typeof colors] || 0x95a5a6;
+  }
+
+  private formatDuration(seconds: number): string {
+    const units = [
+      { name: "day", seconds: 86400 },
+      { name: "hour", seconds: 3600 },
+      { name: "minute", seconds: 60 },
+    ];
+
+    for (const unit of units) {
+      const count = Math.floor(seconds / unit.seconds);
+      if (count > 0) {
+        return `${count} ${unit.name}${count !== 1 ? "s" : ""}`;
+      }
+    }
+
+    return `${seconds} second${seconds !== 1 ? "s" : ""}`;
+  }
+
+  /**
+   * Update case notification setting
+   */
+  async updateCaseNotification(caseId: string, notifyUser: boolean): Promise<void> {
+    try {
+      await prisma.moderationCase.update({
+        where: { id: caseId },
+        data: { dmSent: !notifyUser },
+      });
+    } catch (error) {
+      logger.error("Error updating case notification:", error);
+      throw error;
+    }
+  }
+}

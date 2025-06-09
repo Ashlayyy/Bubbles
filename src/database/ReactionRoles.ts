@@ -199,8 +199,26 @@ export async function logReactionRoleAction(
     return null;
   }
 
+  // Find the reaction role to get the ID
+  const reactionRole = await prisma.reactionRole.findUnique({
+    where: {
+      messageId_emoji: {
+        messageId: data.messageId,
+        emoji: data.emoji,
+      },
+    },
+  });
+
+  if (!reactionRole) {
+    logger.warn("Trying to log action for non-existent reaction role", data);
+    return null;
+  }
+
   return await prisma.reactionRoleLog.create({
-    data,
+    data: {
+      ...data,
+      reactionRoleId: reactionRole.id,
+    },
   });
 }
 
