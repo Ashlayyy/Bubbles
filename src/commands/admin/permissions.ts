@@ -65,6 +65,9 @@ export default new Command(
         .addStringOption((opt) =>
           opt.setName("users").setDescription("Allowed user IDs (comma separated)").setAutocomplete(true)
         )
+        .addStringOption((opt) =>
+          opt.setName("denied-users").setDescription("Denied user IDs (comma separated)").setAutocomplete(true)
+        )
     )
     .addSubcommand((sub) =>
       sub
@@ -212,7 +215,7 @@ export default new Command(
           }
 
           // Check access to different command categories
-          const testCommands = ["ping", "help", "clear", "embed"];
+          const testCommands = ["ping", "help", "clear", "embed", "reaction-roles"];
           const accessResults = [];
 
           for (const commandName of testCommands) {
@@ -281,6 +284,7 @@ export default new Command(
           const level = interaction.options.getString("level", true) as PermissionLevel;
           const rolesStr = interaction.options.getString("roles");
           const usersStr = interaction.options.getString("users");
+          const deniedUsersStr = interaction.options.getString("denied-users");
 
           // Check if command exists
           const command = client.commands.get(commandName);
@@ -320,7 +324,11 @@ export default new Command(
                 ?.split(",")
                 .map((s: string) => s.trim())
                 .filter((s: string) => s.length > 0) ?? [],
-            deniedUsers: [],
+            deniedUsers:
+              deniedUsersStr
+                ?.split(",")
+                .map((s: string) => s.trim())
+                .filter((s: string) => s.length > 0) ?? [],
           };
 
           await permissionManager.setCommandPermission(
@@ -336,6 +344,9 @@ export default new Command(
           }
           if (permissionConfig.allowedUsers && permissionConfig.allowedUsers.length > 0) {
             details += `\nAllowed users: ${permissionConfig.allowedUsers.map((id) => `<@${id}>`).join(", ")}`;
+          }
+          if (permissionConfig.deniedUsers && permissionConfig.deniedUsers.length > 0) {
+            details += `\nDenied users: ${permissionConfig.deniedUsers.map((id) => `<@${id}>`).join(", ")}`;
           }
 
           await interaction.followUp({

@@ -103,3 +103,26 @@ model ReactionRoleLog {
 
   @@index([guildId, timestamp])
 }
+
+model CustomRole {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  name        String
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, name])
+}
+
+model CustomRoleAssignment {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId    String
+  userId     String
+  roleId     String   @db.ObjectId
+  assignedAt DateTime @default(now())
+  assignedBy String
+
+  @@unique([userId, roleId])
+  @@index([guildId])
+}

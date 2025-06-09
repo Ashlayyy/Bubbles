@@ -1,11 +1,11 @@
 import type { GuildMember } from "discord.js";
 import { PermissionsBitField } from "discord.js";
 
-import { prisma } from "../database/index.js";
-import logger from "../logger.js";
-import Client from "./Client.js";
-import type { CommandPermissionConfig, PermissionCheckResult } from "./PermissionTypes.js";
-import { AuditAction, PermissionLevel } from "./PermissionTypes.js";
+import { prisma } from "../database/index";
+import logger from "../logger";
+import Client from "../structures/Client";
+import type { CommandPermissionConfig, PermissionCheckResult } from "../structures/PermissionTypes";
+import { AuditAction, PermissionLevel } from "../structures/PermissionTypes";
 
 // Proper TypeScript interfaces for database models
 interface CommandPermissionDB {
@@ -88,6 +88,24 @@ export default class PermissionManager {
       // Check if user is explicitly allowed
       if (Array.isArray(permissionConfig.allowedUsers) && permissionConfig.allowedUsers.includes(member.user.id)) {
         return { allowed: true, bypassedBy: "owner" };
+      }
+
+      // Check custom roles
+      const assignments = await prisma.customRoleAssignment.findMany({
+        where: { userId: member.user.id, guildId },
+      });
+      const roleIds = assignments.map((a) => a.roleId);
+      const roles = await prisma.customRole.findMany({
+        where: { id: { in: roleIds } },
+      });
+
+      const memberPermissions = new Set<string>();
+      roles.forEach((role) => {
+        role.permissions.forEach((p) => memberPermissions.add(p));
+      });
+
+      if (memberPermissions.has(`command.${commandName}`) || memberPermissions.has("command.*")) {
+        return { allowed: true };
       }
 
       // Check permission level

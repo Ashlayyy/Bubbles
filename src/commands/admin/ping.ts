@@ -9,8 +9,9 @@ export default new Command(
   async (client, interaction) => {
     const pingStr = `Ping => \`${client.ws.ping.toString()} ms\`\n`;
 
-    await interaction.followUp({
+    await interaction.reply({
       content: pingStr,
+      ephemeral: true,
     });
   },
   {

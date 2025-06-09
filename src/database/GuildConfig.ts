@@ -19,6 +19,10 @@ export const descriptions: Record<string, string> = {
   maxMessagesCleared: "Maximum number of messages `/clear` can delete in one command call.",
   musicChannelId: "If specified, ALL music commands MUST be entered in this text channel!",
   defaultRepeatMode: "Default repeat mode of music player.",
+  reactionRoleChannels: "Channels where reaction roles are allowed to be created.",
+  logReactionRoles: "Enable database logging of reaction role activities.",
+  reactionRoleLoggingEnabled: "Enable reaction role activity logging to a specific channel.",
+  reactionRoleLogChannelId: "The channel where reaction role activities will be logged.",
 };
 
 /** Get the guild config data corresponding to guildId. If does not exist, generate based on defaults! */
