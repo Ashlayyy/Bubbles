@@ -8,6 +8,7 @@ import {
   EmbedBuilder,
   Guild,
   Message,
+  MessageFlags,
   ModalBuilder,
   RoleSelectMenuBuilder,
   SlashCommandBuilder,
@@ -78,12 +79,12 @@ async function findMessageById(guild: Guild, messageId: string): Promise<Message
 }
 
 async function handleAdd(client: Client, interaction: GuildChatInputCommandInteraction) {
-  await interaction.deferReply({ flags: 64 /* MessageFlags.Ephemeral */ });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   if (!interaction.guild) {
     await interaction.followUp({
       content: "This command can only be used in a server.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -96,7 +97,7 @@ async function handleAdd(client: Client, interaction: GuildChatInputCommandInter
   if (!message) {
     await interaction.followUp({
       content: "Could not find a message with that ID.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -105,7 +106,7 @@ async function handleAdd(client: Client, interaction: GuildChatInputCommandInter
   if (!emoji) {
     await interaction.followUp({
       content: "That doesn't seem to be a valid emoji I can use.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -115,20 +116,20 @@ async function handleAdd(client: Client, interaction: GuildChatInputCommandInter
     if (!dbResult) {
       await interaction.followUp({
         content: "Failed to add reaction role. The emoji may not be valid.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     await message.react(emoji.name);
     await interaction.followUp({
       content: `Successfully added reaction role: ${emoji.name} -> ${role.name}`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   } catch (error) {
     logger.error("Error adding reaction role:", error);
     await interaction.followUp({
       content: "Failed to add reaction role. Please check my permissions.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 }
@@ -139,7 +140,7 @@ async function handleRemove(client: Client, interaction: GuildChatInputCommandIn
   if (!interaction.guild) {
     await interaction.followUp({
       content: "This command can only be used in a server.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -151,7 +152,7 @@ async function handleRemove(client: Client, interaction: GuildChatInputCommandIn
   if (!message) {
     await interaction.followUp({
       content: "Could not find a message with that ID.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -160,7 +161,7 @@ async function handleRemove(client: Client, interaction: GuildChatInputCommandIn
   if (!emoji) {
     await interaction.followUp({
       content: "That doesn't seem to be a valid emoji.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -171,13 +172,13 @@ async function handleRemove(client: Client, interaction: GuildChatInputCommandIn
     await message.reactions.resolve(emoji.identifier)?.remove();
     await interaction.followUp({
       content: `Successfully removed reaction role for ${emoji.name}.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   } catch (error) {
     logger.error("Error removing reaction role:", error);
     await interaction.followUp({
       content: "Failed to remove reaction role.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 }
@@ -191,7 +192,7 @@ async function handleList(client: Client, interaction: GuildChatInputCommandInte
   if (roles.length === 0) {
     await interaction.followUp({
       content: "No reaction roles are configured for that message.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -227,53 +228,34 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
   };
 
   const generateComponents = (isRoleAdding = false) => {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId("rr_builder_title")
-        .setLabel("Set Title")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(isRoleAdding),
-      new ButtonBuilder()
-        .setCustomId("rr_builder_desc")
-        .setLabel("Set Description")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(isRoleAdding),
-      new ButtonBuilder()
-        .setCustomId("rr_builder_color")
-        .setLabel("Set Color")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(isRoleAdding),
+    const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("rr_builder_title").setLabel("Set Title").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("rr_builder_desc").setLabel("Set Description").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("rr_builder_color").setLabel("Set Color").setStyle(ButtonStyle.Primary)
+    );
+    const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId("rr_builder_add_role")
         .setLabel("Add Role")
         .setStyle(ButtonStyle.Success)
         .setDisabled(isRoleAdding),
-      new ButtonBuilder()
-        .setCustomId("rr_builder_post")
-        .setLabel("Post Embed")
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(isRoleAdding || state.roles.size === 0)
+      new ButtonBuilder().setCustomId("rr_builder_post").setLabel("Post").setStyle(ButtonStyle.Success)
     );
-    return [row];
+    return [row1, row2];
   };
 
   const updateMessage = async () => {
-    const rolesList =
-      Array.from(state.roles.entries())
-        .map(([emoji, roleId]) => `${emoji} -> <@&${roleId}>`)
-        .join("\n") || "No roles added yet.";
-    state.embed.setFields([{ name: "Roles", value: rolesList }]);
-    await interaction.editReply({
-      embeds: [state.embed],
-      components: generateComponents(),
+    state.embed.setFields({
+      name: "Roles",
+      value: state.roles.size > 0 ? [...state.roles.entries()].map(([e, r]) => `${e} -> <@&${r}>`).join("\n") : "None",
     });
+    await interaction.editReply({ embeds: [state.embed], components: generateComponents() });
   };
 
-  await interaction.deferReply({ flags: 64 /* MessageFlags.Ephemeral */ });
-  await interaction.followUp({
+  await interaction.reply({
     embeds: [state.embed],
     components: generateComponents(),
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
   const reply = await interaction.fetchReply();
 
@@ -301,8 +283,8 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
           await i.showModal(modal);
           const submitted = await i.awaitModalSubmit({ time: 60000 }).catch(() => null);
           if (submitted) {
-            state.embed.setTitle(submitted.fields.getTextInputValue("title_input"));
             await submitted.deferUpdate();
+            state.embed.setTitle(submitted.fields.getTextInputValue("title_input"));
             await updateMessage();
           }
           break;
@@ -318,8 +300,8 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
           await i.showModal(modal);
           const submitted = await i.awaitModalSubmit({ time: 60000 }).catch(() => null);
           if (submitted) {
-            state.embed.setDescription(submitted.fields.getTextInputValue("desc_input"));
             await submitted.deferUpdate();
+            state.embed.setDescription(submitted.fields.getTextInputValue("desc_input"));
             await updateMessage();
           }
           break;
@@ -335,11 +317,11 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
           await i.showModal(modal);
           const submitted = await i.awaitModalSubmit({ time: 60000 }).catch(() => null);
           if (submitted) {
+            await submitted.deferUpdate();
             const color = submitted.fields.getTextInputValue("color_input");
             if (/^#[0-9A-F]{6}$/i.test(color)) {
               state.embed.setColor(color as `#${string}`);
             }
-            await submitted.deferUpdate();
             await updateMessage();
           }
           break;
@@ -364,7 +346,7 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
           const emojiRaw = emojiMessage?.content;
 
           if (!emojiRaw) {
-            await interaction.followUp({ content: "You did not provide an emoji in time.", ephemeral: true });
+            await i.followUp({ content: "You did not provide an emoji in time.", ephemeral: true });
             await updateMessage();
             return;
           }
@@ -372,24 +354,24 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
           const emoji = parseEmoji(emojiRaw, client);
 
           if (!emoji) {
-            await interaction.followUp({ content: "That does not appear to be a valid emoji.", ephemeral: true });
+            await i.followUp({ content: "That does not appear to be a valid emoji.", ephemeral: true });
             await updateMessage();
             return;
           }
 
           const roleSelect = new RoleSelectMenuBuilder().setCustomId("rr_builder_role_select").setMaxValues(1);
           const roleRow = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(roleSelect);
-          const roleMessage = await interaction.followUp({
+          const roleMessage = await i.editReply({
             content: `Emoji set to ${emoji.name}. Now select the role.`,
             components: [roleRow],
-            ephemeral: true,
+            embeds: [],
           });
 
           const roleInteraction = await roleMessage
             .awaitMessageComponent({ componentType: ComponentType.RoleSelect, time: 30000 })
             .catch(() => null);
 
-          if (roleInteraction) {
+          if (roleInteraction?.isRoleSelectMenu()) {
             const roleId = roleInteraction.values[0];
             state.roles.set(emoji.name, roleId);
             await roleInteraction.update({
@@ -397,7 +379,7 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
               components: [],
             });
           } else {
-            await interaction.followUp({ content: "You did not select a role in time.", ephemeral: true });
+            await i.followUp({ content: "You did not select a role in time.", ephemeral: true });
           }
 
           await updateMessage();
@@ -456,8 +438,12 @@ export default new Command(
   async (client, interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const subcommand = interaction.options.getSubcommand();
+    if (!interaction.guild) return; // Should not happen
 
     switch (subcommand) {
+      case "builder":
+        await handleBuilder(client, interaction);
+        break;
       case "add":
         await handleAdd(client, interaction);
         break;
@@ -466,9 +452,6 @@ export default new Command(
         break;
       case "list":
         await handleList(client, interaction);
-        break;
-      case "builder":
-        await handleBuilder(client, interaction);
         break;
       default:
         await interaction.reply({ content: "Unknown subcommand.", ephemeral: true });

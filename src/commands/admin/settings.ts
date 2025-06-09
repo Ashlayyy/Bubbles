@@ -1,6 +1,6 @@
 import { QueueRepeatMode } from "discord-player";
 import type { EmbedField } from "discord.js";
-import { ChannelType, SlashCommandBuilder } from "discord.js";
+import { ChannelType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import lodash from "lodash";
 
 import {
@@ -314,7 +314,7 @@ async function handleSetWelcomeChannel(interaction: GuildChatInputCommandInterac
 
   await interaction.reply({
     content: `Welcome messages will now be sent in <#${channel.id}>.`,
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -326,6 +326,6 @@ async function handleSetGoodbyeChannel(interaction: GuildChatInputCommandInterac
 
   await interaction.reply({
     content: `Goodbye messages will now be sent in <#${channel.id}>.`,
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 }

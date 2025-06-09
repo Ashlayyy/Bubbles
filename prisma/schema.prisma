@@ -8,16 +8,17 @@ datasource db {
 }
 
 model GuildConfig {
-  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
-  guildId              String   @unique
-  greetings            String[]
-  maxMessagesCleared   Int
-  musicChannelId       String
-  defaultRepeatMode    Int
-  reactionRoleChannels String[] @default([]) // Allowed channels, empty = all channels
-  logReactionRoles     Boolean  @default(false) // Enable/disable logging
-  welcomeChannelId     String?
-  goodbyeChannelId     String?
+  id                         String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId                    String   @unique
+  maxMessagesCleared         Int      @default(100)
+  musicChannelId             String   @default("")
+  defaultRepeatMode          Int      @default(0)
+  reactionRoleChannels       String[] @default([])
+  logReactionRoles           Boolean  @default(false)
+  reactionRoleLoggingEnabled Boolean  @default(false)
+  reactionRoleLogChannelId   String?
+  welcomeChannelId           String?
+  goodbyeChannelId           String?
 }
 
 model CommandPermission {

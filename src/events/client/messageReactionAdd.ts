@@ -61,7 +61,7 @@ export default new ClientEvent(
         logger.info(`Added ${rolesToAdd.length} role(s) to user ${user.tag} (${user.id}) in guild ${guildId}`);
 
         // Log the action if enabled
-        await logReactionRoleAction({
+        await logReactionRoleAction(reaction.client, {
           guildId,
           userId: user.id,
           messageId,

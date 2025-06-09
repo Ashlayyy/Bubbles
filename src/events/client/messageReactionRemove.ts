@@ -61,7 +61,7 @@ export default new ClientEvent(
         logger.info(`Removed ${rolesToRemove.length} role(s) from user ${user.tag} (${user.id}) in guild ${guildId}`);
 
         // Log the action if enabled
-        await logReactionRoleAction({
+        await logReactionRoleAction(reaction.client, {
           guildId,
           userId: user.id,
           messageId,

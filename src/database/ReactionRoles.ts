@@ -1,7 +1,14 @@
 import type { ReactionRole, ReactionRoleLog, ReactionRoleMessage } from "@prisma/client";
 import { PrismaClient } from "@prisma/client";
-import { ChatInputCommandInteraction, Client, MessageContextMenuCommandInteraction } from "discord.js";
+import {
+  ChatInputCommandInteraction,
+  Client,
+  EmbedBuilder,
+  MessageContextMenuCommandInteraction,
+  TextChannel,
+} from "discord.js";
 import { parseEmoji } from "../functions/general/emojis.js";
+import logger from "../logger.js";
 
 const prisma = new PrismaClient();
 
@@ -135,19 +142,58 @@ export async function deleteReactionRoleMessage(messageId: string): Promise<void
 }
 
 // ReactionRoleLog operations
-export async function logReactionRoleAction(data: {
-  guildId: string;
-  userId: string;
-  messageId: string;
-  emoji: string;
-  roleIds: string[];
-  action: "ADDED" | "REMOVED";
-}): Promise<ReactionRoleLog | null> {
+export async function logReactionRoleAction(
+  client: Client,
+  data: {
+    guildId: string;
+    userId: string;
+    messageId: string;
+    emoji: string;
+    roleIds: string[];
+    action: "ADDED" | "REMOVED";
+  }
+): Promise<ReactionRoleLog | null> {
   // Check if logging is enabled for this guild
   const guildConfig = await prisma.guildConfig.findUnique({
     where: { guildId: data.guildId },
-    select: { logReactionRoles: true },
+    select: { logReactionRoles: true, reactionRoleLoggingEnabled: true, reactionRoleLogChannelId: true },
   });
+
+  if (guildConfig?.reactionRoleLoggingEnabled && guildConfig.reactionRoleLogChannelId) {
+    try {
+      const channel = await client.channels.fetch(guildConfig.reactionRoleLogChannelId);
+      if (channel instanceof TextChannel) {
+        const user = await client.users.fetch(data.userId);
+        const reactionRole = await prisma.reactionRole.findFirst({
+          where: { messageId: data.messageId, emoji: data.emoji },
+          select: { channelId: true },
+        });
+
+        const roles = data.roleIds.map((id) => `<@&${id}>`).join(", ");
+        const actionText = data.action === "ADDED" ? "gained" : "lost";
+        const embed = new EmbedBuilder()
+          .setColor(data.action === "ADDED" ? "Green" : "Red")
+          .setTitle("Reaction Role Update")
+          .setDescription(`<@${user.id}> has ${actionText} the following role(s): ${roles}`)
+          .addFields(
+            { name: "User", value: `${user.tag} (${user.id})`, inline: true },
+            { name: "Action", value: data.action, inline: true },
+            {
+              name: "Source Message",
+              value: reactionRole?.channelId
+                ? `[Jump to message](https://discord.com/channels/${data.guildId}/${reactionRole.channelId}/${data.messageId})`
+                : "Could not determine message.",
+            }
+          )
+          .setFooter({ text: `User ID: ${user.id}` })
+          .setTimestamp();
+
+        await channel.send({ embeds: [embed] });
+      }
+    } catch (error) {
+      logger.error("Failed to send reaction role log message:", error);
+    }
+  }
 
   if (!guildConfig?.logReactionRoles) {
     return null;

@@ -1,4 +1,4 @@
-import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
+import { MessageFlags, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 
 import logger from "../../logger.js";
 import Command from "../../structures/Command.js";
@@ -230,7 +230,7 @@ export default new Command(
       } else {
         await interaction.reply({
           content: "❌ An unexpected error occurred.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
     }

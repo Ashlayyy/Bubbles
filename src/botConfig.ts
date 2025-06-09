@@ -26,7 +26,6 @@ export interface ActivityOption {
 
 export interface WelcomeGoodbyeConfig {
   enabled: boolean;
-  channelId: string;
   messages: {
     title: string;
     description: string;
@@ -64,7 +63,6 @@ const welcomeGoodbyeSchema: JSONSchemaType<WelcomeGoodbyeConfig> = {
   type: "object",
   properties: {
     enabled: { type: "boolean" },
-    channelId: { type: "string" },
     messages: {
       type: "array",
       items: {
@@ -79,7 +77,7 @@ const welcomeGoodbyeSchema: JSONSchemaType<WelcomeGoodbyeConfig> = {
       },
     },
   },
-  required: ["enabled", "channelId", "messages"],
+  required: ["enabled", "messages"],
   additionalProperties: false,
 };
 

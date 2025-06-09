@@ -2,12 +2,14 @@ import {
   ActionRowBuilder,
   ApplicationCommandType,
   ContextMenuCommandBuilder,
+  MessageFlags,
   ModalBuilder,
   RoleSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
 } from "discord.js";
 import { addReactionRole } from "../../../database/ReactionRoles.js";
+import { parseEmoji } from "../../../functions/general/emojis.js";
 import logger from "../../../logger.js";
 import Command from "../../../structures/Command.js";
 
@@ -24,11 +26,6 @@ export default new Command(
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
-    const roleInput = new RoleSelectMenuBuilder().setCustomId("role_select");
-
-    // As we discovered, we cannot add a role selector to a modal.
-    // I must ask for the role in a follow-up interaction.
-
     modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(emojiInput));
 
     await interaction.showModal(modal);
@@ -42,7 +39,7 @@ export default new Command(
       await submitted.reply({
         content: `Emoji set to ${emoji}. Now select the role.`,
         components: [roleRow],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       const roleMessage = await submitted.fetchReply();
 
@@ -52,9 +49,15 @@ export default new Command(
         const roleId = roleInteraction.values[0];
         const message = interaction.targetMessage;
 
+        const parsedEmoji = parseEmoji(emoji, client);
+        if (!parsedEmoji) {
+          await roleInteraction.update({ content: "❌ That doesn't seem to be a valid emoji.", components: [] });
+          return;
+        }
+
         try {
           await addReactionRole(interaction, message.id, emoji, roleId);
-          await message.react(emoji);
+          await message.react(parsedEmoji.name);
           await roleInteraction.update({ content: "✅ Role added!", components: [] });
         } catch (error) {
           logger.error("Error adding reaction role from context menu:", error);

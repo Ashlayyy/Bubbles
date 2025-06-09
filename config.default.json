@@ -1,5 +1,5 @@
 {
-  "name": "DiscordTS-Bot",
+  "name": "Bubbles",
   "activities": [
     {
       "type": "playing",
@@ -65,7 +65,6 @@
   ],
   "welcome": {
     "enabled": true,
-    "channelId": "YOUR_CHANNEL_ID_HERE",
     "messages": [
       {
         "title": "Welkom in {server}!",
@@ -81,7 +80,6 @@
   },
   "goodbye": {
     "enabled": true,
-    "channelId": "YOUR_CHANNEL_ID_HERE",
     "messages": [
       {
         "title": "Tot ziens!",

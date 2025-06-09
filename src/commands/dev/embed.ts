@@ -1,5 +1,5 @@
 import type { GuildMember } from "discord.js";
-import { Colors, SlashCommandBuilder, User } from "discord.js";
+import { Colors, MessageFlags, SlashCommandBuilder, User } from "discord.js";
 
 import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
@@ -53,12 +53,12 @@ export default new Command(
       },
     });
 
-    await interaction.followUp({
+    await interaction.reply({
       embeds: [testEmbed],
+      flags: MessageFlags.Ephemeral,
     });
   },
   {
-    ephemeral: true,
     permissions: {
       level: PermissionLevel.DEVELOPER,
       isConfigurable: false,
