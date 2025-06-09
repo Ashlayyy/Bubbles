@@ -31,7 +31,7 @@ async function handlePermissionsAutocomplete(interaction: AutocompleteInteractio
     const commands = client.commands.map((cmd) => cmd.builder.name);
     const filtered = commands.filter((choice) => choice.startsWith(focusedOption.value)).slice(0, 25);
     await interaction.respond(filtered.map((choice) => ({ name: choice, value: choice })));
-  } else if (focusedOption.name === "value" && subcommand === "quick-set") {
+  } else if (focusedOption.name === "value" && subcommand === "set") {
     const type = interaction.options.getString("type");
 
     switch (type) {
@@ -232,6 +232,79 @@ async function handlePermissionsAutocomplete(interaction: AutocompleteInteractio
         break;
       }
       default: {
+        await interaction.respond([]);
+      }
+    }
+  } else if (
+    (focusedOption.name === "roles" ||
+      focusedOption.name === "allowed-users" ||
+      focusedOption.name === "denied-users") &&
+    subcommand === "set"
+  ) {
+    // Handle autocomplete for the additional fields
+    const currentInput = focusedOption.value;
+    const lastCommaIndex = currentInput.lastIndexOf(",");
+    const prefix = lastCommaIndex >= 0 ? currentInput.substring(0, lastCommaIndex + 1) : "";
+    const currentValue = lastCommaIndex >= 0 ? currentInput.substring(lastCommaIndex + 1).trim() : currentInput;
+
+    if (focusedOption.name === "roles") {
+      // Handle roles autocomplete (same as custom-role type)
+      if (!interaction.guildId || !interaction.guild) return;
+      try {
+        const customRoles = await prisma.customRole.findMany({
+          where: {
+            guildId: interaction.guildId,
+            name: { contains: currentValue, mode: "insensitive" },
+          },
+          take: 15,
+        });
+
+        await interaction.guild.roles.fetch();
+        const discordRoles = interaction.guild.roles.cache
+          .filter(
+            (role) =>
+              role.name !== "@everyone" && !role.managed && role.name.toLowerCase().includes(currentValue.toLowerCase())
+          )
+          .first(10);
+
+        const suggestions = [
+          ...customRoles.map((role) => ({
+            name: `🛡️ ${role.name} (Custom Role)`,
+            value: `${prefix}${role.id}`,
+          })),
+          ...Array.from(discordRoles.values()).map((role) => ({
+            name: `👥 ${role.name} (Discord Role)`,
+            value: `${prefix}${role.id}`,
+          })),
+        ];
+
+        await interaction.respond(suggestions.slice(0, 25));
+      } catch (error) {
+        logger.error("Error fetching roles for autocomplete:", error);
+        await interaction.respond([]);
+      }
+    } else {
+      // Handle users autocomplete (allowed-users or denied-users)
+      if (!interaction.guild) return;
+      try {
+        const members = await interaction.guild.members.fetch();
+        const filtered = members
+          .filter(
+            (member) =>
+              !member.user.bot &&
+              (member.user.username.toLowerCase().includes(currentValue.toLowerCase()) ||
+                member.displayName.toLowerCase().includes(currentValue.toLowerCase()))
+          )
+          .first(25);
+
+        await interaction.respond(
+          Array.from(filtered.values()).map((member) => ({
+            name: `${member.displayName} (@${member.user.username})`,
+            value: `${prefix}${member.user.id}`,
+          }))
+        );
+      } catch (error) {
+        logger.error("Error fetching users for autocomplete:", error);
         await interaction.respond([]);
       }
     }

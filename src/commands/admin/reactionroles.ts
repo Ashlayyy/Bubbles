@@ -239,7 +239,8 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
         .setLabel("Add Role")
         .setStyle(ButtonStyle.Success)
         .setDisabled(isRoleAdding),
-      new ButtonBuilder().setCustomId("rr_builder_post").setLabel("Post").setStyle(ButtonStyle.Success)
+      new ButtonBuilder().setCustomId("rr_builder_post").setLabel("Post").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("rr_builder_cancel").setLabel("Cancel").setStyle(ButtonStyle.Danger)
     );
     return [row1, row2];
   };
@@ -283,8 +284,16 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
           await i.showModal(modal);
           const submitted = await i.awaitModalSubmit({ time: 60000 }).catch(() => null);
           if (submitted) {
-            await submitted.deferUpdate();
+            // Acknowledge immediately to prevent expiration
+            try {
+              await submitted.deferUpdate();
+            } catch {
+              // If defer fails, the interaction has expired - continue anyway
+            }
             state.embed.setTitle(submitted.fields.getTextInputValue("title_input"));
+            await updateMessage();
+          } else {
+            // Modal was cancelled or timed out - restore the original builder state
             await updateMessage();
           }
           break;
@@ -300,8 +309,16 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
           await i.showModal(modal);
           const submitted = await i.awaitModalSubmit({ time: 60000 }).catch(() => null);
           if (submitted) {
-            await submitted.deferUpdate();
+            // Acknowledge immediately to prevent expiration
+            try {
+              await submitted.deferUpdate();
+            } catch {
+              // If defer fails, the interaction has expired - continue anyway
+            }
             state.embed.setDescription(submitted.fields.getTextInputValue("desc_input"));
+            await updateMessage();
+          } else {
+            // Modal was cancelled or timed out - restore the original builder state
             await updateMessage();
           }
           break;
@@ -317,11 +334,19 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
           await i.showModal(modal);
           const submitted = await i.awaitModalSubmit({ time: 60000 }).catch(() => null);
           if (submitted) {
-            await submitted.deferUpdate();
+            // Acknowledge immediately to prevent expiration
+            try {
+              await submitted.deferUpdate();
+            } catch {
+              // If defer fails, the interaction has expired - continue anyway
+            }
             const color = submitted.fields.getTextInputValue("color_input");
             if (/^#[0-9A-F]{6}$/i.test(color)) {
               state.embed.setColor(color as `#${string}`);
             }
+            await updateMessage();
+          } else {
+            // Modal was cancelled or timed out - restore the original builder state
             await updateMessage();
           }
           break;
@@ -416,6 +441,15 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
           } else {
             await interaction.followUp({ content: "You did not select a channel in time.", ephemeral: true });
           }
+          collector.stop();
+          break;
+        }
+        case "rr_builder_cancel": {
+          await i.update({
+            content: "❌ Reaction role builder cancelled.",
+            embeds: [],
+            components: [],
+          });
           collector.stop();
           break;
         }
