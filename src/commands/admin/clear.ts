@@ -16,6 +16,8 @@ export default new Command(
     ),
 
   async (_client, interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+    await interaction.deferReply({ flags: 64 /* MessageFlags.Ephemeral */ });
     const quantity = interaction.options.getInteger("quantity", true);
 
     const { maxMessagesCleared } = await getGuildConfig(interaction.guildId);

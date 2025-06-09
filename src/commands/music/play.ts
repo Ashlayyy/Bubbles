@@ -17,6 +17,7 @@ export default new Command(
     ),
 
   async (client, interaction) => {
+    if (!interaction.isChatInputCommand()) return;
     if (!(interaction.member instanceof GuildMember))
       throw new TypeError("Expected `interaction.member` to be of type `GuildMember`");
 

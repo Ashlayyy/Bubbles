@@ -6,6 +6,7 @@ import Command from "../../structures/Command.js";
 export default new Command(
   new SlashCommandBuilder().setName("skip").setDescription("Skip the current track."),
   async (_client, interaction) => {
+    if (!interaction.isChatInputCommand()) return;
     const guildQueue = await getQueue(interaction);
     if (!guildQueue) return;
 

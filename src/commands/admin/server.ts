@@ -1,4 +1,4 @@
-import { MessageFlags, PermissionsBitField, SlashCommandBuilder } from "discord.js";
+import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
 
 import logger from "../../logger.js";
 import Command from "../../structures/Command.js";
@@ -42,12 +42,13 @@ export default new Command(
     ),
 
   async (client, interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+    await interaction.deferReply({ ephemeral: true });
     const subcommand = interaction.options.getSubcommand();
 
     if (!interaction.guild) {
       await interaction.followUp({
         content: "❌ This command can only be used in a server.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -70,7 +71,6 @@ export default new Command(
           if (roles.size === 0) {
             await interaction.followUp({
               content: "❌ No roles found.",
-              flags: MessageFlags.Ephemeral,
             });
             return;
           }
@@ -99,7 +99,6 @@ export default new Command(
 
           await interaction.followUp({
             embeds: [embed],
-            flags: MessageFlags.Ephemeral,
           });
           break;
         }
@@ -109,22 +108,7 @@ export default new Command(
           const filter = interaction.options.getString("filter");
 
           try {
-            // Send initial response to prevent timeout
-            await interaction.followUp({
-              content: "🔍 Fetching server members... This may take a moment for large servers.",
-              flags: MessageFlags.Ephemeral,
-            });
-
-            // Fetch members with timeout protection
-            const fetchPromise = interaction.guild.members.fetch({ limit: 1000 }); // Limit to prevent memory issues
-            const timeoutPromise = new Promise<never>((_, reject) => {
-              const timeoutId = setTimeout(() => {
-                reject(new Error("Member fetch timeout"));
-              }, 10000); // 10 second timeout
-              return timeoutId;
-            });
-
-            await Promise.race([fetchPromise, timeoutPromise]);
+            await interaction.guild.members.fetch(); // Fetch all members
 
             let members = interaction.guild.members.cache;
 
@@ -143,7 +127,7 @@ export default new Command(
               .sort((a, b) => a.user.username.localeCompare(b.user.username));
 
             if (filteredMembers.size === 0) {
-              await interaction.editReply({
+              await interaction.followUp({
                 content: "❌ No users found matching your criteria.",
               });
               return;
@@ -168,24 +152,14 @@ export default new Command(
 
             await interaction.followUp({
               embeds: [embed],
-              flags: MessageFlags.Ephemeral,
             });
-
-            // Delete the "fetching" message
-            try {
-              await interaction.deleteReply();
-            } catch (error) {
-              // Ignore deletion errors - the embed was already sent
-            }
           } catch (error) {
             logger.error("Error in server users command:", error);
 
             const errorMessage =
-              error instanceof Error && error.message.includes("timeout")
-                ? "⏰ Request timed out. The server may be too large or Discord API is slow. Try using the filter option to narrow results."
-                : "❌ Failed to fetch server members. This may be due to missing permissions or Discord API issues.";
+              "❌ Failed to fetch server members. This may be due to missing permissions or Discord API issues.";
 
-            await interaction.editReply({
+            await interaction.followUp({
               content: errorMessage,
             });
             return;
@@ -237,7 +211,6 @@ export default new Command(
 
           await interaction.followUp({
             embeds: [embed],
-            flags: MessageFlags.Ephemeral,
           });
           break;
         }
@@ -245,16 +218,21 @@ export default new Command(
         default: {
           await interaction.followUp({
             content: "❌ Unknown subcommand",
-            flags: MessageFlags.Ephemeral,
           });
         }
       }
     } catch (error) {
-      console.error("Error in server command:", error);
-      await interaction.followUp({
-        content: "❌ An error occurred while processing the command.",
-        flags: MessageFlags.Ephemeral,
-      });
+      logger.error("Error in server command", error);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp({
+          content: "❌ An unexpected error occurred.",
+        });
+      } else {
+        await interaction.reply({
+          content: "❌ An unexpected error occurred.",
+          ephemeral: true,
+        });
+      }
     }
   },
   {

@@ -21,6 +21,7 @@ export default new Command(
     ),
 
   async (_client, interaction) => {
+    if (!interaction.isChatInputCommand()) return;
     const quantity = interaction.options.getInteger("quantity", true);
     const sides = interaction.options.getInteger("sides", true);
 

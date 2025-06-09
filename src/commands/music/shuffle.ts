@@ -6,6 +6,7 @@ import Command from "../../structures/Command.js";
 export default new Command(
   new SlashCommandBuilder().setName("shuffle").setDescription("Shuffles the tracks currently in the music queue."),
   async (_client, interaction) => {
+    if (!interaction.isChatInputCommand()) return;
     const guildQueue = await getQueue(interaction);
     if (!guildQueue) return;
 

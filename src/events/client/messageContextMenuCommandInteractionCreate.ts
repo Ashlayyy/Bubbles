@@ -4,14 +4,14 @@ import Client from "../../structures/Client.js";
 import { ClientEvent } from "../../structures/Event.js";
 
 export default new ClientEvent("interactionCreate", async (interaction) => {
-  if (interaction.isChatInputCommand()) {
+  if (interaction.isMessageContextMenuCommand()) {
     const client = interaction.client as Client;
     const command = client.commands.get(interaction.commandName);
 
-    if (command && command.builder.toJSON().type === ApplicationCommandType.ChatInput) {
+    if (command && command.builder.toJSON().type === ApplicationCommandType.Message) {
       await client.runCommand(command, interaction);
     } else {
-      logger.error(`Could not find command with name "${interaction.commandName}"`);
+      logger.error(`Could not find message context menu command with name "${interaction.commandName}"`);
     }
   }
 });

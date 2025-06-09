@@ -24,15 +24,28 @@ export interface ActivityOption {
   url?: string;
 }
 
+export interface WelcomeGoodbyeConfig {
+  enabled: boolean;
+  channelId: string;
+  messages: {
+    title: string;
+    description: string;
+    color: string;
+  }[];
+}
+
 export interface BotConfig {
   name: string;
   activities: ActivityOption[];
+  welcome?: WelcomeGoodbyeConfig;
+  goodbye?: WelcomeGoodbyeConfig;
 }
 
 const ajv = addErrors(addFormats(new Ajv({ allErrors: true })));
 
 // Format for ActivityOption.url
 ajv.addFormat("streaming-uri", /^https:\/\/(www\.)?(twitch\.tv|youtube\.com)\/.+$/);
+ajv.addFormat("hex-color", /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/i);
 
 interface ActivityOptionJSON {
   name: string;
@@ -43,7 +56,32 @@ interface ActivityOptionJSON {
 interface BotConfigJSON {
   name: string;
   activities: ActivityOptionJSON[];
+  welcome?: WelcomeGoodbyeConfig;
+  goodbye?: WelcomeGoodbyeConfig;
 }
+
+const welcomeGoodbyeSchema: JSONSchemaType<WelcomeGoodbyeConfig> = {
+  type: "object",
+  properties: {
+    enabled: { type: "boolean" },
+    channelId: { type: "string" },
+    messages: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          color: { type: "string", format: "hex-color" },
+        },
+        required: ["title", "description", "color"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["enabled", "channelId", "messages"],
+  additionalProperties: false,
+};
 
 const schema: JSONSchemaType<BotConfigJSON> = {
   type: "object",
@@ -85,6 +123,14 @@ const schema: JSONSchemaType<BotConfigJSON> = {
       errorMessage: {
         minItems: "should have at least one entry",
       },
+    },
+    welcome: {
+      ...welcomeGoodbyeSchema,
+      nullable: true,
+    },
+    goodbye: {
+      ...welcomeGoodbyeSchema,
+      nullable: true,
     },
   },
   additionalProperties: false,
@@ -182,5 +228,7 @@ function fromJSON(data: BotConfigJSON): BotConfig {
   return {
     name: data.name,
     activities,
+    welcome: data.welcome,
+    goodbye: data.goodbye,
   };
 }

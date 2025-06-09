@@ -7,6 +7,7 @@ export default new Command(
   new SlashCommandBuilder().setName("stop").setDescription("Stops playing music."),
 
   async (_client, interaction) => {
+    if (!interaction.isChatInputCommand()) return;
     const guildQueue = await getQueue(interaction);
     if (!guildQueue) return;
 

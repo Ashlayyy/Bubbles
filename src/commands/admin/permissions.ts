@@ -1,6 +1,4 @@
-import { MessageFlags, SlashCommandBuilder } from "discord.js";
-
-import { GuildMember } from "discord.js";
+import { GuildMember, MessageFlags, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import Command from "../../structures/Command.js";
 import PermissionManager from "../../structures/PermissionManager.js";
@@ -104,6 +102,8 @@ export default new Command(
     ),
 
   async (client, interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+    await interaction.deferReply({ flags: 64 /* MessageFlags.Ephemeral */ });
     const permissionManager = new PermissionManager();
     const subcommand = interaction.options.getSubcommand();
     const subcommandGroup = interaction.options.getSubcommandGroup();
@@ -307,30 +307,35 @@ export default new Command(
             // Continue with setting permissions if we can't check existing ones
           }
 
-          const config: CommandPermissionConfig = {
-            level,
-            requiredRoles: rolesStr
-              ? rolesStr
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter((s) => s.length > 0)
-              : [],
-            allowedUsers: usersStr
-              ? usersStr
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter((s) => s.length > 0)
-              : [],
+          const permissionConfig: CommandPermissionConfig = {
+            level: level,
+            isConfigurable: level === PermissionLevel.CUSTOM,
+            requiredRoles:
+              rolesStr
+                ?.split(",")
+                .map((s: string) => s.trim())
+                .filter((s: string) => s.length > 0) ?? [],
+            allowedUsers:
+              usersStr
+                ?.split(",")
+                .map((s: string) => s.trim())
+                .filter((s: string) => s.length > 0) ?? [],
+            deniedUsers: [],
           };
 
-          await permissionManager.setCommandPermission(interaction.guildId, commandName, config, interaction.user.id);
+          await permissionManager.setCommandPermission(
+            interaction.guildId,
+            commandName,
+            permissionConfig,
+            interaction.user.id
+          );
 
           let details = `Level: \`${level}\``;
-          if (config.requiredRoles && config.requiredRoles.length > 0) {
-            details += `\nRequired roles: ${config.requiredRoles.map((id) => `<@&${id}>`).join(", ")}`;
+          if (permissionConfig.requiredRoles && permissionConfig.requiredRoles.length > 0) {
+            details += `\nRequired roles: ${permissionConfig.requiredRoles.map((id) => `<@&${id}>`).join(", ")}`;
           }
-          if (config.allowedUsers && config.allowedUsers.length > 0) {
-            details += `\nAllowed users: ${config.allowedUsers.map((id) => `<@${id}>`).join(", ")}`;
+          if (permissionConfig.allowedUsers && permissionConfig.allowedUsers.length > 0) {
+            details += `\nAllowed users: ${permissionConfig.allowedUsers.map((id) => `<@${id}>`).join(", ")}`;
           }
 
           await interaction.followUp({

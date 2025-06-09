@@ -8,7 +8,8 @@ import type {
   GuildMember,
   InteractionReplyOptions,
   InteractionUpdateOptions,
-  RESTPostAPIChatInputApplicationCommandsJSONBody,
+  MessageContextMenuCommandInteraction,
+  RESTPostAPIApplicationCommandsJSONBody,
 } from "discord.js";
 import {
   ActionRowBuilder,
@@ -19,7 +20,6 @@ import {
   Client as DiscordClient,
   EmbedBuilder,
   GatewayIntentBits,
-  MessageFlags,
   REST,
   Routes,
 } from "discord.js";
@@ -184,7 +184,15 @@ export default class Client extends DiscordClient {
     logger.info("Loading commands");
 
     const commandsDir = this.devMode ? "./src/commands" : "./build/commands";
-    await forNestedDirsFiles(commandsDir, async (commandFilePath, category, _) => {
+
+    // Use a Set to avoid duplicates if a command is somehow in multiple places
+    const loadedCommandFiles = new Set<string>();
+
+    const processCommandFile = async (commandFilePath: string, category: string) => {
+      if (loadedCommandFiles.has(commandFilePath)) {
+        return; // Already loaded this file, skip.
+      }
+
       if (category === "dev" && !this.devMode) {
         logger.error(new Error(`Development only commands are present in production environment`));
         process.exit(1);
@@ -192,23 +200,31 @@ export default class Client extends DiscordClient {
 
       const command = await importDefaultESM(commandFilePath, isCommand);
 
-      // Set and store command categories
+      // All commands need a category for the permission manager.
       command.category = category;
-      if (!this.commandCategories.includes(category)) {
-        logger.debug(`\t${camel2Display(category)}`);
-        this.commandCategories.push(category);
-      }
 
-      // Set admin command permissions default to false
-      if (command.category === "admin") {
-        // command.builder.setDefaultPermission(false);
+      // Only add slash command categories to the user-facing list (e.g. for help commands)
+      if (category !== "context" && category !== "message" && category !== "user") {
+        if (!this.commandCategories.includes(category)) {
+          logger.debug(`\t${camel2Display(category)}`);
+          this.commandCategories.push(category);
+        }
       }
 
       this.commands.set(command.builder.name, command);
+      loadedCommandFiles.add(commandFilePath);
 
       // Log now to signify loading this file is complete
       logger.debug(`\t\t${command.builder.name}`);
-    });
+    };
+
+    // Load top-level command categories (admin, general, etc.)
+    await forNestedDirsFiles(commandsDir, processCommandFile);
+
+    // Load context menu command categories (message, user)
+    const contextMenuDir = `${commandsDir}/context`;
+    await forNestedDirsFiles(contextMenuDir, processCommandFile);
+
     logger.debug("Successfully loaded commands");
   }
 
@@ -224,7 +240,7 @@ export default class Client extends DiscordClient {
    */
   async manageDiscordAPICommands(action: DiscordAPIAction): Promise<void> {
     let actionDescriptor: string;
-    let commandDataArr: RESTPostAPIChatInputApplicationCommandsJSONBody[];
+    let commandDataArr: RESTPostAPIApplicationCommandsJSONBody[];
     switch (action) {
       case DiscordAPIAction.Register: {
         if (this.commands.size < 1) {
@@ -512,12 +528,18 @@ export default class Client extends DiscordClient {
     return embedMessage;
   }
 
-  async runCommand(command: Command, interaction: ChatInputCommandInteraction): Promise<void> {
+  async runCommand(
+    command: Command,
+    interaction: ChatInputCommandInteraction | MessageContextMenuCommandInteraction
+  ): Promise<void> {
     // For now, all commands should assume we are in a guild.
     // Subject to change.
     if (!interaction.inGuild()) {
       logger.warn(`Tried to run \`/${command.builder.name}\` command outside of a server/guild`);
-      await interaction.followUp({ content: "This bot only supports commands in a server/guild!" });
+      await interaction.reply({
+        content: "This bot only supports commands in a server/guild!",
+        flags: 64 /* MessageFlags.Ephemeral */,
+      });
       return;
     }
 
@@ -531,9 +553,9 @@ export default class Client extends DiscordClient {
     );
 
     if (!permissionResult.allowed) {
-      await interaction.followUp({
+      await interaction.reply({
         content: `❌ You don't have permission to use this command.`,
-        flags: MessageFlags.Ephemeral,
+        flags: 64 /* MessageFlags.Ephemeral */,
       });
       return;
     }
@@ -546,8 +568,9 @@ export default class Client extends DiscordClient {
         const musicChannelName =
           (await interaction.guild?.channels.fetch(musicChannelId))?.name ?? "MUSIC_CHANNEL_NAME";
 
-        await interaction.followUp({
+        await interaction.reply({
           content: `Must enter music commands in ${musicChannelName}!`,
+          flags: 64 /* MessageFlags.Ephemeral */,
         });
         return;
       }
@@ -560,9 +583,17 @@ export default class Client extends DiscordClient {
       await command.run(this, interaction);
     } catch (error) {
       logger.error(error);
-      await interaction.followUp({
+      const errorReply = {
         content: `There was an error while executing the \`${command.builder.name}\` command!`,
-      });
+        flags: 64 /* MessageFlags.Ephemeral */,
+      };
+      if (interaction.replied || interaction.deferred) {
+        await interaction
+          .followUp(errorReply)
+          .catch((e: unknown) => logger.error("Error sending followup error message", e));
+      } else {
+        await interaction.reply(errorReply).catch((e: unknown) => logger.error("Error sending reply error message", e));
+      }
     }
   }
 }

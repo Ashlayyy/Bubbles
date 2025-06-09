@@ -1,4 +1,12 @@
-import type { Awaitable, ChatInputCommandInteraction, SharedSlashCommand } from "discord.js";
+import type {
+  Awaitable,
+  ChatInputCommandInteraction,
+  ContextMenuCommandBuilder,
+  MessageContextMenuCommandInteraction,
+  SlashCommandBuilder,
+  SlashCommandOptionsOnlyBuilder,
+  SlashCommandSubcommandsOnlyBuilder,
+} from "discord.js";
 
 import Client from "./Client.js";
 import type { CommandPermissionConfig } from "./PermissionTypes.js";
@@ -6,10 +14,18 @@ import { PermissionLevel } from "./PermissionTypes.js";
 
 // ChatInputCommandInteraction<"raw" | "cached"> means that ChatInputCommandInteraction.inGuild() is true
 export type GuildChatInputCommandInteraction = ChatInputCommandInteraction<"raw" | "cached">;
+export type GuildMessageContextMenuCommandInteraction = MessageContextMenuCommandInteraction<"raw" | "cached">;
 
-type RunFunction = (client: Client, interaction: GuildChatInputCommandInteraction) => Awaitable<unknown>;
+type RunFunction = (
+  client: Client,
+  interaction: GuildChatInputCommandInteraction | GuildMessageContextMenuCommandInteraction
+) => Awaitable<unknown>;
 
-type Builder = SharedSlashCommand;
+type Builder =
+  | SlashCommandBuilder
+  | SlashCommandOptionsOnlyBuilder
+  | SlashCommandSubcommandsOnlyBuilder
+  | ContextMenuCommandBuilder;
 
 interface CommandOptions {
   ephemeral?: boolean;

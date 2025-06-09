@@ -16,6 +16,8 @@ model GuildConfig {
   defaultRepeatMode    Int
   reactionRoleChannels String[] @default([]) // Allowed channels, empty = all channels
   logReactionRoles     Boolean  @default(false) // Enable/disable logging
+  welcomeChannelId     String?
+  goodbyeChannelId     String?
 }
 
 model CommandPermission {

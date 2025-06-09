@@ -10,6 +10,8 @@ export const defaults: Omit<GuildConfig, "guildId" | "id"> = {
   defaultRepeatMode: 0,
   reactionRoleChannels: [],
   logReactionRoles: false,
+  welcomeChannelId: null,
+  goodbyeChannelId: null,
 };
 export const descriptions: Record<string, string> = {
   greetings: "List of greetings that the bot can send.",
@@ -90,6 +92,14 @@ export async function getReactionRoleSettings(guildId: string): Promise<{
     reactionRoleChannels: config.reactionRoleChannels,
     logReactionRoles: config.logReactionRoles,
   };
+}
+
+export async function setWelcomeChannel(guildId: string, channelId: string): Promise<GuildConfig> {
+  return await updateGuildConfig(guildId, { welcomeChannelId: channelId });
+}
+
+export async function setGoodbyeChannel(guildId: string, channelId: string): Promise<GuildConfig> {
+  return await updateGuildConfig(guildId, { goodbyeChannelId: channelId });
 }
 
 export default { defaults, descriptions, getGuildConfig, updateGuildConfig, deleteGuildConfig };

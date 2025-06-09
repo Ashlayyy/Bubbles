@@ -1,6 +1,9 @@
 import type { ReactionRole, ReactionRoleLog, ReactionRoleMessage } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { ChatInputCommandInteraction, Client, MessageContextMenuCommandInteraction } from "discord.js";
+import { parseEmoji } from "../functions/general/emojis.js";
 
-import { prisma } from "./index.js";
+const prisma = new PrismaClient();
 
 // ReactionRole operations
 export async function createReactionRole(data: {
@@ -173,5 +176,52 @@ export async function getReactionRoleLogs(
       timestamp: "desc",
     },
     take: options?.limit ?? 100,
+  });
+}
+
+export async function addReactionRole(
+  interaction: ChatInputCommandInteraction | MessageContextMenuCommandInteraction,
+  messageId: string,
+  emojiRaw: string,
+  roleId: string
+): Promise<ReactionRole | null> {
+  if (!interaction.guildId || !interaction.channelId) {
+    throw new Error("Interaction is not in a guild context.");
+  }
+
+  const emoji = parseEmoji(emojiRaw, interaction.client);
+  if (!emoji) {
+    // Could not parse emoji
+    return null;
+  }
+
+  return prisma.reactionRole.create({
+    data: {
+      messageId,
+      emoji: emoji.identifier,
+      roleIds: [roleId],
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+      createdBy: interaction.user.id,
+    },
+  });
+}
+
+export async function removeReactionRole(
+  client: Client,
+  messageId: string,
+  emojiRaw: string
+): Promise<{ count: number }> {
+  const emoji = parseEmoji(emojiRaw, client);
+  if (!emoji) {
+    // Or handle error appropriately
+    return { count: 0 };
+  }
+
+  return prisma.reactionRole.deleteMany({
+    where: {
+      messageId,
+      emoji: emoji.identifier,
+    },
   });
 }

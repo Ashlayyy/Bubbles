@@ -1,6 +1,6 @@
 import { QueueRepeatMode } from "discord-player";
 import type { EmbedField } from "discord.js";
-import { SlashCommandBuilder } from "discord.js";
+import { ChannelType, SlashCommandBuilder } from "discord.js";
 import lodash from "lodash";
 
 import {
@@ -8,10 +8,11 @@ import {
   getGuildConfig,
   defaults as guildConfigDefaults,
   descriptions as guildConfigDescriptions,
+  setGoodbyeChannel,
+  setWelcomeChannel,
   updateGuildConfig,
 } from "../../database/GuildConfig.js";
 import { isQueueRepeatMode, toDisplayString } from "../../functions/music/queueRepeatMode.js";
-import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
 import type { GuildChatInputCommandInteraction } from "../../structures/Command.js";
 import Command from "../../structures/Command.js";
@@ -26,14 +27,34 @@ const guildConfigSettings = Object.keys(guildConfigDefaults).filter((setting) =>
 // Base slash command builder
 const builder = new SlashCommandBuilder()
   .setName("settings")
-  .setDescription("ADMIN ONLY: " + "Change/view guild settings.")
-  .addSubcommand((option) =>
-    option.setName("display").setDescription("ADMIN ONLY: " + "Show current settings for this guild/server.")
+  .setDescription("Manage server-specific bot settings.")
+  .setDefaultMemberPermissions(0)
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("set-welcome-channel")
+      .setDescription("Sets the channel where welcome messages are sent.")
+      .addChannelOption((option) =>
+        option
+          .setName("channel")
+          .setDescription("The channel to send welcome messages to.")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      )
   )
-  .addSubcommand((option) =>
-    option
-      .setName("reset")
-      .setDescription("ADMIN ONLY: " + "Resets this guild/server's settings to the default values!")
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("set-goodbye-channel")
+      .setDescription("Sets the channel where goodbye messages are sent.")
+      .addChannelOption((option) =>
+        option
+          .setName("channel")
+          .setDescription("The channel to send goodbye messages to.")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand.setName("display").setDescription("Show current settings for this guild/server.")
   );
 
 // Add settings
@@ -91,74 +112,69 @@ builder
 export default new Command(
   builder,
   async (client, interaction) => {
-    const subCommandQuery = interaction.options.getSubcommand(false);
-    const subCommandGroupQuery = interaction.options.getSubcommandGroup(false);
+    if (!interaction.isChatInputCommand()) return;
+    const subcommand = interaction.options.getSubcommand();
 
-    // Check subcommand groups (For now, this can only be "music-channel-id")
-    switch (subCommandGroupQuery) {
-      case "music-channel-id": {
-        logger.verbose(`Changing "${subCommandGroupQuery}" setting`);
-        const name = camelCase(subCommandGroupQuery);
-        switch (subCommandQuery) {
-          case "overwrite": {
-            await changeSetting(interaction, {
-              name,
-              value: interaction.options.getChannel("new-value", true).id,
-            });
-            break;
-          }
-
-          case "disable": {
-            await changeSetting(interaction, {
-              name,
-              value: "",
-            });
-            break;
-          }
-
-          default: {
-            throw new ReferenceError(`Could not match subcommand within "music-channel-id" subcommand group`);
-          }
-        }
-        return;
-      }
-    }
-
-    // Check subcommands
-    switch (subCommandQuery) {
-      case "display": {
-        logger.verbose("Displaying current settings");
+    switch (subcommand) {
+      case "set-welcome-channel":
+        await handleSetWelcomeChannel(interaction);
+        break;
+      case "set-goodbye-channel":
+        await handleSetGoodbyeChannel(interaction);
+        break;
+      case "display":
         await displayCurrentSettings(client, interaction);
         break;
-      }
-
-      case "reset": {
-        // Add in user confirmation..?
-        logger.verbose("Resetting guild settings to defaults");
-        await resetSettings(interaction);
-        break;
-      }
-
-      case "max-messages-cleared":
-      case "default-repeat-mode": {
-        logger.verbose(`Changing "${subCommandQuery}" setting`);
-        await changeSetting(interaction, {
-          name: camelCase(subCommandQuery),
-          value: interaction.options.getInteger("new-value", true),
-        });
-        break;
-      }
-
       default: {
-        throw new ReferenceError("Could not parse the command the user entered!");
+        // First, check if subcommand is a guild setting
+        const settingName = camelCase(subcommand);
+        if (guildConfigSettings.includes(settingName)) {
+          await changeSetting(interaction, {
+            name: settingName,
+            value: interaction.options.get("new-value")?.value ?? "",
+          });
+          return;
+        }
+
+        // Second, check if subcommand is in a subcommand group
+        const subCommandGroupQuery = interaction.options.getSubcommandGroup(false);
+        switch (subCommandGroupQuery) {
+          case "music-channel-id": {
+            const name = camelCase(subCommandGroupQuery);
+            switch (subcommand) {
+              case "overwrite": {
+                await changeSetting(interaction, {
+                  name,
+                  value: interaction.options.getChannel("new-value", true).id,
+                });
+                break;
+              }
+
+              case "disable": {
+                await changeSetting(interaction, {
+                  name,
+                  value: "",
+                });
+                break;
+              }
+            }
+            return;
+          }
+        }
+
+        // Lastly, check for reset
+        if (subcommand === "reset") {
+          await resetSettings(interaction);
+          return;
+        }
+
+        await interaction.reply({ content: "Unknown subcommand.", ephemeral: true });
       }
     }
   },
   {
-    ephemeral: true,
     permissions: {
       level: PermissionLevel.ADMIN,
-      isConfigurable: false, // This command itself cannot be reconfigured
     },
   }
 );
@@ -166,7 +182,7 @@ export default new Command(
 interface SettingData {
   /** Name of setting in camel-case */
   name: string;
-  value: number | string | boolean;
+  value: number | string | boolean | null;
 }
 
 interface SettingDisplay {
@@ -177,10 +193,11 @@ interface SettingDisplay {
 }
 
 async function displayCurrentSettings(client: Client, interaction: GuildChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: 64 /* MessageFlags.Ephemeral */ });
   const currentGuildConfig = await getGuildConfig(interaction.guildId);
 
   const settingsFieldArr: EmbedField[] = guildConfigSettings.map((setting) => {
-    let currentValue: number | string | boolean;
+    let currentValue: number | string | boolean | null;
     const value = currentGuildConfig[setting as keyof typeof guildConfigDefaults];
 
     if (Array.isArray(value)) {
@@ -236,6 +253,7 @@ async function displayCurrentSettings(client: Client, interaction: GuildChatInpu
 }
 
 async function resetSettings(interaction: GuildChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: 64 /* MessageFlags.Ephemeral */ });
   // Reset
   await deleteGuildConfig(interaction.guildId);
 
@@ -248,6 +266,7 @@ async function resetSettings(interaction: GuildChatInputCommandInteraction) {
 }
 
 async function changeSetting(interaction: GuildChatInputCommandInteraction, newSettingData: SettingData) {
+  await interaction.deferReply({ flags: 64 /* MessageFlags.Ephemeral */ });
   await updateGuildConfig(interaction.guildId, {
     [newSettingData.name]: newSettingData.value,
   });
@@ -263,6 +282,10 @@ async function changeSetting(interaction: GuildChatInputCommandInteraction, newS
 }
 
 function getSettingDisplayValue(settingData: SettingData): string {
+  if (settingData.value === null) {
+    return "`Not Set`";
+  }
+
   switch (settingData.name) {
     case "defaultRepeatMode": {
       if (typeof settingData.value !== "number") throw new TypeError("settingData.value must be of type 'number'");
@@ -281,4 +304,28 @@ function getSettingDisplayValue(settingData: SettingData): string {
       return `\`${settingData.value.toString()}\``;
     }
   }
+}
+
+async function handleSetWelcomeChannel(interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  const channel = interaction.options.getChannel("channel", true);
+  await setWelcomeChannel(interaction.guild.id, channel.id);
+
+  await interaction.reply({
+    content: `Welcome messages will now be sent in <#${channel.id}>.`,
+    ephemeral: true,
+  });
+}
+
+async function handleSetGoodbyeChannel(interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  const channel = interaction.options.getChannel("channel", true);
+  await setGoodbyeChannel(interaction.guild.id, channel.id);
+
+  await interaction.reply({
+    content: `Goodbye messages will now be sent in <#${channel.id}>.`,
+    ephemeral: true,
+  });
 }

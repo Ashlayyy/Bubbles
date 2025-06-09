@@ -152,6 +152,8 @@ export default class PermissionManager {
       // Use existing category-based logic as fallback
       switch (command.category) {
         case "admin":
+        case "context":
+        case "message":
           if (member.permissions.has(PermissionsBitField.Flags.Administrator)) {
             return { allowed: true };
           }

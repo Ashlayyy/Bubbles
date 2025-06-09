@@ -23,6 +23,7 @@ export default new Command(
     ),
 
   async (_client, interaction) => {
+    if (!interaction.isChatInputCommand()) return;
     const guildQueue = await getQueue(interaction);
     if (!guildQueue) return;
 
