@@ -178,22 +178,21 @@ export default new Command(
           }
 
           // Group by category
-          const grouped = aliases.reduce(
-            (acc, alias) => {
-              if (!acc[alias.category]) acc[alias.category] = [];
-              acc[alias.category].push(alias);
-              return acc;
-            },
-            {} as Record<string, typeof aliases>
-          );
+          const grouped = aliases.reduce<Record<string, typeof aliases>>((acc, alias) => {
+            const category = alias.category;
+            acc[category] = acc[category] ?? [];
+            acc[category].push(alias);
+            return acc;
+          }, {});
 
           const embed = client.genEmbed({
             title: `📝 Server Aliases${category ? ` - ${category}` : ""}`,
-            description: `Found ${aliases.length} alias${aliases.length !== 1 ? "es" : ""}`,
+            description: `Found ${aliases.length.toString()} alias${aliases.length !== 1 ? "es" : ""}`,
             fields: Object.entries(grouped).map(([cat, catAliases]) => ({
               name: `🏷️ ${cat}`,
-              value:
-                catAliases.map((alias) => `**${alias.name}** (used ${alias.usageCount} times)`).join("\n") || "None",
+              value: catAliases
+                .map((alias) => `**${alias.name}** (used ${alias.usageCount.toString()} times)`)
+                .join("\n"),
               inline: false,
             })),
             footer: { text: "Use /alias use <name> to use an alias" },

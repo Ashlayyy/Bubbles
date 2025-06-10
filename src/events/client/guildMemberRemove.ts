@@ -9,6 +9,35 @@ export default new ClientEvent(Events.GuildMemberRemove, async (member: GuildMem
   const config = client.config;
   const guildConfig = await getGuildConfig(member.guild.id);
 
+  // Enhanced logging for member leave
+  const timeInServer = member.joinedAt ? Date.now() - member.joinedAt.getTime() : null;
+  const timeInServerFormatted = timeInServer
+    ? timeInServer < 1000 * 60 * 60 * 24
+      ? `${Math.floor(timeInServer / (1000 * 60 * 60))} hours`
+      : `${Math.floor(timeInServer / (1000 * 60 * 60 * 24))} days`
+    : "Unknown";
+
+  await client.logManager.log(member.guild.id, "MEMBER_LEAVE", {
+    userId: member.id,
+    metadata: {
+      username: member.user.username,
+      discriminator: member.user.discriminator,
+      displayName: member.displayName || "Unknown",
+      joinedAt: member.joinedAt?.toISOString(),
+      leftAt: new Date().toISOString(),
+      timeInServer: timeInServerFormatted,
+      timeInServerMs: timeInServer,
+      memberCount: member.guild.memberCount,
+      roles: member.roles.cache.map((role) => ({ id: role.id, name: role.name })),
+      nickname: member.nickname,
+      avatar: member.user.displayAvatarURL(),
+      wasKicked: false, // This will be updated by audit log listeners if needed
+      wasBanned: false, // This will be updated by audit log listeners if needed
+      timestamp: new Date().toISOString(),
+    },
+  });
+
+  // Continue with goodbye message logic
   if (!config.goodbye?.enabled || !guildConfig.goodbyeChannelId) return;
 
   const goodbyeChannel = member.guild.channels.cache.get(guildConfig.goodbyeChannelId);
@@ -28,7 +57,7 @@ export default new ClientEvent(Events.GuildMemberRemove, async (member: GuildMem
       randomMessage.description.replace("{server}", member.guild.name).replace("{user}", member.displayName)
     )
     .setColor(randomMessage.color as `#${string}`)
-    .setThumbnail(member.user.displayAvatarURL())
+    .setThumbnail(member.user.displayAvatarURL() || member.guild.iconURL())
     .setTimestamp();
 
   void goodbyeChannel.send({ embeds: [embed] });

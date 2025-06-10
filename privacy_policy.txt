@@ -1,0 +1,159 @@
+PRIVACY POLICY - BUBBLES DISCORD BOT
+
+Last Updated: June 2025
+
+1. INTRODUCTION
+
+This Privacy Policy explains how Bubbles ("we," "us," or "the bot") collects, uses, and protects your information when you use our Discord bot services. We are committed to protecting your privacy and complying with applicable data protection laws, including the General Data Protection Regulation (GDPR).
+
+2. INFORMATION WE COLLECT
+
+We collect the following types of information:
+
+A. Discord User Information:
+- User IDs (unique Discord identifiers)
+- Usernames and display names
+- Server membership information
+- Role assignments and permissions
+
+B. Moderation Data:
+- Moderation cases and infractions
+- Warning points and escalation history
+- Appeal submissions and outcomes
+- Notes added by moderators
+- Timeout and ban records
+
+C. Music Usage Data:
+- Song requests and queue information
+- Music playback preferences
+- Voice channel activity related to music features
+
+D. Server Configuration:
+- Bot settings per server
+- Welcome/goodbye message preferences
+- Channel configurations
+- Appeals system settings
+
+E. Log Data:
+- Bot usage statistics
+- Error logs for troubleshooting
+- Command usage patterns
+
+3. LEGAL BASIS FOR PROCESSING (GDPR)
+
+We process your data based on:
+- Legitimate interest: To provide bot functionality and maintain service quality
+- Contract performance: To fulfill our service obligations when you use the bot
+- Consent: When you explicitly opt-in to certain features
+
+4. HOW WE USE YOUR INFORMATION
+
+We use collected information to:
+- Provide core bot functionality (music, moderation, utilities)
+- Maintain moderation records and enforce server rules
+- Process appeals and resolve disputes
+- Improve bot performance and features
+- Troubleshoot technical issues
+- Ensure service security and prevent abuse
+
+5. DATA STORAGE AND SECURITY
+
+A. Storage:
+- Data is stored in secure MongoDB databases
+- We implement reasonable technical and organizational security measures
+- Data is encrypted in transit and at rest where possible
+
+B. Security Measures:
+- Access controls and authentication
+- Regular security updates and monitoring
+- Limited access to personal data on a need-to-know basis
+
+6. DATA SHARING AND DISCLOSURE
+
+We do not sell, trade, or rent your personal information. We may share data only in these circumstances:
+- With Discord (as required for bot functionality)
+- When required by law or legal process
+- To protect our rights or prevent illegal activities
+- With your explicit consent
+
+We do not share data with third-party advertisers or marketing companies.
+
+7. DATA RETENTION
+
+We retain your data for as long as:
+- The bot remains in your server
+- Necessary for moderation and appeals purposes
+- Required by applicable laws
+- You request deletion (subject to legitimate interests)
+
+Moderation records may be retained longer for appeal and dispute resolution purposes.
+
+8. YOUR RIGHTS (GDPR)
+
+You have the right to:
+- Access your personal data
+- Rectify inaccurate information
+- Request erasure of your data
+- Restrict processing of your data
+- Data portability
+- Object to processing
+- Withdraw consent (where applicable)
+- Lodge a complaint with supervisory authorities
+
+9. EXERCISING YOUR RIGHTS
+
+To exercise your privacy rights, contact us at:
+Email: complains@ashlaydev.com
+
+Please include:
+- Your Discord user ID
+- Specific request details
+- Server information (if applicable)
+
+We will respond within 30 days of receiving your request.
+
+10. INTERNATIONAL DATA TRANSFERS
+
+Your data may be processed in countries outside your residence. We ensure appropriate safeguards are in place for international transfers, including:
+- Adequacy decisions
+- Standard contractual clauses
+- Other approved transfer mechanisms
+
+11. CHILDREN'S PRIVACY
+
+Bubbles follows Discord's age requirements (13+ or applicable local age). We do not knowingly collect data from children under the minimum age. If you believe we have collected data from an underage user, contact us immediately.
+
+12. AUTOMATED DECISION MAKING
+
+Our bot uses automated systems for:
+- Auto-moderation and escalation
+- Spam detection
+- Risk assessment scoring
+
+These systems include human oversight and you can request manual review of automated decisions.
+
+13. DATA BREACH NOTIFICATION
+
+In case of a data breach that poses high risk to your rights, we will:
+- Notify relevant supervisory authorities within 72 hours
+- Inform affected users without undue delay
+- Take immediate steps to contain and remedy the breach
+
+14. CHANGES TO THIS POLICY
+
+We may update this Privacy Policy to reflect changes in:
+- Our practices
+- Legal requirements
+- Bot functionality
+
+We will notify users of significant changes through appropriate channels.
+
+15. CONTACT INFORMATION
+
+For privacy-related questions, concerns, or requests:
+Email: complains@ashlaydev.com
+
+Data Controller: Individual bot operator
+Response time: Within 30 days
+
+By using Bubbles, you acknowledge that you have read and understood this Privacy Policy and consent to the collection and use of your information as described herein. 

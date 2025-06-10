@@ -63,7 +63,10 @@ async function handleRoleSubcommand(interaction: GuildChatInputCommandInteractio
         .setColor("Blue")
         .setDescription(
           rolesWithCounts
-            .map((r) => `**${r.name}** (${r.userCount} users)\nPermissions: \`${r.permissions.join(", ") || "None"}\``)
+            .map(
+              (r) =>
+                `**${r.name}** (${r.userCount.toString()} users)\nPermissions: \`${r.permissions.join(", ") || "None"}\``
+            )
             .join("\n\n")
         );
       await interaction.followUp({ embeds: [embed] });
@@ -129,7 +132,7 @@ async function handleUserSubcommand(interaction: GuildChatInputCommandInteractio
         where: { userId_roleId: { userId: user.id, roleId: role.id } },
       });
       if (existingAssignment) {
-        await interaction.followUp(`❌ User ${user} already has the role \`${roleName}\`.`);
+        await interaction.followUp(`❌ User <@${user.id}> already has the role \`${roleName}\`.`);
         return;
       }
       await prisma.customRoleAssignment.create({
@@ -140,7 +143,7 @@ async function handleUserSubcommand(interaction: GuildChatInputCommandInteractio
           assignedBy: interaction.user.id,
         },
       });
-      await interaction.followUp(`✅ Assigned role \`${roleName}\` to ${user}.`);
+      await interaction.followUp(`✅ Assigned role \`${roleName}\` to <@${user.id}>.`);
       break;
     }
     case "unassign_role": {
@@ -148,7 +151,7 @@ async function handleUserSubcommand(interaction: GuildChatInputCommandInteractio
         where: { userId_roleId: { userId: user.id, roleId: role.id } },
       });
       if (!existingAssignment) {
-        await interaction.followUp(`❌ User ${user} does not have the role \`${roleName}\`.`);
+        await interaction.followUp(`❌ User <@${user.id}> does not have the role \`${roleName}\`.`);
         return;
       }
       await prisma.customRoleAssignment.delete({
@@ -156,7 +159,7 @@ async function handleUserSubcommand(interaction: GuildChatInputCommandInteractio
           id: existingAssignment.id,
         },
       });
-      await interaction.followUp(`✅ Unassigned role \`${roleName}\` from ${user}.`);
+      await interaction.followUp(`✅ Unassigned role \`${roleName}\` from <@${user.id}>.`);
       break;
     }
   }
@@ -257,7 +260,7 @@ export default new Command(
         )
     ),
 
-  async (client, interaction) => {
+  async (_client, interaction) => {
     if (!interaction.isChatInputCommand() || !interaction.guildId) return;
 
     await interaction.deferReply({ ephemeral: true });

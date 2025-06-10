@@ -9,9 +9,40 @@ export default new ClientEvent(Events.GuildMemberAdd, async (member: GuildMember
   const config = client.config;
   const guildConfig = await getGuildConfig(member.guild.id);
 
+  // Calculate account age
+  const accountCreated = member.user.createdAt;
+  const accountAgeMs = Date.now() - accountCreated.getTime();
+  const accountAgeDays = Math.floor(accountAgeMs / (1000 * 60 * 60 * 24));
+  const accountAgeFormatted =
+    accountAgeDays < 30 ? `${accountAgeDays} days` : `${Math.floor(accountAgeDays / 30)} months`;
+
+  // Check if this might be a suspicious account
+  const isSuspiciousAccount = accountAgeDays < 7; // Account created less than a week ago
+
+  // Enhanced logging for member join
+  await client.logManager.log(member.guild.id, "MEMBER_JOIN", {
+    userId: member.id,
+    metadata: {
+      username: member.user.username,
+      discriminator: member.user.discriminator,
+      displayName: member.displayName,
+      accountCreated: accountCreated.toISOString(),
+      accountAge: accountAgeFormatted,
+      accountAgeDays: accountAgeDays,
+      isSuspiciousAccount: isSuspiciousAccount,
+      memberCount: member.guild.memberCount,
+      avatar: member.user.displayAvatarURL(),
+      joinedAt: new Date().toISOString(),
+      isBot: member.user.bot,
+      hasNitro: member.user.banner || member.user.avatarDecorationData ? true : false,
+      timestamp: new Date().toISOString(),
+    },
+  });
+
+  // Continue with welcome message logic
   if (!config.welcome?.enabled || !guildConfig.welcomeChannelId) return;
 
-  const welcomeChannel = member.guild.channels.cache.get(guildConfig.welcomeChannelId as string);
+  const welcomeChannel = member.guild.channels.cache.get(guildConfig.welcomeChannelId);
   if (!welcomeChannel || !(welcomeChannel instanceof TextChannel)) {
     logger.warn(`Welcome channel with ID ${guildConfig.welcomeChannelId} not found or is not a text channel.`);
     return;

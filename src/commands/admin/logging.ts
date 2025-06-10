@@ -1,6 +1,7 @@
 import { ChannelType, SlashCommandBuilder } from "discord.js";
 
 import Command from "../../structures/Command.js";
+import { LOG_CATEGORIES } from "../../structures/LogManager.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 export default new Command(
@@ -89,7 +90,7 @@ export default new Command(
           if (channels.moderation) {
             // Route all moderation logs to moderation channel
             const modTypes = ["MOD_CASE_CREATE", "MOD_WARN_ISSUED", "MEMBER_BAN", "MEMBER_KICK", "MEMBER_TIMEOUT"];
-            modTypes.forEach((type) => (channelRouting[type] = channels.moderation?.id || ""));
+            modTypes.forEach((type) => (channelRouting[type] = channels.moderation?.id ?? ""));
           }
 
           if (channels.members) {
@@ -101,25 +102,29 @@ export default new Command(
               "MEMBER_ROLE_REMOVE",
               "MEMBER_NICKNAME_CHANGE",
             ];
-            memberTypes.forEach((type) => (channelRouting[type] = channels.members!.id));
+            const membersChannelId = channels.members.id;
+            memberTypes.forEach((type) => (channelRouting[type] = membersChannelId));
           }
 
           if (channels.messages) {
             // Route message logs to messages channel
             const messageTypes = ["MESSAGE_DELETE", "MESSAGE_EDIT", "MESSAGE_BULK_DELETE"];
-            messageTypes.forEach((type) => (channelRouting[type] = channels.messages!.id));
+            const messagesChannelId = channels.messages.id;
+            messageTypes.forEach((type) => (channelRouting[type] = messagesChannelId));
           }
 
           if (channels.voice) {
             // Route voice logs to voice channel
             const voiceTypes = ["VOICE_JOIN", "VOICE_LEAVE", "VOICE_MOVE"];
-            voiceTypes.forEach((type) => (channelRouting[type] = channels.voice!.id));
+            const voiceChannelId = channels.voice.id;
+            voiceTypes.forEach((type) => (channelRouting[type] = voiceChannelId));
           }
 
           if (channels.server) {
             // Route server logs to server channel
             const serverTypes = ["CHANNEL_CREATE", "CHANNEL_DELETE", "ROLE_CREATE", "ROLE_DELETE", "SERVER_UPDATE"];
-            serverTypes.forEach((type) => (channelRouting[type] = channels.server!.id));
+            const serverChannelId = channels.server.id;
+            serverTypes.forEach((type) => (channelRouting[type] = serverChannelId));
           }
 
           // Setup logging with the LogManager
@@ -127,19 +132,106 @@ export default new Command(
 
           const setupSummary = Object.entries(channels)
             .filter(([_, channel]) => channel)
-            .map(([type, channel]) => `• **${type}**: ${channel}`)
+            .map(([type, channel]) => `• **${type}**: <#${channel?.id ?? ""}>`)
             .join("\n");
 
           await interaction.followUp({
-            content: `✅ **Logging Setup Complete!**\n\n${setupSummary}\n\n🔍 **${Object.keys(channelRouting).length}** log types configured automatically.\n\n💡 *Use \`/logging status\` to see all active log types.*`,
+            content: `✅ **Logging Setup Complete!**\n\n${setupSummary}\n\n🔍 **${Object.keys(channelRouting).length.toString()}** log types configured automatically.\n\n💡 *Use \`/logging status\` to see all active log types.*`,
           });
           break;
         }
 
         case "status": {
           // Show current configuration
+          const settings = await client.logManager.getSettings(interaction.guild.id);
+          const totalLogTypes = Object.keys(LOG_CATEGORIES).reduce(
+            (sum, category) => sum + LOG_CATEGORIES[category as keyof typeof LOG_CATEGORIES].length,
+            0
+          );
+
+          const enabledCount = settings.enabledLogTypes.length;
+          const disabledCount = totalLogTypes - enabledCount;
+
+          const embed = client.genEmbed({
+            title: "📊 Logging System Status",
+            description: `Comprehensive server logging configuration`,
+            color: enabledCount > 0 ? 0x2ecc71 : 0xe74c3c,
+            fields: [
+              {
+                name: "📈 Overview",
+                value: [
+                  `**Total Log Types:** ${totalLogTypes}`,
+                  `**Enabled:** ${enabledCount} (${Math.round((enabledCount / totalLogTypes) * 100)}%)`,
+                  `**Disabled:** ${disabledCount}`,
+                  `**Status:** ${enabledCount > 0 ? "🟢 Active" : "🔴 Inactive"}`,
+                ].join("\n"),
+                inline: true,
+              },
+              {
+                name: "📍 Channel Routing",
+                value:
+                  Object.keys(settings.channelRouting).length > 0
+                    ? Object.entries(settings.channelRouting)
+                        .slice(0, 5)
+                        .map(([logType, channelId]) => `**${logType}:** <#${channelId}>`)
+                        .join("\n") +
+                      (Object.keys(settings.channelRouting).length > 5
+                        ? `\n... and ${Object.keys(settings.channelRouting).length - 5} more`
+                        : "")
+                    : "No channels configured",
+                inline: true,
+              },
+            ],
+          });
+
+          // Add category breakdown
+          const categoryStatus = Object.entries(LOG_CATEGORIES)
+            .map(([category, types]) => {
+              const categoryEnabled = types.filter((type: string) => settings.enabledLogTypes.includes(type));
+              const percentage = Math.round((categoryEnabled.length / types.length) * 100);
+              const statusIcon = percentage === 100 ? "🟢" : percentage > 0 ? "🟡" : "🔴";
+
+              return `${statusIcon} **${category}**: ${categoryEnabled.length}/${types.length} (${percentage}%)`;
+            })
+            .join("\n");
+
+          embed.addFields({
+            name: "📋 Category Breakdown",
+            value: categoryStatus,
+            inline: false,
+          });
+
+          // Add ignored lists if any
+          const ignoredInfo = [];
+          if (settings.ignoredUsers.length > 0) {
+            ignoredInfo.push(`**Users:** ${settings.ignoredUsers.length} ignored`);
+          }
+          if (settings.ignoredRoles.length > 0) {
+            ignoredInfo.push(`**Roles:** ${settings.ignoredRoles.length} ignored`);
+          }
+          if (settings.ignoredChannels.length > 0) {
+            ignoredInfo.push(`**Channels:** ${settings.ignoredChannels.length} ignored`);
+          }
+
+          if (ignoredInfo.length > 0) {
+            embed.addFields({
+              name: "🚫 Ignored Items",
+              value: ignoredInfo.join("\n"),
+              inline: true,
+            });
+          }
+
+          // Add quick setup info if needed
+          if (enabledCount === 0) {
+            embed.addFields({
+              name: "🚀 Quick Setup",
+              value: "Use `/logging setup` to quickly configure logging channels",
+              inline: false,
+            });
+          }
+
           await interaction.followUp({
-            content: `📊 **Logging Status**\n\n🚧 *Status view coming soon...*\n\nFor now, check your log channels to see if logs are appearing!`,
+            embeds: [embed],
           });
           break;
         }
@@ -171,7 +263,7 @@ export default new Command(
           });
 
           await interaction.followUp({
-            content: `✅ **${logType}** logs will now be sent to ${channel}`,
+            content: `✅ **${logType}** logs will now be sent to <#${channel.id}>`,
           });
           break;
         }

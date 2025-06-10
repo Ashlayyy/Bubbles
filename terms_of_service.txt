@@ -1,0 +1,79 @@
+TERMS OF SERVICE - BUBBLES DISCORD BOT
+
+Last Updated: June 2025
+
+1. ACCEPTANCE OF TERMS
+
+By adding the Bubbles bot to your Discord server or using any of its features, you agree to be bound by these Terms of Service. If you do not agree to these terms, do not use the bot.
+
+2. DESCRIPTION OF SERVICE
+
+Bubbles is a free Discord bot that provides the following features:
+- Music playback and queue management
+- Server moderation tools (warnings, bans, kicks, timeouts)
+- Moderation case management and appeals system
+- Message purging and user lookup tools
+- General utility commands (dice rolling, help)
+- Welcome and goodbye messages
+- Server configuration options
+
+3. USER RESPONSIBILITIES
+
+You agree to:
+- Use the bot in compliance with Discord's Terms of Service and Community Guidelines
+- Follow all applicable laws and regulations
+- Respect the rights of other users
+- Only use moderation features if you have appropriate permissions in your server
+- Not attempt to exploit, hack, or abuse the bot's functionality
+
+4. PROHIBITED USES
+
+You may not use Bubbles to:
+- Violate any laws or regulations
+- Harass, abuse, or harm other users
+- Spam or flood channels with excessive commands
+- Share copyrighted music content without proper authorization
+- Attempt to reverse engineer or exploit the bot's code
+- Use the bot for any commercial purposes without permission
+
+5. MUSIC CONTENT
+
+Bubbles provides music playback functionality by connecting to various music platforms. You are responsible for ensuring you have the right to play any music content in your server. We do not host or store music files.
+
+6. MODERATION FEATURES
+
+Server moderators using Bubbles' moderation tools are solely responsible for their moderation decisions. The bot owner is not liable for moderation actions taken by server staff.
+
+7. SERVICE AVAILABILITY
+
+Bubbles is provided on a "best effort" basis. We do not guarantee:
+- Continuous availability or uptime
+- Error-free operation
+- Compatibility with all Discord features
+- Permanent availability of any features
+
+8. LIMITATION OF LIABILITY
+
+Bubbles is provided "as is" without warranties of any kind. To the fullest extent permitted by law, the bot owner shall not be liable for any damages arising from your use of the bot.
+
+9. TERMINATION
+
+We reserve the right to:
+- Restrict or terminate access to the bot for violations of these terms
+- Modify or discontinue features at any time
+- Remove the bot from servers that violate these terms
+
+10. INTELLECTUAL PROPERTY
+
+Bubbles respects intellectual property rights. If you believe content accessed through the bot infringes your rights, contact us immediately.
+
+11. CHANGES TO TERMS
+
+We may update these Terms of Service at any time. Continued use of the bot after changes constitutes acceptance of the new terms. We will make reasonable efforts to notify users of significant changes.
+
+12. CONTACT INFORMATION
+
+For questions about these Terms of Service, contact:
+Email: complains@ashlaydev.com
+
+By using Bubbles, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service. 

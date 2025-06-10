@@ -1,6 +1,7 @@
 import type { Guild } from "discord.js";
 import { EmbedBuilder } from "discord.js";
 
+import { APPEALS_OAUTH_CONFIG } from "../config/appeals.js";
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import type Client from "./Client.js";
@@ -75,7 +76,7 @@ export default class ModerationManager {
       }
 
       // Update infraction points
-      await this.updateInfractionPoints(guild.id, action.userId, action.points || 0);
+      await this.updateInfractionPoints(guild.id, action.userId, action.points ?? 0);
 
       // Schedule automatic actions if needed (unban, untimeout, etc.)
       if (action.duration && action.type !== "WARN") {
@@ -288,7 +289,7 @@ export default class ModerationManager {
       const infractions = await prisma.userInfractions.findUnique({
         where: { guildId_userId: { guildId, userId } },
       });
-      return infractions?.totalPoints || 0;
+      return infractions?.totalPoints ?? 0;
     } catch (error) {
       logger.error("Error getting infraction points:", error);
       return 0;
@@ -305,7 +306,7 @@ export default class ModerationManager {
       select: { caseNumber: true },
     });
 
-    return (lastCase?.caseNumber || 0) + 1;
+    return (lastCase?.caseNumber ?? 0) + 1;
   }
 
   private async createCase(guildId: string, caseNumber: number, action: ModerationAction): Promise<ModerationCase> {
@@ -319,11 +320,11 @@ export default class ModerationManager {
         moderatorId: action.moderatorId,
         type: action.type,
         reason: action.reason,
-        evidence: action.evidence || [],
+        evidence: action.evidence ?? [],
         duration: action.duration,
         expiresAt,
-        severity: action.severity || "LOW",
-        points: action.points || 0,
+        severity: action.severity ?? "LOW",
+        points: action.points ?? 0,
         publicNote: action.publicNote,
         staffNote: action.staffNote,
       },
@@ -351,7 +352,7 @@ export default class ModerationManager {
 
         case "TIMEOUT": {
           const member = await guild.members.fetch(action.userId);
-          const timeoutDuration = action.duration! * 1000; // Convert to milliseconds
+          const timeoutDuration = (action.duration ?? 0) * 1000; // Convert to milliseconds
           await member.timeout(timeoutDuration, action.reason);
           break;
         }
@@ -391,9 +392,49 @@ export default class ModerationManager {
     }
   }
 
+  /**
+   * Get guild appeals settings
+   */
+  async getAppealsSettings(guildId: string) {
+    try {
+      const guildConfig = await prisma.guildConfig.findUnique({
+        where: { guildId },
+        include: { appealSettings: true },
+      });
+
+      // Return guild's custom appeals settings or defaults
+      return (
+        guildConfig?.appealSettings ?? {
+          discordBotEnabled: true,
+          webFormEnabled: false,
+          webFormUrl: APPEALS_OAUTH_CONFIG.DEFAULT_WEBSITE_URL,
+          appealReceived: "Thank you for submitting your appeal. Our staff will review it within 24-48 hours.",
+          appealApproved: "Your appeal has been **approved**. The moderation action has been reversed.",
+          appealDenied: "Your appeal has been **denied**. The moderation action will remain in effect.",
+          appealCooldown: 86400, // 24 hours
+          maxAppealsPerUser: 3,
+        }
+      );
+    } catch (error) {
+      logger.error("Error getting appeals settings:", error);
+      // Return defaults if error
+      return {
+        discordBotEnabled: true,
+        webFormEnabled: false,
+        webFormUrl: APPEALS_OAUTH_CONFIG.DEFAULT_WEBSITE_URL,
+        appealReceived: "Thank you for submitting your appeal. Our staff will review it within 24-48 hours.",
+        appealApproved: "Your appeal has been **approved**. The moderation action has been reversed.",
+        appealDenied: "Your appeal has been **denied**. The moderation action will remain in effect.",
+        appealCooldown: 86400,
+        maxAppealsPerUser: 3,
+      };
+    }
+  }
+
   private async notifyUser(userId: string, case_: ModerationCase, guild: Guild): Promise<void> {
     try {
       const user = await this.client.users.fetch(userId);
+      const appealsSettings = await this.getAppealsSettings(guild.id);
 
       const embed = new EmbedBuilder()
         .setTitle(`📋 Moderation Action - ${guild.name}`)
@@ -401,7 +442,7 @@ export default class ModerationManager {
         .addFields(
           { name: "Action", value: case_.type, inline: true },
           { name: "Case #", value: case_.caseNumber.toString(), inline: true },
-          { name: "Reason", value: case_.reason || "No reason provided", inline: false }
+          { name: "Reason", value: case_.reason ?? "No reason provided", inline: false }
         )
         .setTimestamp()
         .setFooter({ text: `Case ID: ${case_.id}` });
@@ -411,10 +452,12 @@ export default class ModerationManager {
         embed.addFields({ name: "Duration", value: duration, inline: true });
       }
 
-      if (case_.canAppeal) {
+      // Use guild-specific appeals settings
+      if (case_.canAppeal && appealsSettings.discordBotEnabled) {
+        const appealsUrl = appealsSettings.webFormUrl ?? APPEALS_OAUTH_CONFIG.DEFAULT_WEBSITE_URL;
         embed.addFields({
-          name: "Appeal",
-          value: "You can appeal this action by DMing this bot with `/appeal submit`",
+          name: "📝 Appeal This Action",
+          value: `[Click here to submit an appeal](${appealsUrl}/appeal?case=${case_.id})\n\nYou can appeal this action if you believe it was issued unfairly.`,
           inline: false,
         });
       }
@@ -523,6 +566,75 @@ export default class ModerationManager {
       });
     } catch (error) {
       logger.error("Error updating case notification:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Configure appeals settings for a guild
+   */
+  async configureAppealsSettings(
+    guildId: string,
+    settings: {
+      enabled?: boolean;
+      webFormUrl?: string;
+      appealChannelId?: string;
+      cooldownHours?: number;
+      maxAppealsPerUser?: number;
+      appealReceived?: string;
+      appealApproved?: string;
+      appealDenied?: string;
+    }
+  ): Promise<void> {
+    try {
+      // First ensure the guild config exists
+      await prisma.guildConfig.upsert({
+        where: { guildId },
+        update: {},
+        create: { guildId },
+      });
+
+      // Then upsert the appeals settings
+      await prisma.appealSettings.upsert({
+        where: { guildId },
+        update: {
+          discordBotEnabled: settings.enabled ?? true,
+          webFormEnabled: !!settings.webFormUrl,
+          webFormUrl: settings.webFormUrl,
+          appealChannelId: settings.appealChannelId,
+          appealCooldown: settings.cooldownHours ? settings.cooldownHours * 3600 : 86400,
+          maxAppealsPerUser: settings.maxAppealsPerUser ?? 3,
+          appealReceived: settings.appealReceived,
+          appealApproved: settings.appealApproved,
+          appealDenied: settings.appealDenied,
+        },
+        create: {
+          guildId,
+          discordBotEnabled: settings.enabled ?? true,
+          webFormEnabled: !!settings.webFormUrl,
+          webFormUrl: settings.webFormUrl,
+          appealChannelId: settings.appealChannelId,
+          appealCooldown: settings.cooldownHours ? settings.cooldownHours * 3600 : 86400,
+          maxAppealsPerUser: settings.maxAppealsPerUser ?? 3,
+          appealReceived: settings.appealReceived,
+          appealApproved: settings.appealApproved,
+          appealDenied: settings.appealDenied,
+        },
+      });
+
+      // Update the guild config to link to appeals settings
+      await prisma.guildConfig.update({
+        where: { guildId },
+        data: {
+          appealSettings: {
+            connect: { guildId },
+          },
+        },
+      });
+
+      logger.info(`Appeals settings configured for guild ${guildId}`);
+    } catch (error) {
+      logger.error("Error configuring appeals settings:", error);
       throw error;
     }
   }

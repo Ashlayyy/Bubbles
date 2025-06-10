@@ -38,11 +38,11 @@ export default new Command(
             const result = await permanentlyDeleteReactionRoles(interaction.guildId, days);
 
             await interaction.followUp({
-              content: `✅ Cleanup completed!\n• Permanently deleted ${result.count} reaction role records\n• Records older than ${days} days were removed`,
+              content: `✅ Cleanup completed!\n• Permanently deleted ${result.count.toString()} reaction role records\n• Records older than ${days.toString()} days were removed`,
             });
 
             logger.info(
-              `Cleaned up ${result.count} reaction role records for guild ${interaction.guildId} (older than ${days} days)`
+              `Cleaned up ${result.count.toString()} reaction role records for guild ${interaction.guildId} (older than ${days.toString()} days)`
             );
           } catch (error) {
             logger.error("Error during reaction role cleanup:", error);

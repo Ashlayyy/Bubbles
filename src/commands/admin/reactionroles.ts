@@ -71,7 +71,7 @@ async function findMessageById(guild: Guild, messageId: string): Promise<Message
   for (const channel of channels.values()) {
     try {
       return await channel.messages.fetch(messageId);
-    } catch (error) {
+    } catch (_error) {
       // Ignore errors (message not in this channel)
     }
   }
@@ -201,7 +201,7 @@ async function handleList(client: Client, interaction: GuildChatInputCommandInte
     .map((r: ReactionRole) => {
       // r.emoji is the identifier. For custom emojis, it's an ID. For standard, it's the unicode char.
       const emoji = client.emojis.cache.get(r.emoji) ?? r.emoji;
-      return `${emoji} -> <@&${r.roleIds[0]}>`;
+      return `${emoji.toString()} -> <@&${r.roleIds[0]}>`;
     })
     .join("\n");
 
@@ -434,7 +434,7 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
               }
 
               await channelInteraction.update({
-                content: `✅ Reaction role embed posted in ${channel}!`,
+                content: `✅ Reaction role embed posted in <#${channel.id}>!`,
                 components: [],
               });
             }
@@ -457,7 +457,7 @@ async function handleBuilder(client: Client, interaction: GuildChatInputCommandI
     })();
   });
 
-  collector.on("end", (collected, reason) => {
+  collector.on("end", (_collected, reason) => {
     if (reason !== "user") {
       void (async () => {
         await interaction.editReply({ content: "Builder timed out.", components: [] });

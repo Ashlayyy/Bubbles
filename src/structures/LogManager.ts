@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import type { EmbedBuilder, TextChannel } from "discord.js";
 import { EmbedBuilder as DiscordEmbedBuilder } from "discord.js";
 
@@ -174,12 +175,12 @@ export interface LogEvent {
   channelId?: string;
   roleId?: string;
   caseId?: string;
-  before?: any;
-  after?: any;
-  metadata?: any;
+  before?: Prisma.InputJsonValue;
+  after?: Prisma.InputJsonValue;
+  metadata?: Prisma.InputJsonValue;
   content?: string;
   attachments?: string[];
-  embeds?: any[];
+  embeds?: Prisma.InputJsonValue[];
   executorId?: string;
   reason?: string;
 }
@@ -190,7 +191,26 @@ export interface LogSettings {
   ignoredRoles: string[];
   ignoredChannels: string[];
   enabledLogTypes: string[];
-  customFormats?: Record<string, any>;
+  customFormats?: Record<string, unknown>;
+}
+
+export interface LogEntry {
+  id: string;
+  guildId: string;
+  logType: string;
+  userId?: string | null;
+  channelId?: string | null;
+  roleId?: string | null;
+  caseId?: string | null;
+  before?: unknown;
+  after?: unknown;
+  metadata?: unknown;
+  content?: string | null;
+  attachments: string[];
+  embeds: unknown[];
+  executorId?: string | null;
+  reason?: string | null;
+  timestamp: Date;
 }
 
 export default class LogManager {
@@ -209,7 +229,7 @@ export default class LogManager {
   async log(guildId: string, logType: string, data: Partial<LogEvent> = {}): Promise<void> {
     try {
       // Validate log type
-      if (!ALL_LOG_TYPES.includes(logType as any)) {
+      if (!ALL_LOG_TYPES.includes(logType as (typeof ALL_LOG_TYPES)[number])) {
         logger.warn(`Invalid log type: ${logType}`);
         return;
       }
@@ -250,12 +270,12 @@ export default class LogManager {
       });
 
       const logSettings: LogSettings = {
-        channelRouting: (settings?.channelRouting as Record<string, string>) || {},
-        ignoredUsers: settings?.ignoredUsers || [],
-        ignoredRoles: settings?.ignoredRoles || [],
-        ignoredChannels: settings?.ignoredChannels || [],
-        enabledLogTypes: settings?.enabledLogTypes || [],
-        customFormats: (settings?.customFormats as Record<string, any>) || undefined,
+        channelRouting: settings?.channelRouting as Record<string, string>,
+        ignoredUsers: settings?.ignoredUsers ?? [],
+        ignoredRoles: settings?.ignoredRoles ?? [],
+        ignoredChannels: settings?.ignoredChannels ?? [],
+        enabledLogTypes: settings?.enabledLogTypes ?? [],
+        customFormats: settings?.customFormats as Record<string, unknown> | undefined,
       };
 
       // Cache for 5 minutes
@@ -278,8 +298,8 @@ export default class LogManager {
   /**
    * Create log entry in database
    */
-  private async createLogEntry(guildId: string, logType: string, data: Partial<LogEvent>) {
-    return await prisma.moderationLog.create({
+  private async createLogEntry(guildId: string, logType: string, data: Partial<LogEvent>): Promise<LogEntry> {
+    const logEntry = await prisma.moderationLog.create({
       data: {
         guildId,
         logType,
@@ -287,23 +307,25 @@ export default class LogManager {
         channelId: data.channelId,
         roleId: data.roleId,
         caseId: data.caseId,
-        before: data.before,
-        after: data.after,
-        metadata: data.metadata,
+        before: data.before ?? null,
+        after: data.after ?? null,
+        metadata: data.metadata ?? null,
         content: data.content,
-        attachments: data.attachments || [],
-        embeds: data.embeds || [],
+        attachments: data.attachments ?? [],
+        embeds: data.embeds ?? [],
         executorId: data.executorId,
         reason: data.reason,
         timestamp: new Date(),
       },
     });
+
+    return logEntry as LogEntry;
   }
 
   /**
    * Send log message to appropriate channels
    */
-  private async sendToLogChannels(guildId: string, logType: string, logEntry: any, settings: LogSettings) {
+  private async sendToLogChannels(guildId: string, logType: string, logEntry: LogEntry, settings: LogSettings) {
     try {
       // Determine which channel to send to
       const channelId = this.getLogChannelId(guildId, logType, settings);
@@ -311,7 +333,7 @@ export default class LogManager {
 
       // Get the channel
       const channel = await this.client.channels.fetch(channelId);
-      if (!channel || !channel.isTextBased()) return;
+      if (!channel?.isTextBased()) return;
 
       // Create embed
       const embed = this.createLogEmbed(logType, logEntry);
@@ -357,7 +379,7 @@ export default class LogManager {
   /**
    * Get default channel for category
    */
-  private getDefaultChannelForCategory(category: string | null): string | null {
+  private getDefaultChannelForCategory(_category: string | null): string | null {
     // This would map to GuildConfig default channels
     // We'll implement this when we create the setup wizard
     return null;
@@ -366,10 +388,11 @@ export default class LogManager {
   /**
    * Create a beautiful embed for the log entry
    */
-  private createLogEmbed(logType: string, logEntry: any): EmbedBuilder {
-    const embed = new DiscordEmbedBuilder()
-      .setTimestamp(logEntry.timestamp)
-      .setFooter({ text: `Log ID: ${logEntry.id}` });
+  private createLogEmbed(logType: string, logEntry: LogEntry): EmbedBuilder {
+    const embed = new DiscordEmbedBuilder().setTimestamp(logEntry.timestamp).setFooter({
+      text: `Log ID: ${logEntry.id} • ${new Date().toLocaleString()}`,
+      iconURL: this.client.user?.displayAvatarURL(),
+    });
 
     // Set color based on category/severity
     const category = this.getLogCategory(logType);
@@ -377,12 +400,35 @@ export default class LogManager {
     embed.setColor(color);
 
     // Set title and description based on log type
-    const { title, description } = this.getLogContent(logType, logEntry);
-    embed.setTitle(title);
+    const { title, description, emoji } = this.getLogContent(logType, logEntry);
+    embed.setTitle(`${emoji} ${title}`);
     if (description) embed.setDescription(description);
 
-    // Add fields based on available data
-    this.addFieldsToEmbed(embed, logEntry);
+    // Add author field with user info if available (synchronously)
+    if (logEntry.userId) {
+      embed.setAuthor({
+        name: `User ID: ${logEntry.userId}`,
+      });
+
+      // Try to fetch user info asynchronously and update later if needed
+      this.client.users
+        .fetch(logEntry.userId)
+        .then((user) => {
+          embed.setAuthor({
+            name: `${user.username} (${user.id})`,
+            iconURL: user.displayAvatarURL({ size: 64 }),
+          });
+        })
+        .catch(() => {
+          // Keep the basic author info if fetch fails
+        });
+    }
+
+    // Add comprehensive fields based on available data
+    this.addDetailedFieldsToEmbed(embed, logEntry, logType);
+
+    // Add metadata information
+    this.addMetadataToEmbed(embed, logEntry, logType);
 
     return embed;
   }
@@ -410,58 +456,342 @@ export default class LogManager {
   }
 
   /**
-   * Get title and description for log type
+   * Get title, description, and emoji for log type
    */
-  private getLogContent(logType: string, logEntry: any): { title: string; description?: string } {
-    // This would be a comprehensive mapping of all log types to human-readable content
-    // For now, simplified version
+  private getLogContent(logType: string, logEntry: LogEntry): { title: string; description?: string; emoji: string } {
     const userMention = logEntry.userId ? `<@${logEntry.userId}>` : "Unknown User";
     const channelMention = logEntry.channelId ? `<#${logEntry.channelId}>` : "Unknown Channel";
 
     switch (logType) {
       case "MESSAGE_DELETE":
         return {
-          title: "📝 Message Deleted",
-          description: `Message by ${userMention} was deleted in ${channelMention}`,
+          title: "Message Deleted",
+          description: `A message by ${userMention} was deleted in ${channelMention}`,
+          emoji: "🗑️",
         };
+
+      case "MESSAGE_EDIT":
+        return {
+          title: "Message Edited",
+          description: `${userMention} edited a message in ${channelMention}`,
+          emoji: "✏️",
+        };
+
+      case "MESSAGE_BULK_DELETE": {
+        const metadata = logEntry.metadata as { deletedCount?: number } | undefined;
+        const deletedCount = metadata?.deletedCount ?? "multiple";
+        return {
+          title: "Bulk Message Delete",
+          description: `${deletedCount} messages were bulk deleted in ${channelMention}`,
+          emoji: "🗑️",
+        };
+      }
+
       case "MEMBER_JOIN":
         return {
-          title: "👋 Member Joined",
+          title: "Member Joined",
           description: `${userMention} joined the server`,
+          emoji: "👋",
         };
+
+      case "MEMBER_LEAVE":
+        return {
+          title: "Member Left",
+          description: `${userMention} left the server`,
+          emoji: "👋",
+        };
+
       case "MEMBER_BAN":
         return {
-          title: "🔨 Member Banned",
-          description: `${userMention} was banned`,
+          title: "Member Banned",
+          description: `${userMention} was banned from the server`,
+          emoji: "🔨",
         };
-      // ... Add more cases for all 100+ log types
+
+      case "MEMBER_UNBAN":
+        return {
+          title: "Member Unbanned",
+          description: `${userMention} was unbanned from the server`,
+          emoji: "🔓",
+        };
+
+      case "MEMBER_KICK":
+        return {
+          title: "Member Kicked",
+          description: `${userMention} was kicked from the server`,
+          emoji: "👢",
+        };
+
+      case "MEMBER_TIMEOUT":
+        return {
+          title: "Member Timed Out",
+          description: `${userMention} was timed out`,
+          emoji: "⏰",
+        };
+
+      case "MEMBER_TIMEOUT_REMOVE":
+        return {
+          title: "Timeout Removed",
+          description: `Timeout was removed from ${userMention}`,
+          emoji: "🔊",
+        };
+
+      case "MEMBER_ROLE_ADD":
+        return {
+          title: "Role Added",
+          description: `Role was added to ${userMention}`,
+          emoji: "➕",
+        };
+
+      case "MEMBER_ROLE_REMOVE":
+        return {
+          title: "Role Removed",
+          description: `Role was removed from ${userMention}`,
+          emoji: "➖",
+        };
+
+      case "ROLE_CREATE":
+        return {
+          title: "Role Created",
+          description: `A new role was created`,
+          emoji: "🎭",
+        };
+
+      case "ROLE_DELETE":
+        return {
+          title: "Role Deleted",
+          description: `A role was deleted`,
+          emoji: "🗑️",
+        };
+
+      case "CHANNEL_CREATE":
+        return {
+          title: "Channel Created",
+          description: `${channelMention} was created`,
+          emoji: "📝",
+        };
+
+      case "CHANNEL_DELETE":
+        return {
+          title: "Channel Deleted",
+          description: `A channel was deleted`,
+          emoji: "🗑️",
+        };
+
+      case "VOICE_JOIN":
+        return {
+          title: "Voice Channel Joined",
+          description: `${userMention} joined ${channelMention}`,
+          emoji: "🎤",
+        };
+
+      case "VOICE_LEAVE":
+        return {
+          title: "Voice Channel Left",
+          description: `${userMention} left ${channelMention}`,
+          emoji: "🔇",
+        };
+
+      case "MESSAGE_REACTION_ADD":
+        return {
+          title: "Reaction Added",
+          description: `${userMention} added a reaction in ${channelMention}`,
+          emoji: "👍",
+        };
+
+      case "MESSAGE_REACTION_REMOVE":
+        return {
+          title: "Reaction Removed",
+          description: `${userMention} removed a reaction in ${channelMention}`,
+          emoji: "👎",
+        };
+
       default:
         return {
-          title: `📊 ${logType.replace(/_/g, " ")}`,
-          description: `Log event: ${logType}`,
+          title: logType
+            .replace(/_/g, " ")
+            .toLowerCase()
+            .replace(/\b\w/g, (l) => l.toUpperCase()),
+          description: `Log event occurred`,
+          emoji: "📊",
         };
     }
   }
 
   /**
-   * Add relevant fields to embed
+   * Add comprehensive fields to embed based on log type and available data
    */
-  private addFieldsToEmbed(embed: EmbedBuilder, logEntry: any) {
+  private addDetailedFieldsToEmbed(embed: EmbedBuilder, logEntry: LogEntry, logType: string) {
+    // Channel information
+    if (logEntry.channelId) {
+      embed.addFields({
+        name: "📍 Channel",
+        value: `<#${logEntry.channelId}> (\`${logEntry.channelId}\`)`,
+        inline: true,
+      });
+    }
+
+    // User information (if not already in author)
+    if (logEntry.userId && !embed.data.author) {
+      embed.addFields({
+        name: "👤 User",
+        value: `<@${logEntry.userId}> (\`${logEntry.userId}\`)`,
+        inline: true,
+      });
+    }
+
+    // Moderator/Executor information
     if (logEntry.executorId) {
-      embed.addFields({ name: "👤 Moderator", value: `<@${logEntry.executorId}>`, inline: true });
+      embed.addFields({
+        name: "👮 Moderator",
+        value: `<@${logEntry.executorId}> (\`${logEntry.executorId}\`)`,
+        inline: true,
+      });
     }
 
-    if (logEntry.reason) {
-      embed.addFields({ name: "📝 Reason", value: logEntry.reason, inline: false });
-    }
-
-    if (logEntry.content && logEntry.content.length > 0) {
-      const content = logEntry.content.length > 1000 ? logEntry.content.substring(0, 1000) + "..." : logEntry.content;
-      embed.addFields({ name: "💬 Content", value: `\`\`\`${content}\`\`\``, inline: false });
-    }
-
+    // Case information for moderation actions
     if (logEntry.caseId) {
-      embed.addFields({ name: "📋 Case", value: `Case #${logEntry.caseId}`, inline: true });
+      embed.addFields({
+        name: "📋 Case",
+        value: `#${logEntry.caseId}`,
+        inline: true,
+      });
+    }
+
+    // Reason
+    if (logEntry.reason) {
+      embed.addFields({
+        name: "📝 Reason",
+        value: logEntry.reason.length > 1000 ? `${logEntry.reason.substring(0, 1000)}...` : logEntry.reason,
+        inline: false,
+      });
+    }
+
+    // Content for message-related logs
+    if (logEntry.content && logEntry.content.length > 0) {
+      const content = logEntry.content.length > 1000 ? `${logEntry.content.substring(0, 1000)}...` : logEntry.content;
+      embed.addFields({
+        name: "💬 Content",
+        value: `\`\`\`${content}\`\`\``,
+        inline: false,
+      });
+    }
+
+    // Before/After changes for edit logs
+    if (logEntry.before || logEntry.after) {
+      if (logType === "MESSAGE_EDIT") {
+        const beforeData = logEntry.before as { content?: string } | undefined;
+        const afterData = logEntry.after as { content?: string } | undefined;
+        const before = beforeData?.content;
+        const after = afterData?.content;
+
+        if (before) {
+          const beforeContent = before.length > 500 ? `${before.substring(0, 500)}...` : before;
+          embed.addFields({
+            name: "📜 Before",
+            value: `\`\`\`${beforeContent}\`\`\``,
+            inline: false,
+          });
+        }
+
+        if (after) {
+          const afterContent = after.length > 500 ? `${after.substring(0, 500)}...` : after;
+          embed.addFields({
+            name: "📝 After",
+            value: `\`\`\`${afterContent}\`\`\``,
+            inline: false,
+          });
+        }
+      }
+    }
+
+    // Attachments information
+    if (logEntry.attachments.length > 0) {
+      const attachmentList = logEntry.attachments
+        .slice(0, 5)
+        .map((url, index) => `[Attachment ${index + 1}](${url})`)
+        .join("\n");
+
+      embed.addFields({
+        name: `📎 Attachments (${logEntry.attachments.length})`,
+        value:
+          attachmentList + (logEntry.attachments.length > 5 ? `\n... and ${logEntry.attachments.length - 5} more` : ""),
+        inline: false,
+      });
+    }
+
+    // Embed information
+    if (logEntry.embeds.length > 0) {
+      embed.addFields({
+        name: "📋 Embeds",
+        value: `${logEntry.embeds.length} embed(s) were included`,
+        inline: true,
+      });
+    }
+  }
+
+  /**
+   * Add metadata information to embed
+   */
+  private addMetadataToEmbed(embed: EmbedBuilder, logEntry: LogEntry, logType: string) {
+    if (!logEntry.metadata) return;
+
+    const metadata = logEntry.metadata as Record<string, unknown>;
+    const metadataFields: string[] = [];
+
+    // Message-specific metadata
+    if (logType.startsWith("MESSAGE_")) {
+      if (metadata.messageId && typeof metadata.messageId === "string") {
+        metadataFields.push(`**Message ID:** \`${metadata.messageId}\``);
+      }
+      if (typeof metadata.hasAttachments === "boolean") {
+        metadataFields.push(`**Had Attachments:** ${metadata.hasAttachments ? "Yes" : "No"}`);
+      }
+      if (typeof metadata.hasEmbeds === "boolean") {
+        metadataFields.push(`**Had Embeds:** ${metadata.hasEmbeds ? "Yes" : "No"}`);
+      }
+      if (typeof metadata.wasCached === "boolean") {
+        metadataFields.push(`**Was Cached:** ${metadata.wasCached ? "Yes" : "No"}`);
+      }
+      if (typeof metadata.deletedCount === "number") {
+        metadataFields.push(`**Messages Deleted:** ${metadata.deletedCount}`);
+      }
+    }
+
+    // Member-specific metadata
+    if (logType.startsWith("MEMBER_")) {
+      if (metadata.joinedAt && typeof metadata.joinedAt === "string") {
+        metadataFields.push(`**Joined At:** <t:${Math.floor(new Date(metadata.joinedAt).getTime() / 1000)}:F>`);
+      }
+      if (metadata.accountAge && typeof metadata.accountAge === "string") {
+        metadataFields.push(`**Account Age:** ${metadata.accountAge}`);
+      }
+      if (typeof metadata.memberCount === "number") {
+        metadataFields.push(`**Server Members:** ${metadata.memberCount}`);
+      }
+    }
+
+    // Role-specific metadata
+    if (metadata.roleId && typeof metadata.roleId === "string") {
+      metadataFields.push(`**Role:** <@&${metadata.roleId}> (\`${metadata.roleId}\`)`);
+    }
+
+    // Add metadata field if we have any
+    if (metadataFields.length > 0) {
+      embed.addFields({
+        name: "ℹ️ Additional Information",
+        value: metadataFields.join("\n"),
+        inline: false,
+      });
+    }
+
+    // Add jump link for message-related events
+    if (metadata.messageId && typeof metadata.messageId === "string" && logEntry.channelId && logEntry.guildId) {
+      embed.addFields({
+        name: "🔗 Links",
+        value: `[Jump to Message](https://discord.com/channels/${logEntry.guildId}/${logEntry.channelId}/${metadata.messageId})`,
+        inline: true,
+      });
     }
   }
 
@@ -505,12 +835,29 @@ export default class LogManager {
         where: { guildId },
       });
 
-      let enabledTypes = settings?.enabledLogTypes || [];
+      const enabledTypes = settings?.enabledLogTypes ?? [];
 
       if (enabled && !enabledTypes.includes(logType)) {
         enabledTypes.push(logType);
       } else if (!enabled) {
-        enabledTypes = enabledTypes.filter((type) => type !== logType);
+        const filteredTypes = enabledTypes.filter((type) => type !== logType);
+
+        await prisma.logSettings.upsert({
+          where: { guildId },
+          update: { enabledLogTypes: filteredTypes },
+          create: {
+            guildId,
+            enabledLogTypes: filteredTypes,
+            channelRouting: {},
+            ignoredUsers: [],
+            ignoredRoles: [],
+            ignoredChannels: [],
+          },
+        });
+
+        // Clear cache
+        this.settingsCache.delete(guildId);
+        return;
       }
 
       await prisma.logSettings.upsert({
@@ -543,7 +890,7 @@ export default class LogManager {
         where: { guildId },
       });
 
-      const currentRouting = (settings?.channelRouting as Record<string, string>) || {};
+      const currentRouting = settings?.channelRouting as Record<string, string>;
       const updatedRouting = { ...currentRouting, ...routing };
 
       await prisma.logSettings.upsert({
@@ -574,11 +921,11 @@ export default class LogManager {
     try {
       await prisma.logSettings.upsert({
         where: { guildId },
-        update: { enabledLogTypes: ALL_LOG_TYPES },
+        update: { enabledLogTypes: [...ALL_LOG_TYPES] },
         create: {
           guildId,
           channelRouting: {},
-          enabledLogTypes: ALL_LOG_TYPES,
+          enabledLogTypes: [...ALL_LOG_TYPES],
           ignoredUsers: [],
           ignoredRoles: [],
           ignoredChannels: [],
@@ -617,5 +964,86 @@ export default class LogManager {
       logger.error("Error disabling all log types:", error);
       throw error;
     }
+  }
+
+  /**
+   * Enable specific log types for a guild
+   */
+  async enableLogTypes(guildId: string, logTypes: string[]) {
+    try {
+      const settings = await prisma.logSettings.findUnique({
+        where: { guildId },
+      });
+
+      const enabledTypes = [...(settings?.enabledLogTypes ?? [])];
+
+      // Add new log types that aren't already enabled
+      for (const logType of logTypes) {
+        if (!enabledTypes.includes(logType)) {
+          enabledTypes.push(logType);
+        }
+      }
+
+      await prisma.logSettings.upsert({
+        where: { guildId },
+        update: { enabledLogTypes: enabledTypes },
+        create: {
+          guildId,
+          enabledLogTypes: enabledTypes,
+          channelRouting: {},
+          ignoredUsers: [],
+          ignoredRoles: [],
+          ignoredChannels: [],
+        },
+      });
+
+      // Clear cache
+      this.settingsCache.delete(guildId);
+    } catch (error) {
+      logger.error("Error enabling log types:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Disable specific log types for a guild
+   */
+  async disableLogTypes(guildId: string, logTypes: string[]) {
+    try {
+      const settings = await prisma.logSettings.findUnique({
+        where: { guildId },
+      });
+
+      const enabledTypes = settings?.enabledLogTypes ?? [];
+
+      // Remove specified log types
+      const filteredTypes = enabledTypes.filter((type) => !logTypes.includes(type));
+
+      await prisma.logSettings.upsert({
+        where: { guildId },
+        update: { enabledLogTypes: filteredTypes },
+        create: {
+          guildId,
+          enabledLogTypes: filteredTypes,
+          channelRouting: {},
+          ignoredUsers: [],
+          ignoredRoles: [],
+          ignoredChannels: [],
+        },
+      });
+
+      // Clear cache
+      this.settingsCache.delete(guildId);
+    } catch (error) {
+      logger.error("Error disabling log types:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get log settings for a guild (public method)
+   */
+  async getSettings(guildId: string): Promise<LogSettings> {
+    return this.getLogSettings(guildId);
   }
 }

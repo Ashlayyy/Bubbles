@@ -6,12 +6,13 @@ import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 export default new Command(
   new SlashCommandBuilder()
-    .setName("kick")
-    .setDescription("Kick a user from the server")
-    .addUserOption((option) => option.setName("user").setDescription("The user to kick").setRequired(true))
-    .addStringOption((option) => option.setName("reason").setDescription("Reason for the kick").setRequired(false))
+    .setName("untimeout")
+    .setDescription("Remove timeout from a user")
+    .addUserOption((option) =>
+      option.setName("user").setDescription("The user to remove timeout from").setRequired(true)
+    )
     .addStringOption((option) =>
-      option.setName("evidence").setDescription("Evidence links (comma-separated)").setRequired(false)
+      option.setName("reason").setDescription("Reason for removing timeout").setRequired(false)
     )
     .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false)),
 
@@ -20,11 +21,6 @@ export default new Command(
 
     const targetUser = interaction.options.getUser("user", true);
     let reason = interaction.options.getString("reason") ?? "No reason provided";
-    const evidence =
-      interaction.options
-        .getString("evidence")
-        ?.split(",")
-        .map((s) => s.trim()) ?? [];
     const silent = interaction.options.getBoolean("silent") ?? false;
 
     try {
@@ -50,31 +46,43 @@ export default new Command(
         }
       }
 
-      // Get the moderation manager from client
-      const moderationManager = client.moderationManager;
-
-      // Execute the kick - the system handles everything automatically!
-      const case_ = await moderationManager.kick(
-        interaction.guild,
-        targetUser.id,
-        interaction.user.id,
-        reason,
-        evidence.length > 0 ? evidence : undefined
-      );
-
-      // If silent, update the case to not notify user
-      if (silent) {
-        await moderationManager.updateCaseNotification(case_.id, false);
+      // Check if user is in the server
+      const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+      if (!member) {
+        await interaction.reply({
+          content: `❌ **${targetUser.tag}** is not in this server.`,
+          ephemeral: true,
+        });
+        return;
       }
 
-      // Simple success response
+      // Check if user is actually timed out
+      if (!member.isCommunicationDisabled()) {
+        await interaction.reply({
+          content: `❌ **${targetUser.tag}** is not currently timed out.`,
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Execute the untimeout using the moderation system
+      const case_ = await client.moderationManager.moderate(interaction.guild, {
+        type: "UNTIMEOUT",
+        userId: targetUser.id,
+        moderatorId: interaction.user.id,
+        reason,
+        severity: "LOW",
+        points: 0, // No points for removing timeouts
+        notifyUser: !silent,
+      });
+
       await interaction.reply({
-        content: `✅ **${targetUser.tag}** has been kicked.\n📋 **Case #${case_.caseNumber.toString()}** created.`,
+        content: `🔊 **${targetUser.tag}** timeout has been removed.\n📋 **Case #${case_.caseNumber}** created.`,
         ephemeral: true,
       });
     } catch (error) {
       await interaction.reply({
-        content: `❌ Failed to kick **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
+        content: `❌ Failed to remove timeout from **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
         ephemeral: true,
       });
     }

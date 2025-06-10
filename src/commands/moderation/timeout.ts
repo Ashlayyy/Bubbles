@@ -6,18 +6,13 @@ import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 export default new Command(
   new SlashCommandBuilder()
-    .setName("ban")
-    .setDescription("Ban a user from the server")
-    .addUserOption((option) => option.setName("user").setDescription("The user to ban").setRequired(true))
+    .setName("timeout")
+    .setDescription("Timeout a user (mute them temporarily)")
+    .addUserOption((option) => option.setName("user").setDescription("The user to timeout").setRequired(true))
     .addStringOption((option) =>
-      option.setName("reason").setDescription("Reason for the ban (or alias name)").setRequired(false)
+      option.setName("duration").setDescription("Duration (e.g., 1d, 3h, 30m) - max 28 days").setRequired(true)
     )
-    .addStringOption((option) =>
-      option
-        .setName("duration")
-        .setDescription("Duration (e.g., 1d, 3h, 30m) - leave empty for permanent")
-        .setRequired(false)
-    )
+    .addStringOption((option) => option.setName("reason").setDescription("Reason for the timeout").setRequired(false))
     .addStringOption((option) =>
       option.setName("evidence").setDescription("Evidence links (comma-separated)").setRequired(false)
     )
@@ -27,8 +22,8 @@ export default new Command(
     if (!interaction.isChatInputCommand() || !interaction.guild) return;
 
     const targetUser = interaction.options.getUser("user", true);
+    const durationStr = interaction.options.getString("duration", true);
     let reason = interaction.options.getString("reason") ?? "No reason provided";
-    const durationStr = interaction.options.getString("duration");
     const evidence =
       interaction.options
         .getString("evidence")
@@ -59,27 +54,43 @@ export default new Command(
         }
       }
 
-      // Parse duration if provided
-      let duration: number | undefined;
-      if (durationStr) {
-        const parsedDuration = parseDuration(durationStr);
-        if (parsedDuration === null) {
-          await interaction.reply({
-            content: "❌ Invalid duration format. Use format like: 1d, 3h, 30m",
-            ephemeral: true,
-          });
-          return;
-        }
-        duration = parsedDuration;
+      // Parse duration
+      const duration = parseDuration(durationStr);
+      if (duration === null) {
+        await interaction.reply({
+          content: "❌ Invalid duration format. Use format like: 1d, 3h, 30m",
+          ephemeral: true,
+        });
+        return;
       }
 
-      // Execute the ban
-      const case_ = await client.moderationManager.ban(
+      // Discord timeout limit is 28 days
+      const maxDuration = 28 * 24 * 60 * 60; // 28 days in seconds
+      if (duration > maxDuration) {
+        await interaction.reply({
+          content: "❌ Timeout duration cannot exceed 28 days.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Check if user is in the server
+      const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+      if (!member) {
+        await interaction.reply({
+          content: `❌ **${targetUser.tag}** is not in this server.`,
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Execute the timeout
+      const case_ = await client.moderationManager.timeout(
         interaction.guild,
         targetUser.id,
         interaction.user.id,
-        reason,
         duration,
+        reason,
         evidence.length > 0 ? evidence : undefined
       );
 
@@ -87,15 +98,13 @@ export default new Command(
         await client.moderationManager.updateCaseNotification(case_.id, false);
       }
 
-      const durationText = duration ? ` for ${formatDuration(duration)}` : " permanently";
-
       await interaction.reply({
-        content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber.toString()}** created.`,
+        content: `🔇 **${targetUser.tag}** has been timed out for ${formatDuration(duration)}.\n📋 **Case #${case_.caseNumber}** created.`,
         ephemeral: true,
       });
     } catch (error) {
       await interaction.reply({
-        content: `❌ Failed to ban **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
+        content: `❌ Failed to timeout **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
         ephemeral: true,
       });
     }

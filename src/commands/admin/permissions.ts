@@ -646,7 +646,7 @@ export default new Command(
           }
 
           await interaction.followUp({
-            content: `✅ Updated permissions for ${successCount}/${targetCommands.length} commands.`,
+            content: `✅ Updated permissions for ${successCount.toString()}/${targetCommands.length.toString()} commands.`,
             flags: MessageFlags.Ephemeral,
           });
           break;
@@ -669,7 +669,7 @@ export default new Command(
 
             const embed = client.genEmbed({
               title: `Permission Audit Log${commandName ? ` - ${commandName}` : ""}`,
-              description: `Showing last ${auditLog.length} entries`,
+              description: `Showing last ${auditLog.length.toString()} entries`,
               fields: auditLog.map((entry) => {
                 const auditEntry = entry as AuditLogEntry;
                 return {

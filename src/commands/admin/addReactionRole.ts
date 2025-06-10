@@ -12,7 +12,7 @@ import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 export default new Command(
   new ContextMenuCommandBuilder().setName("Add Reaction Role").setType(ApplicationCommandType.Message),
-  async (client: Client, interaction) => {
+  async (_client: Client, interaction) => {
     if (!interaction.isMessageContextMenuCommand()) return;
 
     const modal = new ModalBuilder()

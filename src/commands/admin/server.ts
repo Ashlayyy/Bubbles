@@ -136,17 +136,17 @@ export default new Command(
             // Create embed fields for pagination (one user per field for better readability)
             const userFields = filteredMembers.first(limit).map((member) => ({
               name: `👤 ${member.displayName}`,
-              value: `**Username:** @${member.user.username}\n**ID:** \`${member.user.id}\`\n**Joined:** <t:${Math.floor((member.joinedTimestamp ?? 0) / 1000)}:R>`,
+              value: `**Username:** @${member.user.username}\n**ID:** \`${member.user.id}\`\n**Joined:** <t:${Math.floor((member.joinedTimestamp ?? 0) / 1000).toString()}:R>`,
               inline: true,
             }));
 
             // Create the embed with user data (ephemeral)
             const embed = client.genEmbed({
               title: `👥 Server Users${filter ? ` (Filtered: "${filter}")` : ""}`,
-              description: `Found ${filteredMembers.size} user${filteredMembers.size === 1 ? "" : "s"}${filteredMembers.size > limit ? ` (showing first ${limit})` : ""}`,
+              description: `Found ${filteredMembers.size.toString()} user${filteredMembers.size === 1 ? "" : "s"}${filteredMembers.size > limit ? ` (showing first ${limit.toString()})` : ""}`,
               fields: userFields.slice(0, 25), // Discord's embed field limit
               footer: {
-                text: `Total members: ${interaction.guild.memberCount} | Non-bot members: ${filteredMembers.size}`,
+                text: `Total members: ${interaction.guild.memberCount.toString()} | Non-bot members: ${filteredMembers.size.toString()}`,
               },
             });
 
@@ -194,7 +194,7 @@ export default new Command(
               .join("\n");
 
             fields.push({
-              name: `📁 ${cat.charAt(0).toUpperCase() + cat.slice(1)} (${cmds.length})`,
+              name: `📁 ${cat.charAt(0).toUpperCase() + cat.slice(1)} (${cmds.length.toString()})`,
               value: commandList || "No commands",
               inline: false,
             });
@@ -205,7 +205,7 @@ export default new Command(
             description: `Available commands${category !== "all" ? ` in ${category} category` : ""}`,
             fields: fields.slice(0, 25), // Discord limit
             footer: {
-              text: `Total commands: ${filteredCommands.length}`,
+              text: `Total commands: ${filteredCommands.length.toString()}`,
             },
           });
 

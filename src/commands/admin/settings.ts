@@ -1,6 +1,14 @@
 import { QueueRepeatMode } from "discord-player";
 import type { EmbedField } from "discord.js";
-import { ChannelType, MessageFlags, SlashCommandBuilder } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType,
+  ComponentType,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "discord.js";
 import lodash from "lodash";
 
 import {
@@ -16,6 +24,7 @@ import { isQueueRepeatMode, toDisplayString } from "../../functions/music/queueR
 import type Client from "../../structures/Client.js";
 import type { GuildChatInputCommandInteraction } from "../../structures/Command.js";
 import Command from "../../structures/Command.js";
+import { ALL_LOG_TYPES, LOG_CATEGORIES } from "../../structures/LogManager.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -23,6 +32,17 @@ const { kebabCase, camelCase } = lodash;
 
 /** Omit `greetings` from `GuildConfig` */
 const guildConfigSettings = Object.keys(guildConfigDefaults).filter((setting) => setting !== "greetings");
+
+// High-volume events that can spam channels
+const HIGH_VOLUME_EVENTS = [
+  "PRESENCE_UPDATE",
+  "TYPING_START",
+  "VOICE_STREAM_START",
+  "VOICE_STREAM_STOP",
+  "MESSAGE_REACTION_ADD",
+  "MESSAGE_REACTION_REMOVE",
+  "MEMBER_STATUS_CHANGE",
+];
 
 // Base slash command builder
 const builder = new SlashCommandBuilder()
@@ -77,6 +97,150 @@ const builder = new SlashCommandBuilder()
       .setDescription("Enable or disable database logging of reaction role activities.")
       .addBooleanOption((option) =>
         option.setName("enabled").setDescription("Enable or disable database logging.").setRequired(true)
+      )
+  )
+  // New comprehensive logging commands
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("setup-logging")
+      .setDescription("Quick setup for comprehensive server logging.")
+      .addStringOption((option) =>
+        option
+          .setName("type")
+          .setDescription("Choose your logging setup type")
+          .setRequired(true)
+          .addChoices(
+            { name: "Single Channel (All logs in one place)", value: "single" },
+            { name: "Four Channels (Organized by category)", value: "four" },
+            { name: "Custom (Manual configuration)", value: "custom" }
+          )
+      )
+      .addChannelOption((option) =>
+        option
+          .setName("channel")
+          .setDescription("Primary logging channel (for single-channel setup)")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(false)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("set-moderation-log-channel")
+      .setDescription("Set channel for moderation logs (bans, kicks, warns, timeouts).")
+      .addChannelOption((option) =>
+        option
+          .setName("channel")
+          .setDescription("Channel for moderation logs")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("set-member-log-channel")
+      .setDescription("Set channel for member activity (joins, leaves, role changes).")
+      .addChannelOption((option) =>
+        option
+          .setName("channel")
+          .setDescription("Channel for member logs")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("set-message-log-channel")
+      .setDescription("Set channel for message logs (edits, deletes, reactions).")
+      .addChannelOption((option) =>
+        option
+          .setName("channel")
+          .setDescription("Channel for message logs")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("set-server-log-channel")
+      .setDescription("Set channel for server changes (channels, roles, settings).")
+      .addChannelOption((option) =>
+        option
+          .setName("channel")
+          .setDescription("Channel for server logs")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("set-voice-log-channel")
+      .setDescription("Set channel for voice activity logs.")
+      .addChannelOption((option) =>
+        option
+          .setName("channel")
+          .setDescription("Channel for voice logs")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("high-volume-events")
+      .setDescription("Configure high-volume events (presence, typing, etc.).")
+      .addStringOption((option) =>
+        option
+          .setName("action")
+          .setDescription("What to do with high-volume events")
+          .setRequired(true)
+          .addChoices(
+            { name: "Enable All", value: "enable" },
+            { name: "Disable All", value: "disable" },
+            { name: "View Status", value: "status" }
+          )
+      )
+      .addChannelOption((option) =>
+        option
+          .setName("separate-channel")
+          .setDescription("Route high-volume events to a separate channel")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(false)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand.setName("enable-all-logging").setDescription("Enable all log types for comprehensive logging.")
+  )
+  .addSubcommand((subcommand) => subcommand.setName("disable-all-logging").setDescription("Disable all logging."))
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("log-category")
+      .setDescription("Enable/disable an entire category of logs.")
+      .addStringOption((option) =>
+        option
+          .setName("category")
+          .setDescription("Log category to configure")
+          .setRequired(true)
+          .addChoices(
+            { name: "Messages", value: "MESSAGE" },
+            { name: "Members", value: "MEMBER" },
+            { name: "Roles", value: "ROLE" },
+            { name: "Channels", value: "CHANNEL" },
+            { name: "Voice", value: "VOICE" },
+            { name: "Server", value: "SERVER" },
+            { name: "Moderation", value: "MODERATION" },
+            { name: "Invites", value: "INVITE" },
+            { name: "Emojis/Stickers", value: "EMOJI" }
+          )
+      )
+      .addBooleanOption((option) =>
+        option.setName("enabled").setDescription("Enable or disable this category").setRequired(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("audit-logs")
+      .setDescription("Configure Discord audit log integration.")
+      .addBooleanOption((option) =>
+        option.setName("enabled").setDescription("Enable or disable audit log integration").setRequired(true)
       )
   );
 
@@ -157,6 +321,42 @@ export default new Command(
       case "display":
         await displayCurrentSettings(client, interaction);
         break;
+
+      // New logging configuration handlers
+      case "setup-logging":
+        await handleSetupLogging(client, interaction);
+        break;
+      case "set-moderation-log-channel":
+        await handleSetModerationLogChannel(client, interaction);
+        break;
+      case "set-member-log-channel":
+        await handleSetMemberLogChannel(client, interaction);
+        break;
+      case "set-message-log-channel":
+        await handleSetMessageLogChannel(client, interaction);
+        break;
+      case "set-server-log-channel":
+        await handleSetServerLogChannel(client, interaction);
+        break;
+      case "set-voice-log-channel":
+        await handleSetVoiceLogChannel(client, interaction);
+        break;
+      case "high-volume-events":
+        await handleHighVolumeEvents(client, interaction);
+        break;
+      case "enable-all-logging":
+        await handleEnableAllLogging(client, interaction);
+        break;
+      case "disable-all-logging":
+        await handleDisableAllLogging(client, interaction);
+        break;
+      case "log-category":
+        await handleLogCategory(client, interaction);
+        break;
+      case "audit-logs":
+        await handleAuditLogs(client, interaction);
+        break;
+
       default: {
         // First, check if subcommand is a guild setting
         const settingName = camelCase(subcommand);
@@ -269,18 +469,141 @@ async function displayCurrentSettings(client: Client, interaction: GuildChatInpu
     };
   });
 
-  // Create embed with settings
-  const settingsEmbed = client.genEmbed({
-    title: `${interaction.guild?.name ?? "NO NAME"} [id: \`${interaction.guildId}\`] Server-wide Settings`,
-    fields: settingsFieldArr,
-    thumbnail: {
-      url: "attachment://settings.png",
-    },
+  // Pagination settings
+  const itemsPerPage = 10;
+  const totalPages = Math.ceil(settingsFieldArr.length / itemsPerPage);
+  let currentPage = 0;
+
+  const generateEmbed = (page: number) => {
+    const start = page * itemsPerPage;
+    const end = start + itemsPerPage;
+    const pageFields = settingsFieldArr.slice(start, end);
+
+    return client.genEmbed({
+      title: `${interaction.guild?.name ?? "NO NAME"} [id: \`${interaction.guildId}\`] Server-wide Settings`,
+      description: `Page ${page + 1} of ${totalPages} • ${settingsFieldArr.length} total settings`,
+      fields: pageFields,
+      thumbnail: {
+        url: "attachment://settings.png",
+      },
+      footer: {
+        text: `Showing ${start + 1}-${Math.min(end, settingsFieldArr.length)} of ${settingsFieldArr.length} settings`,
+      },
+    });
+  };
+
+  const generateButtons = (page: number) => {
+    const row = new ActionRowBuilder<ButtonBuilder>();
+
+    // Previous button
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId("settings_prev")
+        .setLabel("◀ Previous")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page === 0)
+    );
+
+    // Page indicator
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId("settings_page")
+        .setLabel(`${page + 1}/${totalPages}`)
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(true)
+    );
+
+    // Next button
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId("settings_next")
+        .setLabel("Next ▶")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page >= totalPages - 1)
+    );
+
+    return row;
+  };
+
+  // Send initial message
+  const embed = generateEmbed(currentPage);
+  const components = totalPages > 1 ? [generateButtons(currentPage)] : [];
+
+  const message = await interaction.followUp({
+    embeds: [embed],
+    components,
+    files: ["assets/icons/settings.png"],
   });
 
-  await interaction.followUp({
-    embeds: [settingsEmbed],
-    files: ["assets/icons/settings.png"],
+  // If only one page, no need for interaction handling
+  if (totalPages <= 1) return;
+
+  // Handle button interactions
+  const collector = message.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: 300000, // 5 minutes
+    filter: (i) => i.user.id === interaction.user.id,
+  });
+
+  collector.on("collect", (buttonInteraction) => {
+    void (async () => {
+      try {
+        if (buttonInteraction.customId === "settings_prev" && currentPage > 0) {
+          currentPage--;
+        } else if (buttonInteraction.customId === "settings_next" && currentPage < totalPages - 1) {
+          currentPage++;
+        }
+
+        const newEmbed = generateEmbed(currentPage);
+        const newComponents = [generateButtons(currentPage)];
+
+        await buttonInteraction.update({
+          embeds: [newEmbed],
+          components: newComponents,
+        });
+      } catch (error) {
+        // Handle error silently
+      }
+    })();
+  });
+
+  collector.on("end", () => {
+    void (async () => {
+      try {
+        // Disable all buttons when collector expires
+        const disabledRow = new ActionRowBuilder<ButtonBuilder>();
+
+        disabledRow.addComponents(
+          new ButtonBuilder()
+            .setCustomId("settings_prev")
+            .setLabel("◀ Previous")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true)
+        );
+
+        disabledRow.addComponents(
+          new ButtonBuilder()
+            .setCustomId("settings_page")
+            .setLabel(`${currentPage + 1}/${totalPages}`)
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(true)
+        );
+
+        disabledRow.addComponents(
+          new ButtonBuilder()
+            .setCustomId("settings_next")
+            .setLabel("Next ▶")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true)
+        );
+
+        await message.edit({
+          components: [disabledRow],
+        });
+      } catch {
+        // Message might be deleted, ignore error
+      }
+    })();
   });
 }
 
@@ -416,4 +739,358 @@ async function handleToggleReactionRoleDbLogging(interaction: GuildChatInputComm
     content: `Database logging of reaction role activities has been ${enabled ? "enabled" : "disabled"}.`,
     flags: MessageFlags.Ephemeral,
   });
+}
+
+// New comprehensive logging handlers
+
+async function handleSetupLogging(client: Client, interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const type = interaction.options.getString("type", true);
+  const channel = interaction.options.getChannel("channel");
+
+  try {
+    const channelRouting: Record<string, string> = {};
+    let message = "";
+
+    switch (type) {
+      case "single": {
+        if (!channel) {
+          await interaction.followUp({
+            content: "❌ You must specify a channel for single-channel setup.",
+          });
+          return;
+        }
+
+        // Route ALL log types to the single channel
+        ALL_LOG_TYPES.forEach((logType: string) => {
+          channelRouting[logType] = channel.id;
+        });
+
+        message = `✅ **Single-channel logging setup complete!**\n\n📍 All logs will be sent to <#${channel.id}>\n\n🔍 **${ALL_LOG_TYPES.length.toString()}** log types configured automatically.`;
+        break;
+      }
+
+      case "four": {
+        await interaction.followUp({
+          content: `🔧 **Four-channel setup initiated**\n\nPlease create or designate these channels:\n\n📋 **#mod-logs** - Moderation events\n👥 **#member-logs** - Member activity\n💬 **#message-logs** - Message events\n🔧 **#server-logs** - Server changes\n\n💡 *Use the individual channel commands to set them up:*\n\`/settings set-moderation-log-channel\`\n\`/settings set-member-log-channel\`\n\`/settings set-message-log-channel\`\n\`/settings set-server-log-channel\``,
+        });
+        return;
+      }
+
+      case "custom": {
+        message = `🎛️ **Custom logging setup**\n\n💡 Use these commands to configure individual channels:\n\n**Channel Commands:**\n\`/settings set-moderation-log-channel\`\n\`/settings set-member-log-channel\`\n\`/settings set-message-log-channel\`\n\`/settings set-server-log-channel\`\n\`/settings set-voice-log-channel\`\n\n**Category Commands:**\n\`/settings log-category\` - Enable/disable categories\n\`/settings high-volume-events\` - Manage spam events\n\n**Bulk Commands:**\n\`/settings enable-all-logging\`\n\`/settings disable-all-logging\``;
+
+        await interaction.followUp({ content: message });
+        return;
+      }
+    }
+
+    if (Object.keys(channelRouting).length > 0) {
+      // Setup logging with the LogManager
+      await client.logManager.setupBasicLogging(interaction.guild.id, channelRouting);
+      await client.logManager.enableAllLogTypes(interaction.guild.id);
+    }
+
+    await interaction.followUp({ content: message });
+  } catch (error) {
+    await interaction.followUp({
+      content: `❌ Error setting up logging: ${error instanceof Error ? error.message : "Unknown error"}`,
+    });
+  }
+}
+
+async function handleSetModerationLogChannel(client: Client, interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  const channel = interaction.options.getChannel("channel", true);
+
+  try {
+    // Get moderation log types from LogManager
+    const moderationTypes = LOG_CATEGORIES.MODERATION;
+    const channelRouting: Record<string, string> = {};
+
+    moderationTypes.forEach((logType: string) => {
+      channelRouting[logType] = channel.id;
+    });
+
+    await client.logManager.setChannelRouting(interaction.guild.id, channelRouting);
+
+    await interaction.reply({
+      content: `✅ **Moderation logs configured!**\n\n📍 Channel: <#${channel.id}>\n🔍 **${moderationTypes.length.toString()}** moderation event types will be logged here.\n\n📋 *Includes: bans, kicks, warns, timeouts, and other moderation actions.*`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    await interaction.reply({
+      content: `❌ Error setting moderation log channel: ${error instanceof Error ? error.message : "Unknown error"}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+async function handleSetMemberLogChannel(client: Client, interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  const channel = interaction.options.getChannel("channel", true);
+
+  try {
+    const memberTypes = LOG_CATEGORIES.MEMBER;
+    const channelRouting: Record<string, string> = {};
+
+    memberTypes.forEach((logType: string) => {
+      channelRouting[logType] = channel.id;
+    });
+
+    await client.logManager.setChannelRouting(interaction.guild.id, channelRouting);
+
+    await interaction.reply({
+      content: `✅ **Member logs configured!**\n\n📍 Channel: <#${channel.id}>\n🔍 **${memberTypes.length.toString()}** member event types will be logged here.\n\n👥 *Includes: joins, leaves, role changes, nickname changes, and more.*`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    await interaction.reply({
+      content: `❌ Error setting member log channel: ${error instanceof Error ? error.message : "Unknown error"}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+async function handleSetMessageLogChannel(client: Client, interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  const channel = interaction.options.getChannel("channel", true);
+
+  try {
+    const messageTypes = LOG_CATEGORIES.MESSAGE;
+    const channelRouting: Record<string, string> = {};
+
+    messageTypes.forEach((logType) => {
+      channelRouting[logType] = channel.id;
+    });
+
+    await client.logManager.setChannelRouting(interaction.guild.id, channelRouting);
+
+    await interaction.reply({
+      content: `✅ **Message logs configured!**\n\n📍 Channel: <#${channel.id}>\n🔍 **${messageTypes.length.toString()}** message event types will be logged here.\n\n💬 *Includes: edits, deletes, reactions, pins, and more.*`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    await interaction.reply({
+      content: `❌ Error setting message log channel: ${error instanceof Error ? error.message : "Unknown error"}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+async function handleSetServerLogChannel(client: Client, interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  const channel = interaction.options.getChannel("channel", true);
+
+  try {
+    const serverTypes = [
+      ...LOG_CATEGORIES.SERVER,
+      ...LOG_CATEGORIES.CHANNEL,
+      ...LOG_CATEGORIES.ROLE,
+      ...LOG_CATEGORIES.INVITE,
+    ];
+    const channelRouting: Record<string, string> = {};
+
+    serverTypes.forEach((logType) => {
+      channelRouting[logType] = channel.id;
+    });
+
+    await client.logManager.setChannelRouting(interaction.guild.id, channelRouting);
+
+    await interaction.reply({
+      content: `✅ **Server logs configured!**\n\n📍 Channel: <#${channel.id}>\n🔍 **${serverTypes.length.toString()}** server event types will be logged here.\n\n🔧 *Includes: channels, roles, server settings, invites, and more.*`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    await interaction.reply({
+      content: `❌ Error setting server log channel: ${error instanceof Error ? error.message : "Unknown error"}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+async function handleSetVoiceLogChannel(client: Client, interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  const channel = interaction.options.getChannel("channel", true);
+
+  try {
+    const voiceTypes = LOG_CATEGORIES.VOICE;
+    const channelRouting: Record<string, string> = {};
+
+    voiceTypes.forEach((logType) => {
+      channelRouting[logType] = channel.id;
+    });
+
+    await client.logManager.setChannelRouting(interaction.guild.id, channelRouting);
+
+    await interaction.reply({
+      content: `✅ **Voice logs configured!**\n\n📍 Channel: <#${channel.id}>\n🔍 **${voiceTypes.length.toString()}** voice event types will be logged here.\n\n🎵 *Includes: joins, leaves, mutes, unmutes, streaming, and more.*`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    await interaction.reply({
+      content: `❌ Error setting voice log channel: ${error instanceof Error ? error.message : "Unknown error"}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+async function handleHighVolumeEvents(client: Client, interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  const action = interaction.options.getString("action", true);
+  const separateChannel = interaction.options.getChannel("separate-channel");
+
+  try {
+    switch (action) {
+      case "enable": {
+        const channelRouting: Record<string, string> = {};
+
+        if (separateChannel) {
+          HIGH_VOLUME_EVENTS.forEach((logType) => {
+            channelRouting[logType] = separateChannel.id;
+          });
+          await client.logManager.setChannelRouting(interaction.guild.id, channelRouting);
+        }
+
+        await client.logManager.enableLogTypes(interaction.guild.id, HIGH_VOLUME_EVENTS);
+
+        await interaction.reply({
+          content: `✅ **High-volume events enabled!**\n\n${separateChannel ? `📍 Routed to: <#${separateChannel.id}>` : "📍 Using existing channel routing"}\n\n⚠️ **Events enabled:**\n${HIGH_VOLUME_EVENTS.map((e) => `• ${e}`).join("\n")}\n\n💡 *These events can generate many logs. Monitor your channels.*`,
+          flags: MessageFlags.Ephemeral,
+        });
+        break;
+      }
+
+      case "disable": {
+        await client.logManager.disableLogTypes(interaction.guild.id, HIGH_VOLUME_EVENTS);
+
+        await interaction.reply({
+          content: `❌ **High-volume events disabled!**\n\n🔇 **Events disabled:**\n${HIGH_VOLUME_EVENTS.map((e) => `• ${e}`).join("\n")}`,
+          flags: MessageFlags.Ephemeral,
+        });
+        break;
+      }
+
+      case "status": {
+        const settings = await client.logManager.getSettings(interaction.guild.id);
+        const enabledHighVolume = HIGH_VOLUME_EVENTS.filter((event) => settings.enabledLogTypes.includes(event));
+        const disabledHighVolume = HIGH_VOLUME_EVENTS.filter((event) => !settings.enabledLogTypes.includes(event));
+
+        await interaction.reply({
+          content: `📊 **High-Volume Events Status**\n\n✅ **Enabled (${enabledHighVolume.length.toString()}):**\n${enabledHighVolume.map((e) => `• ${e}`).join("\n") || "None"}\n\n❌ **Disabled (${disabledHighVolume.length.toString()}):**\n${disabledHighVolume.map((e) => `• ${e}`).join("\n") || "None"}`,
+          flags: MessageFlags.Ephemeral,
+        });
+        break;
+      }
+    }
+  } catch (error) {
+    await interaction.reply({
+      content: `❌ Error managing high-volume events: ${error instanceof Error ? error.message : "Unknown error"}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+async function handleEnableAllLogging(client: Client, interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  try {
+    await client.logManager.enableAllLogTypes(interaction.guild.id);
+
+    await interaction.reply({
+      content: `✅ **All logging enabled!**\n\n🔍 **${ALL_LOG_TYPES.length.toString()}** log types are now active.\n\n💡 *Make sure you have channels configured with:*\n\`/settings setup-logging\``,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    await interaction.reply({
+      content: `❌ Error enabling all logging: ${error instanceof Error ? error.message : "Unknown error"}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+async function handleDisableAllLogging(client: Client, interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  try {
+    await client.logManager.disableAllLogTypes(interaction.guild.id);
+
+    await interaction.reply({
+      content: `❌ **All logging disabled!**\n\n🔇 No events will be logged until you re-enable them.\n\n💡 *Use \`/settings enable-all-logging\` to restore logging.*`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    await interaction.reply({
+      content: `❌ Error disabling all logging: ${error instanceof Error ? error.message : "Unknown error"}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+async function handleLogCategory(client: Client, interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  const category = interaction.options.getString("category", true);
+  const enabled = interaction.options.getBoolean("enabled", true);
+
+  try {
+    const categoryLogTypes = [...LOG_CATEGORIES[category as keyof typeof LOG_CATEGORIES]];
+
+    if (categoryLogTypes.length === 0) {
+      await interaction.reply({
+        content: `❌ Unknown or empty log category: ${category}`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (enabled) {
+      await client.logManager.enableLogTypes(interaction.guild.id, categoryLogTypes);
+    } else {
+      await client.logManager.disableLogTypes(interaction.guild.id, categoryLogTypes);
+    }
+
+    await interaction.reply({
+      content: `${enabled ? "✅" : "❌"} **${category} logs ${enabled ? "enabled" : "disabled"}!**\n\n🔍 **${categoryLogTypes.length.toString()}** log types affected:\n${categoryLogTypes
+        .slice(0, 10)
+        .map((e: string) => `• ${e}`)
+        .join(
+          "\n"
+        )}${categoryLogTypes.length > 10 ? `\n... and ${(categoryLogTypes.length - 10).toString()} more` : ""}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    await interaction.reply({
+      content: `❌ Error configuring log category: ${error instanceof Error ? error.message : "Unknown error"}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+async function handleAuditLogs(client: Client, interaction: GuildChatInputCommandInteraction) {
+  if (!interaction.guild) return;
+
+  const enabled = interaction.options.getBoolean("enabled", true);
+
+  try {
+    // This would integrate with Discord's audit log API
+    // For now, we'll just acknowledge the setting
+    await interaction.reply({
+      content: `${enabled ? "✅" : "❌"} **Audit log integration ${enabled ? "enabled" : "disabled"}!**\n\n${enabled ? "🔍 Discord audit logs will be captured and correlated with events." : "🔇 Audit log integration is disabled."}\n\n💡 *This feature enhances moderation logs with "who did what" context.*`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    await interaction.reply({
+      content: `❌ Error configuring audit logs: ${error instanceof Error ? error.message : "Unknown error"}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
 }

@@ -47,23 +47,27 @@ export default new Command(
 
           if (!case_) {
             await interaction.reply({
-              content: `❌ Case #${caseNumber} not found.`,
+              content: `❌ Case #${caseNumber.toString()} not found.`,
               ephemeral: true,
             });
             return;
           }
 
           const embed = client.genEmbed({
-            title: `📋 Case #${case_.caseNumber}`,
+            title: `📋 Case #${case_.caseNumber.toString()}`,
             color: case_.type === "BAN" ? 0xe74c3c : case_.type === "WARN" ? 0xf1c40f : 0x3498db,
             fields: [
               { name: "👤 User", value: `<@${case_.userId}>`, inline: true },
               { name: "👮 Moderator", value: `<@${case_.moderatorId}>`, inline: true },
               { name: "⚖️ Action", value: case_.type, inline: true },
-              { name: "📝 Reason", value: case_.reason || "No reason provided", inline: false },
+              { name: "📝 Reason", value: case_.reason ?? "No reason provided", inline: false },
               { name: "📊 Severity", value: case_.severity, inline: true },
               { name: "🔢 Points", value: case_.points.toString(), inline: true },
-              { name: "📅 Created", value: `<t:${Math.floor(case_.createdAt.getTime() / 1000)}:F>`, inline: true },
+              {
+                name: "📅 Created",
+                value: `<t:${Math.floor(case_.createdAt.getTime() / 1000).toString()}:F>`,
+                inline: true,
+              },
             ],
             footer: { text: `Case ID: ${case_.id}` },
           });
@@ -106,13 +110,13 @@ export default new Command(
 
           const embed = client.genEmbed({
             title: `📋 Moderation History - ${targetUser.tag}`,
-            description: `**Total Points:** ${points}\n**Total Cases:** ${cases.length}`,
+            description: `**Total Points:** ${points.toString()}\n**Total Cases:** ${cases.length.toString()}`,
             fields: cases.map((case_) => ({
-              name: `Case #${case_.caseNumber} - ${case_.type}`,
-              value: `${case_.reason || "No reason"}\n<t:${Math.floor(case_.createdAt.getTime() / 1000)}:R>`,
+              name: `Case #${case_.caseNumber.toString()} - ${case_.type}`,
+              value: `${case_.reason ?? "No reason"}\n<t:${Math.floor(case_.createdAt.getTime() / 1000).toString()}:R>`,
               inline: true,
             })),
-            footer: { text: `Showing last ${Math.min(limit, cases.length)} cases` },
+            footer: { text: `Showing last ${Math.min(limit, cases.length).toString()} cases` },
           });
 
           await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -137,7 +141,7 @@ export default new Command(
           await client.moderationManager.addCaseNote(case_.id, interaction.user.id, note, isInternal);
 
           await interaction.reply({
-            content: `✅ Added ${isInternal ? "internal" : "public"} note to case #${caseNumber}.`,
+            content: `✅ Added ${isInternal ? "internal" : "public"} note to case #${caseNumber.toString()}.`,
             ephemeral: true,
           });
           break;
