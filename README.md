@@ -1,124 +1,232 @@
-# DiscordTS-Bot
+# Discord Bot Microservices - Phase 1 Implementation
 
-[![](https://img.shields.io/github/license/IronBatman2715/DiscordTS-Bot.svg?branch=main)](https://github.com/IronBatman2715/DiscordTS-Bot/blob/main/LICENSE)
+🚀 **Discord bot with microservices architecture featuring message queue communication, REST API, and Vue.js dashboard.**
 
-A customizable Discord bot based on [discord.js v14](https://discord.js.org) with [Typescript](https://www.typescriptlang.org/)!
+## 🏗️ Architecture Overview
 
-- Bring music to your servers with the included [Discord player](https://discord-player.js.org) library!
+This project implements a microservices architecture for a Discord bot with the following components:
 
-- Persist settings for each discord server/guild with [MongoDB](https://www.mongodb.com/), managed by [Prisma](https://www.prisma.io) (code can be modified to use [other databases supported by Prisma](https://www.prisma.io/docs/reference/database-reference/supported-databases)).
+- **🤖 Discord Bot** - Discord.js bot with queue integration (existing + enhanced)
+- **🔌 API Service** - Express.js REST API with message queue
+- **🌐 Frontend** - Vue.js dashboard for bot management
+- **📨 Message Queue** - Redis + Bull for inter-service communication
+- **🗄️ Database** - MongoDB with Prisma ORM (existing)
 
-- Easy troubleshooting with [Winston](https://github.com/winstonjs/winston) logging.
+## 📦 Services
 
-- Configure the bot with the `config.json` file. Real-time validation with [AJV](https://ajv.js.org/)
+```
+┌─────────────────┬─────────────────┬─────────────────┐
+│   Frontend      │      API        │      Bot        │
+│   Port: 3000    │   Port: 3001    │   Discord       │
+├─────────────────┼─────────────────┼─────────────────┤
+│ Vue 3           │ Express.js      │ Discord.js      │
+│ TypeScript      │ TypeScript      │ TypeScript      │
+│ Tailwind CSS    │ JWT Auth        │ Prisma          │
+│ Vite            │ Socket.io       │ Bull Queue      │
+│ Pinia           │ Bull Queue      │ Music Player    │
+└─────────────────┴─────────────────┴─────────────────┘
+                          │
+                    ┌─────▼─────┐
+                    │   Redis   │
+                    │Port: 6379 │
+                    └───────────┘
+```
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Node.js 20+
+- Docker & Docker Compose
+- MongoDB database (existing)
+- Discord Bot Token
+
+### 1. Clone and Setup
+
+```bash
+git clone <repository>
+cd Bubbles
+
+# Copy environment file
+cp env.example .env
+
+# Edit .env with your values
+nano .env
+```
+
+### 2. Configure Environment
+
+Update `.env` with your Discord bot credentials:
+
+```env
+DISCORD_TOKEN=your_discord_bot_token_here
+CLIENT_ID=your_discord_client_id_here
+TEST_GUILD_ID=your_test_guild_id_here
+DB_URL=your_mongodb_connection_string
+DISCORD_CLIENT_SECRET=your_oauth_client_secret
+JWT_SECRET=your_jwt_secret_key
+```
+
+### 3. Start All Services
+
+```bash
+# Start all services with Docker Compose
+npm run dev
+
+# Or build and start
+npm run dev:logs
+```
+
+### 4. Access Services
+
+- **Frontend Dashboard**: http://localhost:3000
+- **API Health Check**: http://localhost:3001/health
+- **Queue Dashboard**: http://localhost:3002 
+- **Redis**: localhost:6379
+
+## 🔧 Development
+
+### Individual Service Development
+
+```bash
+# Start specific services
+docker-compose up redis shared api
+docker-compose up frontend
+docker-compose up bot
+
+# Build all services
+npm run build
+
+# Stop all services  
+npm run stop
+
+# Clean up containers and volumes
+npm run clean
+```
+
+### Project Structure
+
+```
+Bubbles/
+├── shared/          # Shared TypeScript types and utilities
+├── api/            # Express.js API service
+├── frontend/       # Vue.js dashboard
+├── bot/           # Discord.js bot (existing + enhanced)
+├── documentation/ # Implementation plans and guides
+└── docker-compose.yml
+```
+
+## 📋 Phase 1 Features
+
+### ✅ Implemented
+
+- [x] Redis message queue infrastructure
+- [x] Shared TypeScript types across services
+- [x] Express.js API with health checks
+- [x] Vue.js frontend with Tailwind CSS
+- [x] Docker Compose multi-service setup
+- [x] Bot queue integration (basic structure)
+
+### 🚧 In Progress
+
+- [ ] Message sending from web to Discord
+- [ ] Discord OAuth authentication
+- [ ] Real-time WebSocket updates
+- [ ] Queue job monitoring
+- [ ] Error handling and retries
+
+### 📱 Demo Feature: Send Discord Messages
+
+The Phase 1 demo allows sending messages to Discord channels through the web interface:
+
+1. **Web Form** → Submit message via frontend
+2. **API Endpoint** → Validate and queue job
+3. **Message Queue** → Redis/Bull job queuing
+4. **Bot Consumer** → Process job and send to Discord
+5. **Event Publishing** → Success/failure feedback
+
+## 🔄 Message Flow Example
+
+```mermaid
+sequenceDiagram
+    participant Web as Frontend
+    participant API as API Service
+    participant Queue as Redis Queue
+    participant Bot as Discord Bot
+    participant Discord as Discord API
+
+    Web->>API: POST /api/messages/send
+    API->>Queue: Add "send-message" job
+    Queue->>Bot: Process job
+    Bot->>Discord: Send message
+    Bot->>Queue: Publish result event
+    Queue->>API: Event notification
+    API->>Web: WebSocket update
+```
+
+## 🛠️ Available Scripts
+
+```bash
+# Root project scripts
+npm run dev          # Start all services
+npm run build        # Build all services  
+npm run start        # Production start
+npm run stop         # Stop all services
+npm run clean        # Clean containers/volumes
+
+# Individual service scripts
+cd shared && npm run build    # Build shared types
+cd api && npm run dev        # API development
+cd frontend && npm run dev   # Frontend development
+cd bot && npm run dev        # Bot development
+```
+
+## 🐛 Troubleshooting
+
+### Services Not Starting
+
+1. **Check Docker**: Ensure Docker is running
+2. **Port Conflicts**: Verify ports 3000, 3001, 6379 are available
+3. **Environment Variables**: Verify all required vars are set
+4. **Dependencies**: Run `npm install` in each service
+
+### Queue Connection Issues
+
+1. **Redis Health**: Check `docker-compose logs redis`
+2. **Network**: Ensure services can reach Redis container
+3. **Configuration**: Verify REDIS_HOST=redis in containers
+
+### Bot Not Connecting
+
+1. **Discord Token**: Verify token is valid and bot is in guild
+2. **Permissions**: Ensure bot has necessary Discord permissions
+3. **Database**: Check MongoDB connection string
+
+## 📚 Next Steps (Phase 2)
+
+- Real-time dashboard with live stats
+- Complete moderation interface  
+- Music player remote control
+- WebSocket real-time updates
+- Enhanced authentication system
+
+## 🤝 Contributing
+
+This is Phase 1 of the implementation. Focus areas:
+
+1. **Queue Communication** - Enhance message passing
+2. **Error Handling** - Improve resilience  
+3. **Authentication** - Complete Discord OAuth
+4. **UI/UX** - Enhance dashboard interface
+5. **Testing** - Add integration tests
+
+## 📖 Documentation
+
+- [Architecture Overview](./documentation/plans/01-architecture-overview.md)
+- [Implementation Phases](./documentation/plans/04-implementation-phases.md)
+- [API Design](./documentation/plans/06-api-design.md)
+- [Message Queue Patterns](./documentation/plans/07-message-queue-patterns.md)
 
 ---
 
-## Setup
-
-1. Install the following software.
-
-- [Node.js](https://nodejs.org/) 20.18.1 or higher
-- [FFMPEG](https://ffmpeg.org/)
-- If downloading using Git (clone/fork): [Git-LFS](https://git-lfs.com/)
-
-2. Create your bot application on the [Discord developer portal](https://discord.com/developers/applications)
-
-   - Refer to the [discord.js guide](https://discordjs.guide) for directions. Specifically: [setting up your bot application](https://discordjs.guide/preparations/setting-up-a-bot-application) and then [adding it to server(s)](https://discordjs.guide/preparations/adding-your-bot-to-servers).
-
-   > It is _highly_ recommended to use separate discord bot applications for development and production. It can be difficult to differentiate global (production) commands from guild (development) commands in the discord client.
-
-3. Setup your database of choice.
-
-   - MongoDB is the default. You can easily set up a free instance with [MongoDB Atlas](https://www.mongodb.com/atlas).
-
-   - If you want to use a different database, see [here](https://www.prisma.io/docs/reference/database-reference/supported-databases) for databases supported by Prisma. This will also require some changes to [`prisma/schema.prisma`](prisma/schema.prisma).
-
-4. Download this repository (clone/fork/raw download).
-
-From here, follow the steps for your desired setup:
-
-- [Development environment](#development-environment).
-- [Production environment](#production-environment).
-
-### Development environment
-
-5. Rename/copy [`sample.dev.env`](sample.dev.env) to `dev.env` and set the environment variables as defined in [`src/global.d.ts`](src/global.d.ts)
-
-   - `DISCORD_TOKEN`: Discord bot token (acquired in step 1).
-
-   - `DB_URL` Database URL
-
-     - Unless you modified [`prisma/schema.prisma`](prisma/schema.prisma) to use a different type of database, this should be a [MongoDB URL](https://www.mongodb.com/docs/manual/reference/connection-string/).
-
-   - `CLIENT_ID` Discord bot client ID (acquired in step 1).
-
-   - `TEST_GUILD_ID` guild ID of the server you will use to test this bot.
-
-     - Slash commands will _immediately_ be updated for this server and this server only upon restarting the bot in _developer mode_.
-
-6. Run `npm i` to install dependencies and generate Prisma client files.
-
-7. Run `npm run dev` to start a developer environment instance!
-
-   - Running this for the first time will generate `config.dev.json` if not present.
-
-   - Edit _and_ save any of the files in the `src` directory and the development environment will automatically restart to reflect the changes!
-
-### Production environment
-
-> Pre-configured production Docker image is currently a work in progress. For now, follow steps below.
-
-5. Rename/copy [`sample.env`](sample.env) to `.env` and set the environment variables as defined in [`src/global.d.ts`](src/global.d.ts)
-
-   - `DISCORD_TOKEN`: Discord bot token (acquired in step 1).
-
-   - `DB_URL` Database URL
-
-     - Unless you modified [`prisma/schema.prisma`](prisma/schema.prisma) to use a different type of database, this should be a [MongoDB URL](https://www.mongodb.com/docs/manual/reference/connection-string/).
-
-   - `CLIENT_ID` Discord bot client ID (acquired in step 1).
-
-6. Run `npm i` to install dependencies and generate Prisma client files.
-
-7. Run `npm run build` to transpile the source code for production.
-
-   - Running this for the first time will generate `config.json` if not present.
-
-   - **If this is the first time you have run the bot** or **you are updating the source code**, run `npm run commands:register`_after_ transpilation to register all your commands to any and all servers this bot is in. You may need to run `npm run commands:resetProd` prior to `npm run commands:register` if some old commands are not being removed (Discord states that their servers can take up to an hour to reflect these changes. In experience this takes only a couple minutes).
-
-8. With transpilation complete, you can now delete the `node_modules` folder. Then, run `npm ci --production` to install only the dependencies needed for production, omitting the dependencies only needed for transpilation/development.
-
-   - Changing/updating any files other than `.env` or `config.json` will require you to redo steps 6 and 7.
-
-9. Change the `config.json` file to your liking. See information about how you can change it [here](#configuration-file-properties).
-
-10. Run `npm start` to run the bot!
-
-11. [Optional] Add [PM2](https://www.npmjs.com/package/pm2) or containerize with [Docker](https://docs.docker.com/). Then, deploy to a cloud service ([Heroku](https://www.heroku.com/), [Linode](https://www.linode.com/), [Vultr](https://www.vultr.com/), etc.) or on your own hardware.
-
-## Configuration file properties
-
-- `name`: name of the bot (displayed in some commands).
-
-- `activities`: list of activities the bot will randomly cycle through as its current activity (Exs: "Watching The Fellowship of the Ring", "Listening to Never Gonna Give you Up", etc.).
-
-  - `name`: string after the `type`.
-
-  - `type`: string that can _only_ be one of the following values (case-sensitive).
-
-    - `playing` = Playing `name`
-
-    - `streaming` = Streaming `name`
-
-    - `listening` = Listening to `name`
-
-    - `watching` = Watching `name`
-
-    - `competing` = Competing in `name`
-
-  - `url`: (optional) url link to stream. Only include when `type` is `streaming`.
-
-## References
-
-I did not create the icons used. They are sourced from [here](https://pixabay.com/illustrations/icons-web-development-website-design-2188729/) under [their license](https://pixabay.com/service/license/).
+**Phase 1 Status**: 🚧 **In Development** - Basic infrastructure complete, features in progress 

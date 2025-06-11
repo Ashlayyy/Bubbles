@@ -3,9 +3,9 @@ import { PermissionsBitField } from "discord.js";
 
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
-import Client from "../structures/Client.js";
-import type { CommandPermissionConfig, PermissionCheckResult } from "../structures/PermissionTypes.js";
-import { AuditAction, PermissionLevel } from "../structures/PermissionTypes.js";
+import Client from "./Client.js";
+import type { CommandPermissionConfig, PermissionCheckResult } from "./PermissionTypes.js";
+import { AuditAction, PermissionLevel } from "./PermissionTypes.js";
 
 // Proper TypeScript interfaces for database models
 interface CommandPermissionDB {
