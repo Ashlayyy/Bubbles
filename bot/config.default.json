@@ -2,10 +2,6 @@
   "name": "Bubbles",
   "activities": [
     {
-      "type": "playing",
-      "name": "Squid Game"
-    },
-    {
       "type": "streaming",
       "name": "the best",
       "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -13,22 +9,6 @@
     {
       "type": "listening",
       "name": "Never Gonna Give you Up"
-    },
-    {
-      "type": "playing",
-      "name": "Tech Expansion"
-    },
-    {
-      "type": "competing",
-      "name": "TI"
-    },
-    {
-      "type": "playing",
-      "name": "in vault 111"
-    },
-    {
-      "type": "watching",
-      "name": "Gandhi nuke everyone"
     },
     {
       "type": "watching",
@@ -41,30 +21,9 @@
     {
       "type": "watching",
       "name": "Return of the King"
-    },
-    {
-      "type": "watching",
-      "name": "🐱"
-    },
-    {
-      "type": "playing",
-      "name": "🎸"
-    },
-    {
-      "type": "watching",
-      "name": "🌄"
-    },
-    {
-      "type": "playing",
-      "name": "Skyrim Ultimate Special Legendary VR Anniversary Edition (Switch)"
-    },
-    {
-      "type": "watching",
-      "name": "Lydia block the doorway"
     }
   ],
   "welcome": {
-    "enabled": true,
     "messages": [
       {
         "title": "Welkom in {server}!",
@@ -79,7 +38,6 @@
     ]
   },
   "goodbye": {
-    "enabled": true,
     "messages": [
       {
         "title": "Tot ziens!",

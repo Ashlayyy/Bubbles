@@ -32,6 +32,14 @@ export interface ConfigUpdateJob extends BaseJob {
   configValue: any;
 }
 
+export interface GiveawayJob extends BaseJob {
+  type: 'END_GIVEAWAY' | 'REROLL_GIVEAWAY';
+  giveawayId: string;
+  giveawayDbId: string;
+  messageId: string;
+  channelId: string;
+}
+
 // Bot Event Jobs (Bot -> API)
 export interface DiscordEventJob extends BaseJob {
   type: 'MEMBER_JOIN' | 'MEMBER_LEAVE' | 'MESSAGE_DELETE' | 'MESSAGE_UPDATE' | 'ROLE_UPDATE';
@@ -61,7 +69,7 @@ export interface MusicEventJob extends BaseJob {
 }
 
 // Union types for all jobs
-export type BotCommandJob = SendMessageJob | ModerationActionJob | MusicActionJob | ConfigUpdateJob;
+export type BotCommandJob = SendMessageJob | ModerationActionJob | MusicActionJob | ConfigUpdateJob | GiveawayJob;
 export type BotEventJob = DiscordEventJob | ModerationEventJob | MusicEventJob;
 export type QueueJob = BotCommandJob | BotEventJob;
 

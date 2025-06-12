@@ -1,4 +1,4 @@
-import { ChannelType, SlashCommandBuilder } from "discord.js";
+import { ChannelType, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 
 import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
@@ -6,7 +6,8 @@ import { PermissionLevel } from "../../structures/PermissionTypes.js";
 export default new Command(
   new SlashCommandBuilder()
     .setName("appeals")
-    .setDescription("Configure the appeals system for your server")
+    .setDescription("ADMIN ONLY: Manage user appeals for punishments")
+    .setDefaultMemberPermissions(0)
     .addSubcommand((sub) =>
       sub
         .setName("setup")
@@ -230,8 +231,10 @@ export default new Command(
     }
   },
   {
+    ephemeral: true,
     permissions: {
       level: PermissionLevel.ADMIN,
+      discordPermissions: [PermissionsBitField.Flags.Administrator],
       isConfigurable: true,
     },
   }

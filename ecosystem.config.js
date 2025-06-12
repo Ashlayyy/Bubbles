@@ -1,6 +1,5 @@
 module.exports = {
   apps: [
-    // Shared Package Builder (Build once, then watch for changes)
     {
       name: 'bubbles-shared',
       cwd: './shared',
@@ -21,8 +20,6 @@ module.exports = {
       max_restarts: 10,
       min_uptime: '10s'
     },
-
-    // API Service
     {
       name: 'bubbles-api',
       cwd: './api',
@@ -61,18 +58,15 @@ module.exports = {
         RATE_LIMIT_WINDOW_MS: process.env.RATE_LIMIT_WINDOW_MS,
         RATE_LIMIT_MAX_REQUESTS: process.env.RATE_LIMIT_MAX_REQUESTS
       },
-      watch: false, // nodemon handles this
+      watch: false,
       instances: 1,
       exec_mode: 'fork',
       restart_delay: 3000,
       max_restarts: 10,
       min_uptime: '10s',
-      // Health check
       health_check_url: 'http://localhost:3001/health',
       health_check_grace_period: 3000
     },
-
-    // Discord Bot Service
     {
       name: 'bubbles-bot',
       cwd: './bot',
@@ -101,17 +95,14 @@ module.exports = {
         DEVELOPER_USER_IDS: process.env.DEVELOPER_USER_IDS,
         DB_URL: process.env.DB_URL
       },
-      watch: false, // nodemon handles this
+      watch: false,
       instances: 1,
       exec_mode: 'fork',
       restart_delay: 5000,
       max_restarts: 5,
       min_uptime: '30s',
-      // Bot needs more time to connect to Discord
       kill_timeout: 10000
     },
-
-    // Frontend Development Server
     {
       name: 'bubbles-frontend',
       cwd: './frontend',
@@ -126,7 +117,7 @@ module.exports = {
         NODE_ENV: 'production',
         VITE_API_URL: process.env.VITE_API_URL
       },
-      watch: false, // Vite handles this
+      watch: false,
       instances: 1,
       exec_mode: 'fork',
       restart_delay: 3000,
@@ -135,30 +126,18 @@ module.exports = {
     }
   ],
 
-  // Deployment configurations
   deploy: {
-    // Production environment
     production: {
-      // SSH connection details
       user: 'your-username',
       host: ['your-server-ip-or-domain.com'],
-      
-      // Git repository details
       ref: 'origin/main',
       repo: 'git@github.com:your-username/your-repo.git',
-      
-      // Server paths
       path: '/var/www/bubbles-prod',
       ssh_options: 'StrictHostKeyChecking=no',
-      
       // Specify SSH key (optional)
       // ssh_options: ['StrictHostKeyChecking=no', 'UserKnownHostsFile=/dev/null'],
       // key: '~/.ssh/your-specific-key',
-      
-      // Pre-deployment (runs locally before deployment)
       'pre-deploy-local': 'echo "Starting PRODUCTION deployment..."',
-      
-      // Post-deployment (runs on server after code is pulled)
       'post-deploy': [
         'source ~/.nvm/nvm.sh',
         'nvm use 22',
@@ -168,8 +147,6 @@ module.exports = {
         'pm2 reload ecosystem.config.js --env production --update-env',
         'pm2 save'
       ].join(' && '),
-      
-      // Pre-setup (runs once during initial setup)
       'pre-setup': [
         'sudo apt update',
         'sudo apt install -y curl',
@@ -177,28 +154,18 @@ module.exports = {
       ].join(' && ')
     },
 
-    // Development environment
     development: {
-      // SSH connection details (same server, different path)
       user: 'your-username',
       host: ['your-server-ip-or-domain.com'],
-      
-      // Git repository details
-      ref: 'origin/develop',  // Deploy from develop branch
+      ref: 'origin/develop',
       repo: 'git@github.com:your-username/your-repo.git',
-      
-      // Server paths (separate directory)
       path: '/var/www/bubbles-dev',
       ssh_options: 'StrictHostKeyChecking=no',
       
       // Specify SSH key (optional)
       // ssh_options: ['StrictHostKeyChecking=no', 'UserKnownHostsFile=/dev/null'],
       // key: '~/.ssh/your-specific-key',
-      
-      // Pre-deployment (runs locally before deployment)
       'pre-deploy-local': 'echo "Starting DEVELOPMENT deployment..."',
-      
-      // Post-deployment (runs on server after code is pulled)
       'post-deploy': [
         'source ~/.nvm/nvm.sh',
         'nvm use 22',
@@ -208,8 +175,6 @@ module.exports = {
         'pm2 reload ecosystem.config.js --env development --update-env',
         'pm2 save'
       ].join(' && '),
-      
-      // Pre-setup (runs once during initial setup)
       'pre-setup': [
         'sudo apt update',
         'sudo apt install -y curl',

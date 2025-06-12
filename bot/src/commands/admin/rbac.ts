@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import { prisma } from "../../database/index";
 import Command, { GuildChatInputCommandInteraction } from "../../structures/Command";
 import { PermissionLevel } from "../../structures/PermissionTypes";
@@ -279,8 +279,11 @@ export default new Command(
     }
   },
   {
+    ephemeral: true,
     permissions: {
       level: PermissionLevel.ADMIN,
+      discordPermissions: [PermissionsBitField.Flags.Administrator],
+      isConfigurable: true,
     },
   }
 );

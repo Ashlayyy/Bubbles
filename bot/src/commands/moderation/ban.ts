@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from "discord.js";
+import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
 
 import { prisma } from "../../database/index.js";
 import Command from "../../structures/Command.js";
@@ -8,6 +8,7 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("ban")
     .setDescription("Ban a user from the server")
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers)
     .addUserOption((option) => option.setName("user").setDescription("The user to ban").setRequired(true))
     .addStringOption((option) =>
       option.setName("reason").setDescription("Reason for the ban (or alias name)").setRequired(false)
@@ -103,6 +104,7 @@ export default new Command(
     ephemeral: true,
     permissions: {
       level: PermissionLevel.MODERATOR,
+      discordPermissions: [PermissionsBitField.Flags.BanMembers],
       isConfigurable: true,
     },
   }

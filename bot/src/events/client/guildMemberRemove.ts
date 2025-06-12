@@ -38,7 +38,7 @@ export default new ClientEvent(Events.GuildMemberRemove, async (member: GuildMem
   });
 
   // Continue with goodbye message logic
-  if (!config.goodbye?.enabled || !guildConfig.goodbyeChannelId) return;
+  if (!guildConfig.goodbyeEnabled || !guildConfig.goodbyeChannelId) return;
 
   const goodbyeChannel = member.guild.channels.cache.get(guildConfig.goodbyeChannelId);
   if (!goodbyeChannel || !(goodbyeChannel instanceof TextChannel)) {
@@ -46,7 +46,7 @@ export default new ClientEvent(Events.GuildMemberRemove, async (member: GuildMem
     return;
   }
 
-  const messages = config.goodbye.messages;
+  const messages = config.goodbye?.messages ?? [];
   if (messages.length === 0) return;
 
   const randomMessage = messages[Math.floor(Math.random() * messages.length)];

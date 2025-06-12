@@ -14,6 +14,8 @@ export const defaults: Omit<GuildConfig, "guildId" | "id"> = {
   reactionRoleLogChannelId: null,
   welcomeChannelId: null,
   goodbyeChannelId: null,
+  welcomeEnabled: true,
+  goodbyeEnabled: true,
   // New logging channel fields
   moderationLogChannelId: null,
   memberLogChannelId: null,
@@ -22,6 +24,16 @@ export const defaults: Omit<GuildConfig, "guildId" | "id"> = {
   channelLogChannelId: null,
   voiceLogChannelId: null,
   serverLogChannelId: null,
+  // Ticket system fields
+  ticketChannelId: null,
+  ticketCategoryId: null,
+  useTicketThreads: true,
+  ticketOnCallRoleId: null,
+  ticketSilentClaim: true,
+  // Ticket access control
+  ticketAccessType: null,
+  ticketAccessRoleId: null,
+  ticketAccessPermission: null,
   // Relations
   logSettingsId: null,
   appealSettingsId: null,

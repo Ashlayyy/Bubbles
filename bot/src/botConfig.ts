@@ -25,7 +25,6 @@ export interface ActivityOption {
 }
 
 export interface WelcomeGoodbyeConfig {
-  enabled: boolean;
   messages: {
     title: string;
     description: string;
@@ -62,7 +61,6 @@ interface BotConfigJSON {
 const welcomeGoodbyeSchema: JSONSchemaType<WelcomeGoodbyeConfig> = {
   type: "object",
   properties: {
-    enabled: { type: "boolean" },
     messages: {
       type: "array",
       items: {
@@ -77,7 +75,7 @@ const welcomeGoodbyeSchema: JSONSchemaType<WelcomeGoodbyeConfig> = {
       },
     },
   },
-  required: ["enabled", "messages"],
+  required: ["messages"],
   additionalProperties: false,
 };
 

@@ -71,6 +71,11 @@ export default class PermissionManager {
         }
       }
 
+      // Developer bypass - developers can use any command regardless of permissions
+      if (this.isDeveloper(member.user.id)) {
+        return { allowed: true, bypassedBy: "developer" };
+      }
+
       // Get permission config for this command
       const permissionConfig = await this.getCommandPermission(guildId, commandName);
 
@@ -160,6 +165,11 @@ export default class PermissionManager {
    */
   private async checkDefaultPermissions(member: GuildMember, commandName: string): Promise<PermissionCheckResult> {
     try {
+      // Developer bypass - developers can use any command regardless of permissions
+      if (this.isDeveloper(member.user.id)) {
+        return { allowed: true, bypassedBy: "developer" };
+      }
+
       const client = await Client.get();
       const command = client.commands.get(commandName);
 

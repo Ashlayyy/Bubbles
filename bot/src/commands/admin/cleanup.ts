@@ -1,7 +1,6 @@
-import { SlashCommandBuilder } from "discord.js";
+import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
 
 import { permanentlyDeleteReactionRoles } from "../../database/ReactionRoles.js";
-import logger from "../../logger.js";
 import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
@@ -9,75 +8,52 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("cleanup")
     .setDescription("ADMIN ONLY: Database cleanup operations")
+    .setDefaultMemberPermissions(0)
     .addSubcommand((sub) =>
       sub
         .setName("reaction-roles")
-        .setDescription("Permanently delete soft-deleted reaction roles")
-        .addIntegerOption((opt) =>
+        .setDescription("Permanently delete reaction roles for messages that no longer exist")
+        .addBooleanOption((opt) =>
           opt
-            .setName("days")
-            .setDescription("Delete records older than this many days (default: 30)")
-            .setMinValue(1)
-            .setMaxValue(365)
+            .setName("dry-run")
+            .setDescription("Show what would be deleted without actually deleting")
+            .setRequired(false)
         )
-    )
-    .addSubcommand((sub) => sub.setName("status").setDescription("Show cleanup statistics")),
+    ),
 
-  async (_client, interaction) => {
+  async (client, interaction) => {
     if (!interaction.isChatInputCommand()) return;
     await interaction.deferReply({ ephemeral: true });
 
     const subcommand = interaction.options.getSubcommand();
 
-    try {
-      switch (subcommand) {
-        case "reaction-roles": {
-          const days = interaction.options.getInteger("days") ?? 30;
+    if (subcommand === "reaction-roles") {
+      const dryRun = interaction.options.getBoolean("dry-run") ?? false;
 
-          try {
-            const result = await permanentlyDeleteReactionRoles(interaction.guildId, days);
-
-            await interaction.followUp({
-              content: `✅ Cleanup completed!\n• Permanently deleted ${result.count.toString()} reaction role records\n• Records older than ${days.toString()} days were removed`,
-            });
-
-            logger.info(
-              `Cleaned up ${result.count.toString()} reaction role records for guild ${interaction.guildId} (older than ${days.toString()} days)`
-            );
-          } catch (error) {
-            logger.error("Error during reaction role cleanup:", error);
-            await interaction.followUp({
-              content: "❌ Error occurred during cleanup. Check logs for details.",
-            });
-          }
-          break;
-        }
-
-        case "status": {
-          // TODO: Add cleanup status information
+      try {
+        if (dryRun) {
           await interaction.followUp({
-            content: "📊 Cleanup status information will be available in a future update.",
+            content: "🔍 **Dry run mode** - Checking for reaction roles to clean up...",
           });
-          break;
-        }
-
-        default: {
+          // Add dry run logic here
+        } else {
+          const result = await permanentlyDeleteReactionRoles(interaction.guildId);
           await interaction.followUp({
-            content: "❌ Unknown cleanup operation",
+            content: `🧹 **Cleanup completed!** Deleted ${result.count.toString()} reaction role(s) for messages that no longer exist.`,
           });
         }
+      } catch (error) {
+        await interaction.followUp({
+          content: `❌ Error during cleanup: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
       }
-    } catch (error) {
-      logger.error("Error in cleanup command:", error);
-      await interaction.followUp({
-        content: "❌ An unexpected error occurred during cleanup.",
-      });
     }
   },
   {
     ephemeral: true,
     permissions: {
       level: PermissionLevel.ADMIN,
+      discordPermissions: [PermissionsBitField.Flags.Administrator],
       isConfigurable: true,
     },
   }

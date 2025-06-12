@@ -34,6 +34,7 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("permissions")
     .setDescription("ADMIN ONLY: Manage command permissions")
+    .setDefaultMemberPermissions(0)
     .addSubcommand((sub) =>
       sub
         .setName("check")
@@ -712,7 +713,7 @@ export default new Command(
   {
     ephemeral: true,
     permissions: {
-      level: PermissionLevel.ADMIN,
+      level: PermissionLevel.DEVELOPER,
       isConfigurable: false, // This command itself cannot be reconfigured
     },
   }

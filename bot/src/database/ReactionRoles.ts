@@ -216,8 +216,12 @@ export async function logReactionRoleAction(
 
   return await prisma.reactionRoleLog.create({
     data: {
-      ...data,
-      reactionRoleId: reactionRole.id,
+      guildId: data.guildId,
+      userId: data.userId,
+      messageId: data.messageId,
+      emoji: data.emoji,
+      roleId: data.roleIds[0], // Use first role ID
+      action: data.action === "ADDED" ? "ADD" : "REMOVE",
     },
   });
 }

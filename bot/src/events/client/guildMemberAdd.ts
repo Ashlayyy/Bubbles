@@ -40,7 +40,7 @@ export default new ClientEvent(Events.GuildMemberAdd, async (member: GuildMember
   });
 
   // Continue with welcome message logic
-  if (!config.welcome?.enabled || !guildConfig.welcomeChannelId) return;
+  if (!guildConfig.welcomeEnabled || !guildConfig.welcomeChannelId) return;
 
   const welcomeChannel = member.guild.channels.cache.get(guildConfig.welcomeChannelId);
   if (!welcomeChannel || !(welcomeChannel instanceof TextChannel)) {
@@ -48,7 +48,7 @@ export default new ClientEvent(Events.GuildMemberAdd, async (member: GuildMember
     return;
   }
 
-  const messages = config.welcome.messages;
+  const messages = config.welcome?.messages ?? [];
   if (messages.length === 0) return;
 
   const randomMessage = messages[Math.floor(Math.random() * messages.length)];

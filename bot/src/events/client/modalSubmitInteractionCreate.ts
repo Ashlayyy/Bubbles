@@ -1,5 +1,6 @@
 import { EmbedBuilder, ModalSubmitInteraction, type Interaction } from "discord.js";
 import { createReactionRole, createReactionRoleMessage } from "../../database/ReactionRoles.js";
+import { handleTicketModalSubmit } from "../../functions/discord/ticketManager.js";
 import logger from "../../logger.js";
 import { ClientEvent } from "../../structures/Event.js";
 
@@ -149,6 +150,11 @@ async function handleAddReactionRole(interaction: ModalSubmitInteraction, messag
 
 export default new ClientEvent("interactionCreate", async (interaction: Interaction) => {
   if (!interaction.isModalSubmit()) return;
+
+  if (interaction.customId.startsWith("ticket_create_")) {
+    await handleTicketModalSubmit(interaction);
+    return;
+  }
 
   if (interaction.customId === "reaction-role-create-modal") {
     await handleReactionRoleCreate(interaction);

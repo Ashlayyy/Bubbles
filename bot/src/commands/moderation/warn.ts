@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from "discord.js";
+import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
 
 import { prisma } from "../../database/index.js";
 import Command from "../../structures/Command.js";
@@ -8,6 +8,7 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("warn")
     .setDescription("Warn a user")
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
     .addUserOption((option) => option.setName("user").setDescription("The user to warn").setRequired(true))
     .addStringOption((option) => option.setName("reason").setDescription("Reason for the warning").setRequired(true))
     .addStringOption((option) =>
@@ -98,6 +99,7 @@ export default new Command(
   {
     permissions: {
       level: PermissionLevel.MODERATOR,
+      discordPermissions: [PermissionsBitField.Flags.ModerateMembers],
       isConfigurable: true,
     },
   }

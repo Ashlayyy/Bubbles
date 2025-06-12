@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from "discord.js";
+import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
 
 import { prisma } from "../../database/index.js";
 import Command from "../../structures/Command.js";
@@ -8,6 +8,7 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("unban")
     .setDescription("Unban a user from the server")
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers)
     .addStringOption((option) =>
       option.setName("user").setDescription("User ID or username to unban").setRequired(true)
     )
@@ -140,6 +141,7 @@ export default new Command(
   {
     permissions: {
       level: PermissionLevel.MODERATOR,
+      discordPermissions: [PermissionsBitField.Flags.BanMembers],
       isConfigurable: true,
     },
   }
