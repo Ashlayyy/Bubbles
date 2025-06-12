@@ -129,7 +129,7 @@ async function handleUserSubcommand(interaction: GuildChatInputCommandInteractio
   switch (subcommand) {
     case "assign_role": {
       const existingAssignment = await prisma.customRoleAssignment.findUnique({
-        where: { userId_roleId: { userId: user.id, roleId: role.id } },
+        where: { guildId_userId_roleId: { guildId, userId: user.id, roleId: role.id } },
       });
       if (existingAssignment) {
         await interaction.followUp(`❌ User <@${user.id}> already has the role \`${roleName}\`.`);
@@ -148,7 +148,7 @@ async function handleUserSubcommand(interaction: GuildChatInputCommandInteractio
     }
     case "unassign_role": {
       const existingAssignment = await prisma.customRoleAssignment.findUnique({
-        where: { userId_roleId: { userId: user.id, roleId: role.id } },
+        where: { guildId_userId_roleId: { guildId, userId: user.id, roleId: role.id } },
       });
       if (!existingAssignment) {
         await interaction.followUp(`❌ User <@${user.id}> does not have the role \`${roleName}\`.`);

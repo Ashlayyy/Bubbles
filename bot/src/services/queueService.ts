@@ -1,9 +1,4 @@
-import type {
-  ConfigUpdateJob,
-  GiveawayJob,
-  ModerationActionJob,
-  MusicActionJob,
-} from "../../../shared/src/types/queue.js";
+import type { ConfigUpdateJob, ModerationActionJob, MusicActionJob } from "../../../shared/src/types/queue.js";
 import { QUEUE_NAMES } from "../../../shared/src/types/queue.js";
 import logger from "../logger.js";
 import queueManager from "../queue/manager.js";
@@ -26,7 +21,7 @@ export class QueueService {
 
     const job = {
       ...data,
-      id: `mod-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `mod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       timestamp: Date.now(),
     };
 
@@ -44,7 +39,7 @@ export class QueueService {
 
     const job = {
       ...data,
-      id: `music-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `music-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       timestamp: Date.now(),
     };
 
@@ -62,32 +57,12 @@ export class QueueService {
 
     const job = {
       ...data,
-      id: `config-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `config-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       timestamp: Date.now(),
     };
 
     await queue.add("config-update", job);
     logger.info(`Added config update job: ${job.configKey}`);
-
-    return job.id;
-  }
-
-  /**
-   * Add a giveaway job to the queue
-   */
-  async addGiveawayJob(data: Omit<GiveawayJob, "id" | "timestamp">, options?: { delay?: number }): Promise<string> {
-    const queue = queueManager.getQueue(QUEUE_NAMES.BOT_COMMANDS);
-
-    const job = {
-      ...data,
-      id: `giveaway-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: Date.now(),
-    };
-
-    await queue.add("giveaway", job, {
-      delay: options?.delay || 0,
-    });
-    logger.info(`Added giveaway job: ${job.type} for giveaway ${job.giveawayId}`);
 
     return job.id;
   }

@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import type { EmbedBuilder, TextChannel } from "discord.js";
+import type { EmbedBuilder, TextChannel, User } from "discord.js";
 import { EmbedBuilder as DiscordEmbedBuilder } from "discord.js";
 
 import { prisma } from "../database/index.js";
@@ -8,6 +8,26 @@ import type Client from "./Client.js";
 
 // Log types organized by category for easy management
 export const LOG_CATEGORIES = {
+  HIGH_VOLUME: [
+    // Voice self-actions & media
+    "VOICE_SELF_MUTE",
+    "VOICE_SELF_UNMUTE",
+    "VOICE_SELF_DEAFEN",
+    "VOICE_SELF_UNDEAFEN",
+    "VOICE_START_STREAM",
+    "VOICE_STOP_STREAM",
+    "VOICE_START_VIDEO",
+    "VOICE_STOP_VIDEO",
+
+    // Reaction spam
+    "MESSAGE_REACTION_ADD",
+    "MESSAGE_REACTION_REMOVE",
+
+    // Presence & status changes
+    "MEMBER_STATUS_CHANGE",
+    "MEMBER_COME_ONLINE",
+    "MEMBER_GO_OFFLINE",
+  ],
   MESSAGE: [
     "MESSAGE_CREATE",
     "MESSAGE_DELETE",
@@ -198,7 +218,6 @@ export const LOG_CATEGORIES = {
   TICKET: ["TICKET_CREATE", "TICKET_CLOSE", "TICKET_CLAIM", "TICKET_CONFIG_CHANGE", "TICKET_PANEL_CREATE"],
   COMMAND: ["COMMAND_USERINFO", "COMMAND_SERVERINFO", "COMMAND_AVATAR"],
   POLL: ["POLL_CREATE", "POLL_END"],
-  GIVEAWAY: ["GIVEAWAY_CREATE", "GIVEAWAY_END", "GIVEAWAY_REROLL", "GIVEAWAY_ENTRY"],
   THREAD: ["THREAD_CREATE", "THREAD_DELETE", "THREAD_UPDATE"],
   SCHEDULED_EVENT: ["SCHEDULED_EVENT_CREATE", "SCHEDULED_EVENT_UPDATE"],
   USER: ["USER_UPDATE"],
@@ -287,8 +306,12 @@ export default class LogManager {
       if (data.channelId && settings.ignoredChannels.includes(data.channelId)) return;
       if (data.roleId && settings.ignoredRoles.includes(data.roleId)) return;
 
-      // Create the log entry in database
-      const logEntry = await this.createLogEntry(guildId, logType, data);
+      // Create the log entry – but skip the DB write for high-volume events to save space
+      const isHighVolume = new Set<string>(LOG_CATEGORIES.HIGH_VOLUME as readonly string[]).has(logType);
+
+      const logEntry = isHighVolume
+        ? this.createStubLogEntry(guildId, logType, data)
+        : await this.createLogEntry(guildId, logType, data);
 
       // Send to appropriate channel(s)
       await this.sendToLogChannels(guildId, logType, logEntry, settings);
@@ -310,7 +333,8 @@ export default class LogManager {
       });
 
       const logSettings: LogSettings = {
-        channelRouting: settings?.channelRouting as Record<string, string>,
+        // Ensure we always return a real object for channelRouting to avoid undefined errors
+        channelRouting: (settings?.channelRouting as Record<string, string> | null) ?? {},
         ignoredUsers: settings?.ignoredUsers ?? [],
         ignoredRoles: settings?.ignoredRoles ?? [],
         ignoredChannels: settings?.ignoredChannels ?? [],
@@ -363,6 +387,30 @@ export default class LogManager {
   }
 
   /**
+   * Build an in-memory LogEntry object (not persisted) for events we don't want to store.
+   */
+  private createStubLogEntry(guildId: string, logType: string, data: Partial<LogEvent>): LogEntry {
+    return {
+      id: `stub_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      guildId,
+      logType,
+      userId: data.userId ?? null,
+      channelId: data.channelId ?? null,
+      roleId: data.roleId ?? null,
+      caseId: data.caseId ?? null,
+      before: data.before ?? null,
+      after: data.after ?? null,
+      metadata: data.metadata ?? null,
+      content: data.content ?? null,
+      attachments: data.attachments ?? [],
+      embeds: data.embeds ?? [],
+      executorId: data.executorId ?? null,
+      reason: data.reason ?? null,
+      timestamp: new Date(),
+    } as LogEntry;
+  }
+
+  /**
    * Send log message to appropriate channels
    */
   private async sendToLogChannels(guildId: string, logType: string, logEntry: LogEntry, settings: LogSettings) {
@@ -375,8 +423,18 @@ export default class LogManager {
       const channel = await this.client.channels.fetch(channelId);
       if (!channel?.isTextBased()) return;
 
-      // Create embed
-      const embed = this.createLogEmbed(logType, logEntry);
+      // Try to fetch full user object for richer embed details
+      let user: User | undefined;
+      if (logEntry.userId) {
+        try {
+          user = await this.client.users.fetch(logEntry.userId);
+        } catch {
+          // Ignore fetch errors and proceed without user data
+        }
+      }
+
+      // Create embed with optional user information
+      const embed = this.createLogEmbed(logType, logEntry, user);
 
       // Send the log message
       await (channel as TextChannel).send({ embeds: [embed] });
@@ -389,15 +447,15 @@ export default class LogManager {
    * Determine which channel to send log to
    */
   private getLogChannelId(guildId: string, logType: string, settings: LogSettings): string | null {
-    // Check specific routing first
-    if (settings.channelRouting[logType]) {
-      return settings.channelRouting[logType];
-    }
-
-    // Fall back to category-based routing
+    // Prioritize category-based routing
     const category = this.getLogCategory(logType);
     if (category && settings.channelRouting[category]) {
       return settings.channelRouting[category];
+    }
+
+    // Fall back to specific event routing (for backward compatibility)
+    if (settings.channelRouting[logType]) {
+      return settings.channelRouting[logType];
     }
 
     // Fall back to default channels from GuildConfig
@@ -428,7 +486,7 @@ export default class LogManager {
   /**
    * Create a beautiful embed for the log entry
    */
-  private createLogEmbed(logType: string, logEntry: LogEntry): EmbedBuilder {
+  private createLogEmbed(logType: string, logEntry: LogEntry, user?: User): EmbedBuilder {
     const embed = new DiscordEmbedBuilder().setTimestamp(logEntry.timestamp).setFooter({
       text: `Log ID: ${logEntry.id} • ${new Date().toLocaleString()}`,
       iconURL: this.client.user?.displayAvatarURL(),
@@ -444,24 +502,32 @@ export default class LogManager {
     embed.setTitle(`${emoji} ${title}`);
     if (description) embed.setDescription(description);
 
-    // Add author field with user info if available (synchronously)
-    if (logEntry.userId) {
+    // Add author field with user info if available
+    if (user) {
+      embed.setAuthor({
+        name: `${user.username} (${user.id})`,
+        iconURL: user.displayAvatarURL({ size: 64 }),
+      });
+
+      // Extra user details
+      const createdTs = Math.floor(user.createdTimestamp / 1000);
+      embed.addFields(
+        {
+          name: "🆔 User",
+          value: `<@${user.id}> (\`${user.id}\`)`,
+          inline: true,
+        },
+        {
+          name: "📆 Account Created",
+          value: `<t:${createdTs}:R>`,
+          inline: true,
+        }
+      );
+    } else if (logEntry.userId) {
+      // Fallback if user object not available
       embed.setAuthor({
         name: `User ID: ${logEntry.userId}`,
       });
-
-      // Try to fetch user info asynchronously and update later if needed
-      this.client.users
-        .fetch(logEntry.userId)
-        .then((user) => {
-          embed.setAuthor({
-            name: `${user.username} (${user.id})`,
-            iconURL: user.displayAvatarURL({ size: 64 }),
-          });
-        })
-        .catch(() => {
-          // Keep the basic author info if fetch fails
-        });
     }
 
     // Add comprehensive fields based on available data
@@ -611,12 +677,15 @@ export default class LogManager {
           emoji: "📝",
         };
 
-      case "CHANNEL_DELETE":
+      case "CHANNEL_DELETE": {
+        const metadata = logEntry.metadata as { channelName?: string } | undefined;
+        const channelName = metadata?.channelName ?? "unknown";
         return {
           title: "Channel Deleted",
-          description: `A channel was deleted`,
+          description: `Channel #${channelName} was deleted`,
           emoji: "🗑️",
         };
+      }
 
       case "VOICE_JOIN":
         return {
@@ -680,10 +749,10 @@ export default class LogManager {
       });
     }
 
-    // Moderator/Executor information
+    // Executor information
     if (logEntry.executorId) {
       embed.addFields({
-        name: "👮 Moderator",
+        name: "👤 Person",
         value: `<@${logEntry.executorId}> (\`${logEntry.executorId}\`)`,
         inline: true,
       });
@@ -708,7 +777,22 @@ export default class LogManager {
     }
 
     // Content for message-related logs
-    if (logEntry.content && logEntry.content.length > 0) {
+    if (logType === "MESSAGE_DELETE" || logType === "MESSAGE_BULK_DELETE") {
+      // For deleted messages, always show content field (even if empty)
+      const content =
+        logEntry.content && logEntry.content.length > 0
+          ? logEntry.content.length > 1000
+            ? `${logEntry.content.substring(0, 1000)}...`
+            : logEntry.content
+          : "[No content or empty message]";
+
+      embed.addFields({
+        name: "💬 Content",
+        value: `\`\`\`${content}\`\`\``,
+        inline: false,
+      });
+    } else if (logEntry.content && logEntry.content.length > 0) {
+      // For other log types, only show if content exists
       const content = logEntry.content.length > 1000 ? `${logEntry.content.substring(0, 1000)}...` : logEntry.content;
       embed.addFields({
         name: "💬 Content",
@@ -836,7 +920,53 @@ export default class LogManager {
   }
 
   /**
+   * Set up category-based logging
+   * This is the preferred way to configure logging channels
+   */
+  async setupCategoryLogging(guildId: string, categoryMappings: Record<string, string>) {
+    try {
+      // Get current settings
+      const currentSettings = await this.getLogSettings(guildId);
+
+      // Create a new routing object that only includes category mappings
+      const newRouting: Record<string, string> = {};
+
+      // Add all category mappings
+      for (const [category, channelId] of Object.entries(categoryMappings)) {
+        if (category in LOG_CATEGORIES) {
+          newRouting[category] = channelId;
+        }
+      }
+
+      // Update settings with the new category-based routing
+      await prisma.logSettings.upsert({
+        where: { guildId },
+        update: {
+          channelRouting: newRouting,
+        },
+        create: {
+          guildId,
+          channelRouting: newRouting,
+          enabledLogTypes: ALL_LOG_TYPES,
+          ignoredUsers: [],
+          ignoredRoles: [],
+          ignoredChannels: [],
+        },
+      });
+
+      // Clear cache
+      this.settingsCache.delete(guildId);
+
+      return true;
+    } catch (error) {
+      logger.error("Error setting up category logging:", error);
+      return false;
+    }
+  }
+
+  /**
    * Easy setup method for initial configuration
+   * @deprecated Use setupCategoryLogging instead
    */
   async setupBasicLogging(guildId: string, channelMappings: Record<string, string>) {
     try {
@@ -930,7 +1060,7 @@ export default class LogManager {
         where: { guildId },
       });
 
-      const currentRouting = settings?.channelRouting as Record<string, string>;
+      const currentRouting = (settings?.channelRouting ?? {}) as Record<string, string>;
       const updatedRouting = { ...currentRouting, ...routing };
 
       await prisma.logSettings.upsert({

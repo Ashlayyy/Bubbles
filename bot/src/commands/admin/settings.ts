@@ -33,16 +33,8 @@ const { kebabCase, camelCase } = lodash;
 /** Omit `greetings` from `GuildConfig` */
 const guildConfigSettings = Object.keys(guildConfigDefaults).filter((setting) => setting !== "greetings");
 
-// High-volume events that can spam channels
-const HIGH_VOLUME_EVENTS = [
-  "PRESENCE_UPDATE",
-  "TYPING_START",
-  "VOICE_STREAM_START",
-  "VOICE_STREAM_STOP",
-  "MESSAGE_REACTION_ADD",
-  "MESSAGE_REACTION_REMOVE",
-  "MEMBER_STATUS_CHANGE",
-];
+// High-volume events ⇒ single source of truth
+const HIGH_VOLUME_EVENTS = [...LOG_CATEGORIES.HIGH_VOLUME];
 
 // Base slash command builder
 const builder = new SlashCommandBuilder()
@@ -788,8 +780,31 @@ async function handleSetupLogging(client: Client, interaction: GuildChatInputCom
     }
 
     if (Object.keys(channelRouting).length > 0) {
-      // Setup logging with the LogManager
-      await client.logManager.setupBasicLogging(interaction.guild.id, channelRouting);
+      // Convert to category-based routing
+      const categoryRouting: Record<string, string> = {};
+
+      // Map channels to their categories
+      if (channelRouting.MEMBER_BAN) {
+        categoryRouting.MODERATION = channelRouting.MEMBER_BAN;
+      }
+      if (channelRouting.MEMBER_JOIN) {
+        categoryRouting.MEMBER = channelRouting.MEMBER_JOIN;
+      }
+      if (channelRouting.MESSAGE_DELETE) {
+        categoryRouting.MESSAGE = channelRouting.MESSAGE_DELETE;
+      }
+      if (channelRouting.CHANNEL_CREATE) {
+        categoryRouting.CHANNEL = channelRouting.CHANNEL_CREATE;
+        categoryRouting.ROLE = channelRouting.CHANNEL_CREATE;
+        categoryRouting.SERVER = channelRouting.CHANNEL_CREATE;
+        categoryRouting.INVITE = channelRouting.CHANNEL_CREATE;
+      }
+      if (channelRouting.VOICE_JOIN) {
+        categoryRouting.VOICE = channelRouting.VOICE_JOIN;
+      }
+
+      // Setup logging with the LogManager using category-based routing
+      await client.logManager.setupCategoryLogging(interaction.guild.id, categoryRouting);
       await client.logManager.enableAllLogTypes(interaction.guild.id);
     }
 
@@ -807,15 +822,15 @@ async function handleSetModerationLogChannel(client: Client, interaction: GuildC
   const channel = interaction.options.getChannel("channel", true);
 
   try {
-    // Get moderation log types from LogManager
+    // Set up category-based routing for MODERATION
+    const categoryRouting: Record<string, string> = {
+      MODERATION: channel.id,
+    };
+
+    await client.logManager.setupCategoryLogging(interaction.guild.id, categoryRouting);
+
+    // Get the number of event types in this category
     const moderationTypes = LOG_CATEGORIES.MODERATION;
-    const channelRouting: Record<string, string> = {};
-
-    moderationTypes.forEach((logType: string) => {
-      channelRouting[logType] = channel.id;
-    });
-
-    await client.logManager.setChannelRouting(interaction.guild.id, channelRouting);
 
     await interaction.reply({
       content: `✅ **Moderation logs configured!**\n\n📍 Channel: <#${channel.id}>\n🔍 **${moderationTypes.length.toString()}** moderation event types will be logged here.\n\n📋 *Includes: bans, kicks, warns, timeouts, and other moderation actions.*`,
@@ -835,14 +850,15 @@ async function handleSetMemberLogChannel(client: Client, interaction: GuildChatI
   const channel = interaction.options.getChannel("channel", true);
 
   try {
+    // Set up category-based routing for MEMBER
+    const categoryRouting: Record<string, string> = {
+      MEMBER: channel.id,
+    };
+
+    await client.logManager.setupCategoryLogging(interaction.guild.id, categoryRouting);
+
+    // Get the number of event types in this category
     const memberTypes = LOG_CATEGORIES.MEMBER;
-    const channelRouting: Record<string, string> = {};
-
-    memberTypes.forEach((logType: string) => {
-      channelRouting[logType] = channel.id;
-    });
-
-    await client.logManager.setChannelRouting(interaction.guild.id, channelRouting);
 
     await interaction.reply({
       content: `✅ **Member logs configured!**\n\n📍 Channel: <#${channel.id}>\n🔍 **${memberTypes.length.toString()}** member event types will be logged here.\n\n👥 *Includes: joins, leaves, role changes, nickname changes, and more.*`,
@@ -862,14 +878,15 @@ async function handleSetMessageLogChannel(client: Client, interaction: GuildChat
   const channel = interaction.options.getChannel("channel", true);
 
   try {
+    // Set up category-based routing for MESSAGE
+    const categoryRouting: Record<string, string> = {
+      MESSAGE: channel.id,
+    };
+
+    await client.logManager.setupCategoryLogging(interaction.guild.id, categoryRouting);
+
+    // Get the number of event types in this category
     const messageTypes = LOG_CATEGORIES.MESSAGE;
-    const channelRouting: Record<string, string> = {};
-
-    messageTypes.forEach((logType) => {
-      channelRouting[logType] = channel.id;
-    });
-
-    await client.logManager.setChannelRouting(interaction.guild.id, channelRouting);
 
     await interaction.reply({
       content: `✅ **Message logs configured!**\n\n📍 Channel: <#${channel.id}>\n🔍 **${messageTypes.length.toString()}** message event types will be logged here.\n\n💬 *Includes: edits, deletes, reactions, pins, and more.*`,
@@ -889,19 +906,23 @@ async function handleSetServerLogChannel(client: Client, interaction: GuildChatI
   const channel = interaction.options.getChannel("channel", true);
 
   try {
+    // Set up category-based routing for server-related categories
+    const categoryRouting: Record<string, string> = {
+      SERVER: channel.id,
+      CHANNEL: channel.id,
+      ROLE: channel.id,
+      INVITE: channel.id,
+    };
+
+    await client.logManager.setupCategoryLogging(interaction.guild.id, categoryRouting);
+
+    // Get the number of event types in these categories
     const serverTypes = [
       ...LOG_CATEGORIES.SERVER,
       ...LOG_CATEGORIES.CHANNEL,
       ...LOG_CATEGORIES.ROLE,
       ...LOG_CATEGORIES.INVITE,
     ];
-    const channelRouting: Record<string, string> = {};
-
-    serverTypes.forEach((logType) => {
-      channelRouting[logType] = channel.id;
-    });
-
-    await client.logManager.setChannelRouting(interaction.guild.id, channelRouting);
 
     await interaction.reply({
       content: `✅ **Server logs configured!**\n\n📍 Channel: <#${channel.id}>\n🔍 **${serverTypes.length.toString()}** server event types will be logged here.\n\n🔧 *Includes: channels, roles, server settings, invites, and more.*`,
@@ -921,14 +942,15 @@ async function handleSetVoiceLogChannel(client: Client, interaction: GuildChatIn
   const channel = interaction.options.getChannel("channel", true);
 
   try {
+    // Set up category-based routing for VOICE
+    const categoryRouting: Record<string, string> = {
+      VOICE: channel.id,
+    };
+
+    await client.logManager.setupCategoryLogging(interaction.guild.id, categoryRouting);
+
+    // Get the number of event types in this category
     const voiceTypes = LOG_CATEGORIES.VOICE;
-    const channelRouting: Record<string, string> = {};
-
-    voiceTypes.forEach((logType) => {
-      channelRouting[logType] = channel.id;
-    });
-
-    await client.logManager.setChannelRouting(interaction.guild.id, channelRouting);
 
     await interaction.reply({
       content: `✅ **Voice logs configured!**\n\n📍 Channel: <#${channel.id}>\n🔍 **${voiceTypes.length.toString()}** voice event types will be logged here.\n\n🎵 *Includes: joins, leaves, mutes, unmutes, streaming, and more.*`,
@@ -951,13 +973,12 @@ async function handleHighVolumeEvents(client: Client, interaction: GuildChatInpu
   try {
     switch (action) {
       case "enable": {
-        const channelRouting: Record<string, string> = {};
-
         if (separateChannel) {
-          HIGH_VOLUME_EVENTS.forEach((logType) => {
-            channelRouting[logType] = separateChannel.id;
-          });
-          await client.logManager.setChannelRouting(interaction.guild.id, channelRouting);
+          // Create a HIGH_VOLUME category mapping
+          const categoryRouting: Record<string, string> = {
+            HIGH_VOLUME: separateChannel.id,
+          };
+          await client.logManager.setupCategoryLogging(interaction.guild.id, categoryRouting);
         }
 
         await client.logManager.enableLogTypes(interaction.guild.id, HIGH_VOLUME_EVENTS);

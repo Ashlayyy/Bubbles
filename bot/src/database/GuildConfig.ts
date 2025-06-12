@@ -34,6 +34,7 @@ export const defaults: Omit<GuildConfig, "guildId" | "id"> = {
   ticketAccessType: null,
   ticketAccessRoleId: null,
   ticketAccessPermission: null,
+  ticketLogChannelId: null,
   // Relations
   logSettingsId: null,
   appealSettingsId: null,

@@ -4,7 +4,6 @@ import type Client from "../structures/Client.js";
 import queueManager from "./manager.js";
 import { BaseProcessor } from "./processors/BaseProcessor.js";
 import { ConfigProcessor } from "./processors/ConfigProcessor.js";
-import { GiveawayProcessor } from "./processors/GiveawayProcessor.js";
 import { ModerationProcessor } from "./processors/ModerationProcessor.js";
 import { MusicProcessor } from "./processors/MusicProcessor.js";
 
@@ -23,7 +22,6 @@ export class QueueProcessor {
       new ModerationProcessor(this.client),
       new MusicProcessor(this.client),
       new ConfigProcessor(this.client),
-      new GiveawayProcessor(this.client),
     ];
   }
 

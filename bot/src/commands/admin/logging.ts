@@ -1,71 +1,25 @@
-import { ChannelType, SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
 
 import Command from "../../structures/Command.js";
 import { LOG_CATEGORIES } from "../../structures/LogManager.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 export default new Command(
   new SlashCommandBuilder()
     .setName("logging")
     .setDescription("Configure comprehensive server logging")
+    .addSubcommand((sub) => sub.setName("status").setDescription("View current logging configuration"))
     .addSubcommand((sub) =>
       sub
-        .setName("setup")
-        .setDescription("Quick setup with common log channels")
-        .addChannelOption((opt) =>
+        .setName("enable")
+        .setDescription("Enable all standard log types (optionally include high-volume events)")
+        .addBooleanOption((opt) =>
           opt
-            .setName("moderation")
-            .setDescription("Channel for moderation logs (bans, kicks, warns)")
-            .addChannelTypes(ChannelType.GuildText)
-            .setRequired(false)
-        )
-        .addChannelOption((opt) =>
-          opt
-            .setName("members")
-            .setDescription("Channel for member activity (joins, leaves, role changes)")
-            .addChannelTypes(ChannelType.GuildText)
-            .setRequired(false)
-        )
-        .addChannelOption((opt) =>
-          opt
-            .setName("messages")
-            .setDescription("Channel for message logs (edits, deletes)")
-            .addChannelTypes(ChannelType.GuildText)
-            .setRequired(false)
-        )
-        .addChannelOption((opt) =>
-          opt
-            .setName("voice")
-            .setDescription("Channel for voice activity logs")
-            .addChannelTypes(ChannelType.GuildText)
-            .setRequired(false)
-        )
-        .addChannelOption((opt) =>
-          opt
-            .setName("server")
-            .setDescription("Channel for server changes (channels, roles, settings)")
-            .addChannelTypes(ChannelType.GuildText)
+            .setName("include_high_volume")
+            .setDescription("Also enable high-volume / spam-prone events")
             .setRequired(false)
         )
     )
-    .addSubcommand((sub) => sub.setName("status").setDescription("View current logging configuration"))
-    .addSubcommand((sub) => sub.setName("enable").setDescription("Enable all log types"))
-    .addSubcommand((sub) => sub.setName("disable").setDescription("Disable all logging"))
-    .addSubcommand((sub) =>
-      sub
-        .setName("channel")
-        .setDescription("Set specific log type to a channel")
-        .addStringOption((opt) =>
-          opt.setName("logtype").setDescription("The log type to configure").setRequired(true).setAutocomplete(true)
-        )
-        .addChannelOption((opt) =>
-          opt
-            .setName("channel")
-            .setDescription("The channel to send logs to")
-            .addChannelTypes(ChannelType.GuildText)
-            .setRequired(true)
-        )
-    ),
+    .addSubcommand((sub) => sub.setName("disable").setDescription("Disable all logging")),
 
   async (client, interaction) => {
     if (!interaction.isChatInputCommand() || !interaction.guild) return;
@@ -75,72 +29,6 @@ export default new Command(
 
     try {
       switch (subcommand) {
-        case "setup": {
-          const channels = {
-            moderation: interaction.options.getChannel("moderation"),
-            members: interaction.options.getChannel("members"),
-            messages: interaction.options.getChannel("messages"),
-            voice: interaction.options.getChannel("voice"),
-            server: interaction.options.getChannel("server"),
-          };
-
-          // Build channel routing
-          const channelRouting: Record<string, string> = {};
-
-          if (channels.moderation) {
-            // Route all moderation logs to moderation channel
-            const modTypes = ["MOD_CASE_CREATE", "MOD_WARN_ISSUED", "MEMBER_BAN", "MEMBER_KICK", "MEMBER_TIMEOUT"];
-            modTypes.forEach((type) => (channelRouting[type] = channels.moderation?.id ?? ""));
-          }
-
-          if (channels.members) {
-            // Route member activity to members channel
-            const memberTypes = [
-              "MEMBER_JOIN",
-              "MEMBER_LEAVE",
-              "MEMBER_ROLE_ADD",
-              "MEMBER_ROLE_REMOVE",
-              "MEMBER_NICKNAME_CHANGE",
-            ];
-            const membersChannelId = channels.members.id;
-            memberTypes.forEach((type) => (channelRouting[type] = membersChannelId));
-          }
-
-          if (channels.messages) {
-            // Route message logs to messages channel
-            const messageTypes = ["MESSAGE_DELETE", "MESSAGE_EDIT", "MESSAGE_BULK_DELETE"];
-            const messagesChannelId = channels.messages.id;
-            messageTypes.forEach((type) => (channelRouting[type] = messagesChannelId));
-          }
-
-          if (channels.voice) {
-            // Route voice logs to voice channel
-            const voiceTypes = ["VOICE_JOIN", "VOICE_LEAVE", "VOICE_MOVE"];
-            const voiceChannelId = channels.voice.id;
-            voiceTypes.forEach((type) => (channelRouting[type] = voiceChannelId));
-          }
-
-          if (channels.server) {
-            // Route server logs to server channel
-            const serverTypes = ["CHANNEL_CREATE", "CHANNEL_DELETE", "ROLE_CREATE", "ROLE_DELETE", "SERVER_UPDATE"];
-            const serverChannelId = channels.server.id;
-            serverTypes.forEach((type) => (channelRouting[type] = serverChannelId));
-          }
-
-          // Setup logging with the LogManager
-          await client.logManager.setupBasicLogging(interaction.guild.id, channelRouting);
-
-          const setupSummary = Object.entries(channels)
-            .filter(([_, channel]) => channel)
-            .map(([type, channel]) => `• **${type}**: <#${channel?.id ?? ""}>`)
-            .join("\n");
-
-          await interaction.followUp({
-            content: `✅ **Logging Setup Complete!**\n\n${setupSummary}\n\n🔍 **${Object.keys(channelRouting).length.toString()}** log types configured automatically.\n\n💡 *Use \`/logging status\` to see all active log types.*`,
-          });
-          break;
-        }
-
         case "status": {
           // Show current configuration
           const settings = await client.logManager.getSettings(interaction.guild.id);
@@ -237,10 +125,27 @@ export default new Command(
         }
 
         case "enable": {
-          // Enable all log types
-          await client.logManager.enableAllLogTypes(interaction.guild.id);
+          const includeHV = interaction.options.getBoolean("include_high_volume") ?? false;
+
+          if (includeHV) {
+            // Enable absolutely everything
+            await client.logManager.enableAllLogTypes(interaction.guild.id);
+          } else {
+            // Enable everything except high-volume events
+            // Build list of HV types
+            const highVolumeSet = new Set<string>([...LOG_CATEGORIES.HIGH_VOLUME]);
+
+            const enable = Object.values(LOG_CATEGORIES)
+              .flat()
+              .filter((t) => !highVolumeSet.has(t as string));
+
+            await client.logManager.enableLogTypes(interaction.guild.id, enable);
+          }
+
           await interaction.followUp({
-            content: `✅ **All log types enabled!**\n\n📝 **100+** different events will now be logged to their configured channels.\n\n💡 *Use \`/logging setup\` to configure channels if you haven't already.*`,
+            content: `✅ **Logging enabled!**\n\n${
+              includeHV ? "All" : "Standard (non high-volume)"
+            } events will now be logged.\n\n💡 *Use \`/logging status\` to verify and \`/settings high-volume-events enable\` if you later want the spam-prone events.*`,
           });
           break;
         }
@@ -253,37 +158,12 @@ export default new Command(
           });
           break;
         }
-
-        case "channel": {
-          const logType = interaction.options.getString("logtype", true);
-          const channel = interaction.options.getChannel("channel", true);
-
-          await client.logManager.setChannelRouting(interaction.guild.id, {
-            [logType]: channel.id,
-          });
-
-          await interaction.followUp({
-            content: `✅ **${logType}** logs will now be sent to <#${channel.id}>`,
-          });
-          break;
-        }
-
-        default: {
-          await interaction.followUp({
-            content: "❌ Unknown subcommand",
-          });
-        }
       }
     } catch (error) {
+      console.error("Error executing logging command:", error);
       await interaction.followUp({
-        content: `❌ Error configuring logging: ${error instanceof Error ? error.message : "Unknown error"}`,
+        content: "An error occurred while executing the command. Please try again later.",
       });
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.ADMIN,
-      isConfigurable: true,
-    },
   }
 );
