@@ -26,6 +26,8 @@ export default new Command(
   async (client, interaction) => {
     if (!interaction.isChatInputCommand() || !interaction.guild) return;
 
+    await interaction.deferReply({ ephemeral: true });
+
     const targetUser = interaction.options.getUser("user", true);
     let reason = interaction.options.getString("reason") ?? "No reason provided";
     const durationStr = interaction.options.getString("duration");
@@ -64,9 +66,8 @@ export default new Command(
       if (durationStr) {
         const parsedDuration = parseDuration(durationStr);
         if (parsedDuration === null) {
-          await interaction.reply({
+          await interaction.editReply({
             content: "❌ Invalid duration format. Use format like: 1d, 3h, 30m",
-            ephemeral: true,
           });
           return;
         }
@@ -89,18 +90,17 @@ export default new Command(
 
       const durationText = duration ? ` for ${formatDuration(duration)}` : " permanently";
 
-      await interaction.reply({
+      await interaction.editReply({
         content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber.toString()}** created.`,
-        ephemeral: true,
       });
     } catch (error) {
-      await interaction.reply({
+      await interaction.editReply({
         content: `❌ Failed to ban **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-        ephemeral: true,
       });
     }
   },
   {
+    ephemeral: true,
     permissions: {
       level: PermissionLevel.MODERATOR,
       isConfigurable: true,

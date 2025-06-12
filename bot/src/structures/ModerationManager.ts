@@ -1,11 +1,12 @@
 import type { Guild } from "discord.js";
 import { EmbedBuilder } from "discord.js";
 
-import { APPEALS_OAUTH_CONFIG } from "../config/appeals.js";
-import { prisma } from "../database/index.js";
-import logger from "../logger.js";
-import type Client from "./Client.js";
-import type LogManager from "./LogManager.js";
+import { APPEALS_OAUTH_CONFIG } from "../config/appeals";
+import { prisma } from "../database/index";
+import logger from "../logger";
+import queueService from "../services/QueueService";
+import type Client from "./Client";
+import type LogManager from "./LogManager";
 
 export interface ModerationAction {
   type: "KICK" | "BAN" | "WARN" | "TIMEOUT" | "NOTE" | "UNBAN" | "UNTIMEOUT";
@@ -57,7 +58,7 @@ export default class ModerationManager {
 
   /**
    * Main moderation method - handles any moderation action
-   * Super easy to use: moderationManager.moderate(guild, action)
+   * Now uses queue system for Discord actions!
    */
   async moderate(guild: Guild, action: ModerationAction): Promise<ModerationCase> {
     try {
@@ -67,8 +68,8 @@ export default class ModerationManager {
       // Create the moderation case first
       const moderationCase = await this.createCase(guild.id, caseNumber, action);
 
-      // Execute the Discord action
-      await this.executeDiscordAction(guild, action, moderationCase);
+      // Queue the Discord action instead of executing directly
+      await this.queueDiscordAction(guild, action, moderationCase);
 
       // Send DM to user if requested
       if (action.notifyUser !== false) {
@@ -84,7 +85,7 @@ export default class ModerationManager {
       }
 
       // Log to comprehensive logging system
-      await this.logManager.log(guild.id, `MOD_${action.type}_ISSUED`, {
+      await this.logManager.log(guild.id, `MOD_${action.type}`, {
         userId: action.userId,
         executorId: action.moderatorId,
         reason: action.reason,
@@ -98,7 +99,7 @@ export default class ModerationManager {
       });
 
       logger.info(
-        `Moderation action ${action.type} executed for user ${action.userId} in guild ${guild.id}, case #${caseNumber}`
+        `Moderation action ${action.type} processed for user ${action.userId} in guild ${guild.id}, case #${caseNumber}`
       );
 
       return moderationCase;
@@ -333,101 +334,85 @@ export default class ModerationManager {
     return case_ as unknown as ModerationCase;
   }
 
-  private async executeDiscordAction(guild: Guild, action: ModerationAction, case_: ModerationCase): Promise<void> {
+  private async queueDiscordAction(guild: Guild, action: ModerationAction, case_: ModerationCase): Promise<void> {
     try {
+      let jobId: string | null = null;
+
       switch (action.type) {
         case "KICK": {
-          const member = await guild.members.fetch(action.userId);
-          await member.kick(action.reason);
+          jobId = await queueService.addModerationAction({
+            type: "KICK_USER",
+            targetUserId: action.userId,
+            guildId: guild.id,
+            reason: action.reason,
+          });
           break;
         }
 
         case "BAN": {
-          await guild.members.ban(action.userId, {
+          jobId = await queueService.addModerationAction({
+            type: "BAN_USER",
+            targetUserId: action.userId,
+            guildId: guild.id,
             reason: action.reason,
-            deleteMessageDays: 1, // Delete messages from last day
           });
           break;
         }
 
         case "TIMEOUT": {
-          const member = await guild.members.fetch(action.userId);
-          const timeoutDuration = (action.duration ?? 0) * 1000; // Convert to milliseconds
-          await member.timeout(timeoutDuration, action.reason);
+          const timeoutDuration = (action.duration ?? 0) * 1000;
+          jobId = await queueService.addModerationAction({
+            type: "TIMEOUT_USER",
+            targetUserId: action.userId,
+            guildId: guild.id,
+            reason: action.reason,
+            duration: timeoutDuration,
+          });
           break;
         }
 
         case "UNBAN": {
-          await guild.members.unban(action.userId, action.reason);
+          jobId = await queueService.addModerationAction({
+            type: "UNBAN_USER",
+            targetUserId: action.userId,
+            guildId: guild.id,
+            reason: action.reason,
+          });
           break;
         }
 
         case "UNTIMEOUT": {
-          const member = await guild.members.fetch(action.userId);
-          await member.timeout(null, action.reason);
+          jobId = await queueService.addModerationAction({
+            type: "TIMEOUT_USER",
+            targetUserId: action.userId,
+            guildId: guild.id,
+            reason: action.reason,
+            duration: undefined,
+          });
           break;
         }
 
         case "WARN":
         case "NOTE":
-          // No Discord action needed, just case creation
+          logger.info(`Case created for ${action.type}, no Discord action required`);
           break;
       }
 
-      // Update case to mark DM as sent (we'll try to send it)
+      if (jobId) {
+        logger.info(`Processed Discord action ${action.type} with job ID: ${jobId}`);
+      }
+
       await prisma.moderationCase.update({
         where: { id: case_.id },
         data: { dmSent: true },
       });
     } catch (error) {
-      logger.error(`Error executing Discord action ${action.type}:`, error);
-
-      // Update case to mark DM as failed
+      logger.error(`Error queuing Discord action ${action.type}:`, error);
       await prisma.moderationCase.update({
         where: { id: case_.id },
         data: { dmSent: false },
       });
-
       throw error;
-    }
-  }
-
-  /**
-   * Get guild appeals settings
-   */
-  async getAppealsSettings(guildId: string) {
-    try {
-      const guildConfig = await prisma.guildConfig.findUnique({
-        where: { guildId },
-        include: { appealSettings: true },
-      });
-
-      // Return guild's custom appeals settings or defaults
-      return (
-        guildConfig?.appealSettings ?? {
-          discordBotEnabled: true,
-          webFormEnabled: false,
-          webFormUrl: APPEALS_OAUTH_CONFIG.DEFAULT_WEBSITE_URL,
-          appealReceived: "Thank you for submitting your appeal. Our staff will review it within 24-48 hours.",
-          appealApproved: "Your appeal has been **approved**. The moderation action has been reversed.",
-          appealDenied: "Your appeal has been **denied**. The moderation action will remain in effect.",
-          appealCooldown: 86400, // 24 hours
-          maxAppealsPerUser: 3,
-        }
-      );
-    } catch (error) {
-      logger.error("Error getting appeals settings:", error);
-      // Return defaults if error
-      return {
-        discordBotEnabled: true,
-        webFormEnabled: false,
-        webFormUrl: APPEALS_OAUTH_CONFIG.DEFAULT_WEBSITE_URL,
-        appealReceived: "Thank you for submitting your appeal. Our staff will review it within 24-48 hours.",
-        appealApproved: "Your appeal has been **approved**. The moderation action has been reversed.",
-        appealDenied: "Your appeal has been **denied**. The moderation action will remain in effect.",
-        appealCooldown: 86400,
-        maxAppealsPerUser: 3,
-      };
     }
   }
 
@@ -636,6 +621,45 @@ export default class ModerationManager {
     } catch (error) {
       logger.error("Error configuring appeals settings:", error);
       throw error;
+    }
+  }
+
+  /**
+   * Get guild appeals settings
+   */
+  async getAppealsSettings(guildId: string) {
+    try {
+      const guildConfig = await prisma.guildConfig.findUnique({
+        where: { guildId },
+        include: { appealSettings: true },
+      });
+
+      // Return guild's custom appeals settings or defaults
+      return (
+        guildConfig?.appealSettings ?? {
+          discordBotEnabled: true,
+          webFormEnabled: false,
+          webFormUrl: APPEALS_OAUTH_CONFIG.DEFAULT_WEBSITE_URL,
+          appealReceived: "Thank you for submitting your appeal. Our staff will review it within 24-48 hours.",
+          appealApproved: "Your appeal has been **approved**. The moderation action has been reversed.",
+          appealDenied: "Your appeal has been **denied**. The moderation action will remain in effect.",
+          appealCooldown: 86400, // 24 hours
+          maxAppealsPerUser: 3,
+        }
+      );
+    } catch (error) {
+      logger.error("Error getting appeals settings:", error);
+      // Return defaults if error
+      return {
+        discordBotEnabled: true,
+        webFormEnabled: false,
+        webFormUrl: APPEALS_OAUTH_CONFIG.DEFAULT_WEBSITE_URL,
+        appealReceived: "Thank you for submitting your appeal. Our staff will review it within 24-48 hours.",
+        appealApproved: "Your appeal has been **approved**. The moderation action has been reversed.",
+        appealDenied: "Your appeal has been **denied**. The moderation action will remain in effect.",
+        appealCooldown: 86400,
+        maxAppealsPerUser: 3,
+      };
     }
   }
 }

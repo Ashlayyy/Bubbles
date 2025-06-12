@@ -18,6 +18,8 @@ export default new Command(
   async (client, interaction) => {
     if (!interaction.isChatInputCommand() || !interaction.guild) return;
 
+    await interaction.deferReply({ ephemeral: true });
+
     const targetUser = interaction.options.getUser("user", true);
     let reason = interaction.options.getString("reason") ?? "No reason provided";
     const evidence =
@@ -68,18 +70,17 @@ export default new Command(
       }
 
       // Simple success response
-      await interaction.reply({
+      await interaction.editReply({
         content: `✅ **${targetUser.tag}** has been kicked.\n📋 **Case #${case_.caseNumber.toString()}** created.`,
-        ephemeral: true,
       });
     } catch (error) {
-      await interaction.reply({
+      await interaction.editReply({
         content: `❌ Failed to kick **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-        ephemeral: true,
       });
     }
   },
   {
+    ephemeral: true,
     permissions: {
       level: PermissionLevel.MODERATOR,
       isConfigurable: true,

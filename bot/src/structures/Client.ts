@@ -182,12 +182,24 @@ export default class Client extends DiscordClient {
 
       logger.info("Logging into Discord... ");
       await this.login(process.env.DISCORD_TOKEN);
+
+      // Start queue processing
+      logger.info("Starting queue processors...");
+      await this.startQueueProcessors();
+
       this.started = true;
     } catch (error) {
       logger.error(error);
       logger.error(new Error("Could not start the bot! Make sure your environment variables are valid!"));
       process.exit(1);
     }
+  }
+
+  /** Start queue processors */
+  private async startQueueProcessors(): Promise<void> {
+    const { QueueProcessor } = await import("../queue/processor.js");
+    const processor = new QueueProcessor(this);
+    processor.start();
   }
 
   /** Load slash commands */

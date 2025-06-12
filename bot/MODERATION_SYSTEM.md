@@ -2,16 +2,6 @@
 
 ## Overview
 
-Bubbles now features a **comprehensive moderation system** with advanced case management, automated escalation, **guild-configurable appeals**, and extensive logging capabilities.
-
-## ✅ Phase 1 Complete - Core Features
-
-### **Fixed Issues**
-
-- ✅ All linter errors in `ModerationManager.ts` resolved
-- ✅ Replaced logical OR (`||`) with nullish coalescing (`??`)
-- ✅ Removed forbidden non-null assertions
-
 ### **Appeals System**
 
 - ✅ **Guild-based configuration** - Each server can customize their appeals

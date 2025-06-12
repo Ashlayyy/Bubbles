@@ -1,175 +1,78 @@
-import { QueueManager } from "../queue/manager.js";
-import type Client from "../structures/Client.js";
-import type { ModerationActionJob, MusicActionJob, SendMessageJob } from "../types/shared.js";
-import { QUEUE_NAMES, createLogger } from "../types/shared.js";
+import type { ConfigUpdateJob, ModerationActionJob, MusicActionJob } from "../../../shared/src/types/queue.js";
+import { QUEUE_NAMES } from "../../../shared/src/types/queue.js";
+import logger from "../logger.js";
+import queueManager from "../queue/manager.js";
 
-const logger = createLogger("bot-queue-service");
+export class QueueService {
+  private static instance?: QueueService;
 
-export class BotQueueService {
-  private queueManager: QueueManager;
-  private client: Client;
-
-  constructor(client: Client) {
-    this.client = client;
-    this.queueManager = new QueueManager();
-  }
-
-  async initialize(): Promise<void> {
-    logger.info("Initializing bot queue service...");
-
-    // Set up consumers for different job types
-    const commandQueue = this.queueManager.getQueue(QUEUE_NAMES.BOT_COMMANDS);
-
-    // Process message sending jobs
-    commandQueue.process("send-message", 5, async (job) => {
-      return this.handleSendMessage(job.data as SendMessageJob);
-    });
-
-    // Process moderation jobs
-    commandQueue.process("moderation-action", 3, async (job) => {
-      return this.handleModerationAction(job.data as ModerationActionJob);
-    });
-
-    // Process music jobs
-    commandQueue.process("music-action", 2, async (job) => {
-      return this.handleMusicAction(job.data as MusicActionJob);
-    });
-
-    // Error handling
-    commandQueue.on("failed", (job, err) => {
-      logger.error(`Job ${job.id} failed:`, err);
-    });
-
-    commandQueue.on("completed", (job) => {
-      logger.verbose(`Job ${job.id} completed successfully`);
-    });
-
-    logger.info("Bot queue service initialized");
-  }
-
-  private async handleSendMessage(job: SendMessageJob): Promise<void> {
-    try {
-      logger.info(`Processing send message job: ${job.id}`);
-
-      const channel = await this.client.channels.fetch(job.channelId);
-
-      if (!channel || !channel.isTextBased()) {
-        throw new Error(`Channel ${job.channelId} not found or not text-based`);
-      }
-
-      await channel.send({
-        content: job.content,
-        embeds: job.embeds || [],
-      });
-
-      logger.info(`Message sent to channel ${job.channelId}`);
-
-      // Publish success event
-      await this.publishEvent({
-        id: `evt_${Date.now()}`,
-        type: "MODERATION_ACTION_COMPLETED",
-        timestamp: Date.now(),
-        actionType: "SEND_MESSAGE",
-        success: true,
-        guildId: job.guildId,
-        userId: job.userId,
-      });
-    } catch (error) {
-      logger.error(`Failed to send message:`, error);
-
-      // Publish failure event
-      await this.publishEvent({
-        id: `evt_${Date.now()}`,
-        type: "MODERATION_ACTION_FAILED",
-        timestamp: Date.now(),
-        actionType: "SEND_MESSAGE",
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-        guildId: job.guildId,
-        userId: job.userId,
-      });
-
-      throw error;
+  static getInstance(): QueueService {
+    if (!QueueService.instance) {
+      QueueService.instance = new QueueService();
     }
+    return QueueService.instance;
   }
 
-  private async handleModerationAction(job: ModerationActionJob): Promise<void> {
-    logger.info(`Processing moderation action: ${job.type} for user ${job.targetUserId}`);
+  /**
+   * Add a moderation action to the queue
+   */
+  async addModerationAction(data: Omit<ModerationActionJob, "id" | "timestamp">): Promise<string> {
+    const queue = queueManager.getQueue(QUEUE_NAMES.BOT_COMMANDS);
 
-    try {
-      const guild = job.guildId ? await this.client.guilds.fetch(job.guildId) : null;
+    const job = {
+      ...data,
+      id: `mod-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now(),
+    };
 
-      if (!guild) {
-        throw new Error("Guild not found");
-      }
+    await queue.add("moderation-action", job);
+    logger.info(`Added moderation action job: ${job.type} for user ${job.targetUserId}`);
 
-      switch (job.type) {
-        case "BAN_USER":
-          await guild.members.ban(job.targetUserId, { reason: job.reason });
-          break;
-        case "KICK_USER":
-          const memberToKick = await guild.members.fetch(job.targetUserId);
-          await memberToKick.kick(job.reason);
-          break;
-        case "TIMEOUT_USER":
-          const memberToTimeout = await guild.members.fetch(job.targetUserId);
-          if (job.duration) {
-            await memberToTimeout.timeout(job.duration * 60 * 1000, job.reason); // Convert minutes to ms
-          }
-          break;
-        case "UNBAN_USER":
-          await guild.members.unban(job.targetUserId, job.reason);
-          break;
-      }
-
-      await this.publishEvent({
-        id: `evt_${Date.now()}`,
-        type: "MODERATION_ACTION_COMPLETED",
-        timestamp: Date.now(),
-        actionType: job.type,
-        success: true,
-        guildId: job.guildId,
-        userId: job.userId,
-      });
-    } catch (error) {
-      logger.error(`Moderation action failed:`, error);
-
-      await this.publishEvent({
-        id: `evt_${Date.now()}`,
-        type: "MODERATION_ACTION_FAILED",
-        timestamp: Date.now(),
-        actionType: job.type,
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-        guildId: job.guildId,
-        userId: job.userId,
-      });
-
-      throw error;
-    }
+    return job.id;
   }
 
-  private async handleMusicAction(job: MusicActionJob): Promise<void> {
-    logger.info(`Processing music action: ${job.type}`);
-    // TODO: Implement music actions
-    logger.warn("Music action processing not yet implemented");
+  /**
+   * Add a music action to the queue
+   */
+  async addMusicAction(data: Omit<MusicActionJob, "id" | "timestamp">): Promise<string> {
+    const queue = queueManager.getQueue(QUEUE_NAMES.BOT_COMMANDS);
+
+    const job = {
+      ...data,
+      id: `music-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now(),
+    };
+
+    await queue.add("music-action", job);
+    logger.info(`Added music action job: ${job.type}`);
+
+    return job.id;
   }
 
-  private async publishEvent(event: any): Promise<void> {
-    try {
-      const eventQueue = this.queueManager.getQueue(QUEUE_NAMES.BOT_EVENTS);
-      await eventQueue.add("bot-event", event, {
-        removeOnComplete: 50,
-        removeOnFail: 20,
-      });
-    } catch (error) {
-      logger.error("Failed to publish event:", error);
-    }
+  /**
+   * Add a config update to the queue
+   */
+  async addConfigUpdate(data: Omit<ConfigUpdateJob, "id" | "timestamp">): Promise<string> {
+    const queue = queueManager.getQueue(QUEUE_NAMES.BOT_COMMANDS);
+
+    const job = {
+      ...data,
+      id: `config-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now(),
+    };
+
+    await queue.add("config-update", job);
+    logger.info(`Added config update job: ${job.configKey}`);
+
+    return job.id;
   }
 
-  async shutdown(): Promise<void> {
-    logger.info("Shutting down bot queue service...");
-    await this.queueManager.closeAll();
-    logger.info("Bot queue service shut down");
+  /**
+   * Get queue statistics
+   */
+  async getQueueStats() {
+    return await queueManager.getQueueStats(QUEUE_NAMES.BOT_COMMANDS);
   }
 }
+
+export default QueueService.getInstance();
