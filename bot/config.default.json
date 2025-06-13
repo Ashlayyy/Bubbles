@@ -1,0 +1,54 @@
+{
+  "name": "Bubbles",
+  "activities": [
+    {
+      "type": "streaming",
+      "name": "the best",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    },
+    {
+      "type": "listening",
+      "name": "Never Gonna Give you Up"
+    },
+    {
+      "type": "watching",
+      "name": "The Fellowship of the Ring"
+    },
+    {
+      "type": "watching",
+      "name": "Two Towers"
+    },
+    {
+      "type": "watching",
+      "name": "Return of the King"
+    }
+  ],
+  "welcome": {
+    "messages": [
+      {
+        "title": "Welkom in {server}!",
+        "description": "Hoi {user}, leuk dat je er bent! We hopen dat je een leuke tijd hebt.",
+        "color": "#00FF00"
+      },
+      {
+        "title": "Een nieuwe uitdager verschijnt!",
+        "description": "{user} is zojuist in de server verschenen. Zeg hallo!",
+        "color": "#00BFFF"
+      }
+    ]
+  },
+  "goodbye": {
+    "messages": [
+      {
+        "title": "Tot ziens!",
+        "description": "{user} heeft de server verlaten. We zullen je missen!",
+        "color": "#FF0000"
+      },
+      {
+        "title": "Vaarwel, {user}",
+        "description": "{user} is vertrokken. Het ga je goed!",
+        "color": "#FFA500"
+      }
+    ]
+  }
+}
