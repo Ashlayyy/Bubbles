@@ -698,8 +698,159 @@ async function listTickets(client: Client, interaction: ChatInputCommandInteract
   }
 }
 
-async function getTicketInfo(_client: Client, _interaction: ChatInputCommandInteraction): Promise<void> {
-  // TODO: Implement ticket info functionality
+async function getTicketInfo(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guild) return;
+
+  const ticketId = interaction.options.getString("ticket-id");
+  let ticket;
+
+  if (ticketId) {
+    // Look up by ID or number
+    const isNumeric = /^\d+$/.test(ticketId);
+    if (isNumeric) {
+      const ticketNumber = parseInt(ticketId);
+      ticket = await prisma.ticket.findFirst({
+        where: { guildId: interaction.guild.id, ticketNumber },
+      });
+    } else {
+      ticket = await prisma.ticket.findFirst({
+        where: { guildId: interaction.guild.id, id: ticketId },
+      });
+    }
+  } else {
+    // Auto-detect from current channel
+    ticket = await detectCurrentTicket(interaction);
+  }
+
+  if (!ticket) {
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xe74c3c)
+          .setTitle("❌ Ticket Not Found")
+          .setDescription("Could not find the specified ticket.")
+          .setTimestamp(),
+      ],
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Get message count
+  const messageCount = await prisma.ticketMessage.count({
+    where: { ticketId: ticket.id },
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor(0x3498db)
+    .setTitle(`🎫 Ticket #${ticket.ticketNumber.toString().padStart(4, "0")}`)
+    .addFields(
+      { name: "📝 Title", value: ticket.title, inline: true },
+      { name: "📋 Category", value: ticket.category, inline: true },
+      { name: "🆔 Status", value: ticket.status, inline: true },
+      { name: "👤 Creator", value: `<@${ticket.userId}>`, inline: true },
+      { name: "📍 Channel", value: `<#${ticket.channelId}>`, inline: true },
+      { name: "💬 Messages", value: messageCount.toString(), inline: true },
+      { name: "📅 Created", value: `<t:${Math.floor(new Date(ticket.createdAt).getTime() / 1000)}:F>`, inline: false }
+    )
+    .setTimestamp();
+
+  if (ticket.description) {
+    embed.addFields({ name: "📄 Description", value: ticket.description, inline: false });
+  }
+
+  if (ticket.assignedTo) {
+    embed.addFields({ name: "👨‍💼 Assigned", value: `<@${ticket.assignedTo}>`, inline: true });
+  }
+
+  if (ticket.closedAt) {
+    embed.addFields({
+      name: "🔒 Closed",
+      value: `<t:${Math.floor(new Date(ticket.closedAt).getTime() / 1000)}:F>`,
+      inline: true,
+    });
+  }
+
+  if (ticket.closedReason) {
+    embed.addFields({ name: "📝 Close Reason", value: ticket.closedReason, inline: false });
+  }
+
+  await interaction.reply({ embeds: [embed] });
+}
+
+async function generateTranscript(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guild) return;
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const ticketId = interaction.options.getString("ticket-id");
+  const format = interaction.options.getString("format") as "html" | "txt" | "both" | null;
+  const theme = interaction.options.getString("theme") as "light" | "dark" | null;
+
+  let ticket;
+
+  if (ticketId) {
+    // Look up by ID or number
+    const isNumeric = /^\d+$/.test(ticketId);
+    if (isNumeric) {
+      const ticketNumber = parseInt(ticketId);
+      ticket = await prisma.ticket.findFirst({
+        where: { guildId: interaction.guild.id, ticketNumber },
+      });
+    } else {
+      ticket = await prisma.ticket.findFirst({
+        where: { guildId: interaction.guild.id, id: ticketId },
+      });
+    }
+  } else {
+    // Auto-detect from current channel
+    ticket = await detectCurrentTicket(interaction);
+  }
+
+  if (!ticket) {
+    await interaction.editReply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xe74c3c)
+          .setTitle("❌ Ticket Not Found")
+          .setDescription("Could not find the specified ticket.")
+          .setTimestamp(),
+      ],
+    });
+    return;
+  }
+
+  try {
+    // Import transcript generator
+    const { generateTicketTranscript } = await import("../../functions/discord/ticketTranscript.js");
+
+    const result = await generateTicketTranscript(interaction.guild, ticket.id, {
+      format: format ?? "html",
+      theme: theme ?? "light",
+      includeAttachments: true,
+      includeEmbeds: true,
+    });
+
+    const files = [];
+    if (result.html) files.push(result.html);
+    if (result.txt) files.push(result.txt);
+
+    await interaction.editReply({
+      embeds: [result.embed],
+      files,
+    });
+  } catch (error) {
+    logger.error("Error generating transcript:", error);
+    await interaction.editReply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xe74c3c)
+          .setTitle("❌ Transcript Generation Failed")
+          .setDescription("Failed to generate transcript. Please try again later.")
+          .setTimestamp(),
+      ],
+    });
+  }
 }
 
 async function addUserToTicket(_client: Client, _interaction: ChatInputCommandInteraction): Promise<void> {
@@ -792,6 +943,30 @@ export default new Command(
         .setName("remove")
         .setDescription("Remove user from ticket")
         .addUserOption((option) => option.setName("user").setDescription("User to remove").setRequired(true))
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("transcript")
+        .setDescription("Generate a transcript of a ticket")
+        .addStringOption((option) =>
+          option.setName("ticket-id").setDescription("Ticket ID or number (auto-detect if not provided)")
+        )
+        .addStringOption((option) =>
+          option
+            .setName("format")
+            .setDescription("Transcript format")
+            .addChoices(
+              { name: "HTML (Formatted)", value: "html" },
+              { name: "Text (Plain)", value: "txt" },
+              { name: "Both", value: "both" }
+            )
+        )
+        .addStringOption((option) =>
+          option
+            .setName("theme")
+            .setDescription("HTML theme (for HTML format)")
+            .addChoices({ name: "Light", value: "light" }, { name: "Dark", value: "dark" })
+        )
     ),
 
   async (client, interaction) => {
@@ -823,6 +998,9 @@ export default new Command(
         break;
       case "remove":
         await removeUserFromTicket(client, interaction);
+        break;
+      case "transcript":
+        await generateTranscript(client, interaction);
         break;
     }
   },

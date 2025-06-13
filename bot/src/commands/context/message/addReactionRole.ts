@@ -59,6 +59,17 @@ export default new Command(
 
         try {
           await addReactionRole(interaction, message.id, emoji, roleId);
+          if (interaction.guild) {
+            await client.logManager.log(interaction.guild.id, "REACTION_ROLE_ADD", {
+              userId: interaction.user.id,
+              channelId: message.channel.id,
+              metadata: {
+                messageId: message.id,
+                emoji,
+                roleId,
+              },
+            });
+          }
           await message.react(parsedEmoji.name);
           await roleInteraction.update({ content: "✅ Role added!", components: [] });
         } catch (error) {
@@ -71,6 +82,7 @@ export default new Command(
     }
   },
   {
+    enabledOnDev: false,
     permissions: {
       level: PermissionLevel.ADMIN,
       discordPermissions: [PermissionsBitField.Flags.ManageRoles],

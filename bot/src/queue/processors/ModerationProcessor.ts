@@ -24,8 +24,14 @@ export class ModerationProcessor extends BaseProcessor<ModerationActionJob> {
 
       switch (data.type) {
         case "BAN_USER": {
-          await guild.members.ban(data.targetUserId, { reason: data.reason });
-          this.logSuccess(data.id, `Banned user ${data.targetUserId} from guild ${data.guildId}`);
+          await guild.members.ban(data.targetUserId, {
+            reason: data.reason,
+            deleteMessageSeconds: 7 * 24 * 60 * 60, // Delete messages from the last 7 days
+          });
+          this.logSuccess(
+            data.id,
+            `Banned user ${data.targetUserId} from guild ${data.guildId} and deleted their messages`
+          );
           break;
         }
         case "KICK_USER": {

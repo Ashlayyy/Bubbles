@@ -20,6 +20,7 @@ import {
   Client as DiscordClient,
   EmbedBuilder,
   GatewayIntentBits,
+  Partials,
   REST,
   Routes,
 } from "discord.js";
@@ -104,6 +105,7 @@ export default class Client extends DiscordClient {
           GatewayIntentBits.GuildModeration,
           GatewayIntentBits.DirectMessages,
         ],
+        partials: [Partials.Message, Partials.Channel, Partials.Reaction],
         allowedMentions: { repliedUser: false },
       });
 
@@ -271,7 +273,21 @@ export default class Client extends DiscordClient {
         }
 
         actionDescriptor = "register";
-        commandDataArr = this.commands.map((command) => command.builder.toJSON());
+        // Filter commands based on enabledOnDev flag in development mode
+        const commandsToRegister = this.devMode
+          ? this.commands.filter((command) => command.enabledOnDev)
+          : this.commands;
+
+        if (this.devMode) {
+          const disabledCommands = this.commands.filter((command) => !command.enabledOnDev);
+          if (disabledCommands.size > 0) {
+            logger.info(`Skipping ${disabledCommands.size} commands in dev mode:`, {
+              skippedCommands: disabledCommands.map((cmd) => cmd.builder.name),
+            });
+          }
+        }
+
+        commandDataArr = commandsToRegister.map((command) => command.builder.toJSON());
 
         logger.info("Registering commands with Discord API", {
           commands: { raw: this.commands, json: commandDataArr },

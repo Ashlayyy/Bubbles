@@ -30,6 +30,7 @@ type Builder =
 interface CommandOptions {
   ephemeral?: boolean;
   permissions?: CommandPermissionConfig;
+  enabledOnDev?: boolean;
 }
 
 export function isCommand(input: unknown): input is Command {
@@ -51,12 +52,14 @@ export default class Command {
   readonly run: RunFunction;
   readonly ephemeral: boolean;
   readonly defaultPermissions: CommandPermissionConfig;
+  readonly enabledOnDev: boolean;
 
   constructor(builder: Builder, run: RunFunction, options: CommandOptions = {}) {
     this.builder = builder;
     this.run = run;
     this.ephemeral = options.ephemeral ?? false;
     this.defaultPermissions = options.permissions ?? { level: PermissionLevel.PUBLIC };
+    this.enabledOnDev = options.enabledOnDev ?? true;
   }
 
   get category(): string {

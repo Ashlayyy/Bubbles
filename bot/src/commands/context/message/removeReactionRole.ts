@@ -44,6 +44,16 @@ export default new Command(
       try {
         await removeReactionRole(client, message.id, emojiRaw);
         await message.reactions.resolve(emoji.identifier)?.remove();
+        if (interaction.guild) {
+          await client.logManager.log(interaction.guild.id, "REACTION_ROLE_REMOVE", {
+            userId: interaction.user.id,
+            channelId: message.channel.id,
+            metadata: {
+              messageId: message.id,
+              emoji: emojiRaw,
+            },
+          });
+        }
         await submitted.reply({ content: `✅ Role for ${emoji.name} removed!`, ephemeral: true });
       } catch (error) {
         logger.error("Error removing reaction role from context menu:", error);
@@ -52,6 +62,7 @@ export default new Command(
     }
   },
   {
+    enabledOnDev: false,
     permissions: {
       level: PermissionLevel.ADMIN,
       discordPermissions: [PermissionsBitField.Flags.ManageRoles],

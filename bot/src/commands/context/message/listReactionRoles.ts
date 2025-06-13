@@ -37,6 +37,7 @@ export default new Command(
     await interaction.followUp({ embeds: [embed] });
   },
   {
+    enabledOnDev: false,
     permissions: {
       level: PermissionLevel.ADMIN,
       isConfigurable: true,

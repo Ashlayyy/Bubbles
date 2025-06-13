@@ -74,6 +74,35 @@ export default new ClientEvent(Events.GuildRoleUpdate, async (oldRole: Role, new
 
   // Log the role update if there are changes
   if (changes.length > 0) {
+    // Emit granular role change events
+    const changeTypeMap: Record<string, string> = {
+      name: "ROLE_NAME_CHANGE",
+      color: "ROLE_COLOR_CHANGE",
+      position: "ROLE_POSITION_CHANGE",
+      permissions: "ROLE_PERMISSIONS_UPDATE",
+      mentionable: "ROLE_MENTIONABLE_CHANGE",
+      hoisted: "ROLE_HOIST_CHANGE",
+    };
+
+    for (const prop of changes) {
+      const logType = changeTypeMap[prop];
+      if (logType) {
+        await client.logManager.log(newRole.guild.id, logType, {
+          roleId: newRole.id,
+          executorId,
+          reason: reason ?? "No reason provided",
+          before: JSON.stringify({ [prop]: before[prop] }),
+          after: JSON.stringify({ [prop]: after[prop] }),
+          metadata: {
+            roleName: newRole.name,
+            change: prop,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+    }
+
+    // Fallback combined ROLE_UPDATE for completeness
     await client.logManager.log(newRole.guild.id, "ROLE_UPDATE", {
       roleId: newRole.id,
       executorId,

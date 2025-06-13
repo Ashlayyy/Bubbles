@@ -12,6 +12,17 @@ export default new Command(
       sub
         .setName("enable")
         .setDescription("Enable all standard log types (optionally include high-volume events)")
+        .addStringOption((opt) => {
+          opt.setName("category").setDescription("Enable only a specific log category").setRequired(false);
+
+          // Dynamically add choices for each category (Discord limitation 25 choices)
+          const categories = Object.keys(LOG_CATEGORIES).slice(0, 25);
+          for (const cat of categories) {
+            opt.addChoices({ name: cat, value: cat });
+          }
+
+          return opt;
+        })
         .addBooleanOption((opt) =>
           opt
             .setName("include_high_volume")
@@ -126,27 +137,39 @@ export default new Command(
 
         case "enable": {
           const includeHV = interaction.options.getBoolean("include_high_volume") ?? false;
+          const category = interaction.options.getString("category");
 
-          if (includeHV) {
-            // Enable absolutely everything
-            await client.logManager.enableAllLogTypes(interaction.guild.id);
+          if (category) {
+            const typesReadonly = LOG_CATEGORIES[category as keyof typeof LOG_CATEGORIES];
+            const types = Array.from(typesReadonly);
+
+            await client.logManager.enableLogTypes(interaction.guild.id, types);
+
+            await interaction.followUp({
+              content: `✅ Enabled **${category}** category (\`${types.length}\` log types).\nUse \`/logging status\` to verify.`,
+            });
           } else {
-            // Enable everything except high-volume events
-            // Build list of HV types
-            const highVolumeSet = new Set<string>([...LOG_CATEGORIES.HIGH_VOLUME]);
+            if (includeHV) {
+              // Enable absolutely everything
+              await client.logManager.enableAllLogTypes(interaction.guild.id);
+            } else {
+              // Enable everything except high-volume events
+              // Build list of HV types
+              const highVolumeSet = new Set<string>([...LOG_CATEGORIES.HIGH_VOLUME]);
 
-            const enable = Object.values(LOG_CATEGORIES)
-              .flat()
-              .filter((t) => !highVolumeSet.has(t as string));
+              const enable = Object.values(LOG_CATEGORIES)
+                .flat()
+                .filter((t) => !highVolumeSet.has(t as string));
 
-            await client.logManager.enableLogTypes(interaction.guild.id, enable);
+              await client.logManager.enableLogTypes(interaction.guild.id, enable);
+            }
+
+            await interaction.followUp({
+              content: `✅ **Logging enabled!**\n\n${
+                includeHV ? "All" : "Standard (non high-volume)"
+              } events will now be logged.\n\n💡 *Use \`/logging status\` to verify and \`/settings high-volume-events enable\` if you later want the spam-prone events.*`,
+            });
           }
-
-          await interaction.followUp({
-            content: `✅ **Logging enabled!**\n\n${
-              includeHV ? "All" : "Standard (non high-volume)"
-            } events will now be logged.\n\n💡 *Use \`/logging status\` to verify and \`/settings high-volume-events enable\` if you later want the spam-prone events.*`,
-          });
           break;
         }
 

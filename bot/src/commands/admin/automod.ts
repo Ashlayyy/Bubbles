@@ -1,4 +1,12 @@
-import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  PermissionsBitField,
+  SlashCommandBuilder,
+  type ChatInputCommandInteraction,
+} from "discord.js";
 
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
@@ -470,31 +478,355 @@ function getTypeEmoji(type: string): string {
   return typeEmojis[type as keyof typeof typeEmojis] || "🔧";
 }
 
-// Placeholder functions for unimplemented subcommands
-async function handleConfigure(client: any, interaction: ChatInputCommandInteraction): Promise<void> {
-  await interaction.reply({
-    content: "🚧 Rule configuration coming soon! Use `/automod toggle` to enable/disable rules for now.",
-    ephemeral: true,
-  });
+// Complete implementation of missing functions
+async function handleConfigure(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guild) return;
+
+  const ruleId = interaction.options.getString("rule", true);
+
+  try {
+    const rule = await prisma.autoModRule.findFirst({
+      where: {
+        id: ruleId,
+        guildId: interaction.guild.id,
+      },
+    });
+
+    if (!rule) {
+      await interaction.reply({
+        content: "❌ Auto-moderation rule not found.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0x3498db)
+      .setTitle(`⚙️ Configure Rule: ${rule.name}`)
+      .setDescription("Use the buttons below to modify this rule's settings.")
+      .addFields(
+        { name: "🏷️ Rule Name", value: rule.name, inline: true },
+        { name: "🔧 Type", value: getTypeDisplayName(rule.type), inline: true },
+        { name: "📊 Sensitivity", value: rule.sensitivity, inline: true },
+        { name: "⚡ Action", value: getActionDisplayName((rule.actions as string) || "UNKNOWN"), inline: true },
+        { name: "✅ Status", value: rule.enabled ? "Enabled" : "Disabled", inline: true },
+        { name: "🆔 Rule ID", value: rule.id, inline: true }
+      )
+      .setTimestamp();
+
+    const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`automod_edit_name_${rule.id}`)
+        .setLabel("Edit Name")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`automod_edit_sensitivity_${rule.id}`)
+        .setLabel("Change Sensitivity")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`automod_edit_action_${rule.id}`)
+        .setLabel("Change Action")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`automod_toggle_${rule.id}`)
+        .setLabel(rule.enabled ? "Disable" : "Enable")
+        .setStyle(rule.enabled ? ButtonStyle.Danger : ButtonStyle.Success)
+    );
+
+    await interaction.reply({
+      embeds: [embed],
+      components: [buttons],
+      ephemeral: true,
+    });
+  } catch (error) {
+    logger.error("Error configuring auto-mod rule:", error);
+    await interaction.reply({
+      content: "❌ Failed to configure auto-moderation rule. Please try again.",
+      ephemeral: true,
+    });
+  }
 }
 
-async function handleDelete(client: any, interaction: ChatInputCommandInteraction): Promise<void> {
-  await interaction.reply({
-    content: "🚧 Rule deletion coming soon!",
-    ephemeral: true,
-  });
+async function handleDelete(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guild) return;
+
+  const ruleId = interaction.options.getString("rule", true);
+
+  try {
+    const rule = await prisma.autoModRule.findFirst({
+      where: {
+        id: ruleId,
+        guildId: interaction.guild.id,
+      },
+    });
+
+    if (!rule) {
+      await interaction.reply({
+        content: "❌ Auto-moderation rule not found.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Create confirmation embed
+    const embed = new EmbedBuilder()
+      .setColor(0xe74c3c)
+      .setTitle("⚠️ Confirm Rule Deletion")
+      .setDescription(`Are you sure you want to delete the rule **${rule.name}**?`)
+      .addFields(
+        { name: "🔧 Type", value: getTypeDisplayName(rule.type), inline: true },
+        { name: "📊 Sensitivity", value: rule.sensitivity, inline: true },
+        { name: "⚠️ Warning", value: "This action cannot be undone!", inline: false }
+      )
+      .setTimestamp();
+
+    const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`automod_confirm_delete_${rule.id}`)
+        .setLabel("Yes, Delete Rule")
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId("automod_cancel_delete").setLabel("Cancel").setStyle(ButtonStyle.Secondary)
+    );
+
+    await interaction.reply({
+      embeds: [embed],
+      components: [buttons],
+      ephemeral: true,
+    });
+  } catch (error) {
+    logger.error("Error deleting auto-mod rule:", error);
+    await interaction.reply({
+      content: "❌ Failed to delete auto-moderation rule. Please try again.",
+      ephemeral: true,
+    });
+  }
 }
 
-async function handleTest(client: any, interaction: ChatInputCommandInteraction): Promise<void> {
-  await interaction.reply({
-    content: "🚧 Rule testing coming soon!",
-    ephemeral: true,
-  });
+async function handleTest(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guild) return;
+
+  const ruleId = interaction.options.getString("rule", true);
+  const testText = interaction.options.getString("text", true);
+
+  try {
+    const rule = await prisma.autoModRule.findFirst({
+      where: {
+        id: ruleId,
+        guildId: interaction.guild.id,
+      },
+    });
+
+    if (!rule) {
+      await interaction.reply({
+        content: "❌ Auto-moderation rule not found.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Test the rule against the provided text
+    const testResult = testRuleAgainstText(rule, testText);
+
+    const embed = new EmbedBuilder()
+      .setColor(testResult.triggered ? 0xe74c3c : 0x2ecc71)
+      .setTitle(`🧪 Rule Test: ${rule.name}`)
+      .addFields(
+        { name: "📝 Test Text", value: `\`\`\`${testText}\`\`\``, inline: false },
+        { name: "🔧 Rule Type", value: getTypeDisplayName(rule.type), inline: true },
+        { name: "📊 Sensitivity", value: rule.sensitivity, inline: true },
+        { name: "🎯 Result", value: testResult.triggered ? "❌ **TRIGGERED**" : "✅ **PASSED**", inline: true }
+      )
+      .setTimestamp();
+
+    if (testResult.triggered) {
+      embed.addFields(
+        { name: "⚡ Action", value: getActionDisplayName((rule.actions as string) || "UNKNOWN"), inline: true },
+        { name: "📋 Reason", value: testResult.reason ?? "Rule conditions met", inline: false }
+      );
+    }
+
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+  } catch (error) {
+    logger.error("Error testing auto-mod rule:", error);
+    await interaction.reply({
+      content: "❌ Failed to test auto-moderation rule. Please try again.",
+      ephemeral: true,
+    });
+  }
 }
 
-async function handleStats(client: any, interaction: ChatInputCommandInteraction): Promise<void> {
-  await interaction.reply({
-    content: "🚧 Statistics coming soon!",
-    ephemeral: true,
-  });
+// Interface for rule structure (matching Prisma model)
+interface AutoModRuleTest {
+  id: string;
+  type: string;
+  triggers: any; // JsonValue from Prisma
+  actions: any; // JsonValue from Prisma
+  sensitivity: string;
+}
+
+// Helper function to test rules
+function testRuleAgainstText(rule: AutoModRuleTest, text: string): { triggered: boolean; reason?: string } {
+  const triggers = rule.triggers as AutoModTriggerConfig;
+
+  switch (rule.type) {
+    case "spam": {
+      // Simple duplicate check for testing
+      const words = text.split(" ");
+      const duplicates = words.filter((word, index) => words.indexOf(word) !== index);
+      if (duplicates.length > (triggers.duplicateThreshold ?? 2)) {
+        return { triggered: true, reason: "Duplicate words detected" };
+      }
+      break;
+    }
+
+    case "caps": {
+      const capsPercent = ((text.match(/[A-Z]/g) ?? []).length / text.length) * 100;
+      const threshold = triggers.capsPercent ?? 70;
+      if (text.length >= (triggers.minLength ?? 10) && capsPercent >= threshold) {
+        return { triggered: true, reason: `${Math.round(capsPercent)}% caps (threshold: ${threshold}%)` };
+      }
+      break;
+    }
+
+    case "words": {
+      const blockedWords = triggers.blockedWords ?? [];
+      const foundWord = blockedWords.find((word) =>
+        triggers.ignoreCase ? text.toLowerCase().includes(word.toLowerCase()) : text.includes(word)
+      );
+      if (foundWord) {
+        return { triggered: true, reason: `Blocked word detected: "${foundWord}"` };
+      }
+      break;
+    }
+
+    case "links": {
+      const urlRegex = /https?:\/\/[^\s]+/g;
+      const links = text.match(urlRegex);
+      if (links) {
+        const blockedDomains = triggers.blockedDomains ?? [];
+        for (const link of links) {
+          if (blockedDomains.some((domain) => link.includes(domain))) {
+            return { triggered: true, reason: "Blocked domain detected" };
+          }
+        }
+      }
+      break;
+    }
+
+    case "invites": {
+      const inviteRegex = /(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\/[a-zA-Z0-9]+/g;
+      if (inviteRegex.test(text)) {
+        return { triggered: true, reason: "Discord invite detected" };
+      }
+      break;
+    }
+  }
+
+  return { triggered: false };
+}
+
+async function handleStats(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guild) return;
+
+  const ruleId = interaction.options.getString("rule");
+  const timeframe = interaction.options.getString("timeframe") ?? "24h";
+
+  try {
+    if (ruleId) {
+      // Show stats for specific rule
+      const rule = await prisma.autoModRule.findFirst({
+        where: {
+          id: ruleId,
+          guildId: interaction.guild.id,
+        },
+      });
+
+      if (!rule) {
+        await interaction.reply({
+          content: "❌ Auto-moderation rule not found.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Get time range
+      const timeRanges = {
+        "24h": 24 * 60 * 60 * 1000,
+        "7d": 7 * 24 * 60 * 60 * 1000,
+        "30d": 30 * 24 * 60 * 60 * 1000,
+      };
+
+      const since = new Date(Date.now() - timeRanges[timeframe as keyof typeof timeRanges]);
+
+      // For now, show placeholder stats since we don't have moderation action logging yet
+      const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle(`📊 Rule Statistics: ${rule.name}`)
+        .addFields(
+          { name: "🔧 Rule Type", value: getTypeDisplayName(rule.type), inline: true },
+          { name: "📊 Sensitivity", value: rule.sensitivity, inline: true },
+          { name: "✅ Status", value: rule.enabled ? "Enabled" : "Disabled", inline: true },
+          { name: "⏱️ Timeframe", value: timeframe, inline: true },
+          { name: "🎯 Triggers", value: "0", inline: true },
+          { name: "⚡ Actions Taken", value: "0", inline: true },
+          { name: "📈 Effectiveness", value: "Data collection starting...", inline: false }
+        )
+        .setDescription(
+          "📋 **Note:** Statistics collection will be available once the auto-moderation engine is active."
+        )
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+    } else {
+      // Show overall stats
+      const rules = await prisma.autoModRule.findMany({
+        where: { guildId: interaction.guild.id },
+      });
+
+      const enabledRules = rules.filter((rule) => rule.enabled);
+      const disabledRules = rules.filter((rule) => !rule.enabled);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle("📊 Auto-Moderation Statistics")
+        .addFields(
+          {
+            name: "📈 Overview",
+            value:
+              `**Total Rules:** ${rules.length}\n` +
+              `**Active Rules:** ${enabledRules.length}\n` +
+              `**Disabled Rules:** ${disabledRules.length}`,
+            inline: true,
+          },
+          { name: "⏱️ Timeframe", value: timeframe, inline: true },
+          { name: "🎯 Total Actions", value: "0", inline: true },
+          { name: "🔥 Most Active Rule", value: "Data pending", inline: true },
+          {
+            name: "📋 Rule Types",
+            value: rules.length > 0 ? [...new Set(rules.map((r) => getTypeDisplayName(r.type)))].join(", ") : "None",
+            inline: false,
+          }
+        )
+        .setDescription(
+          "📋 **Note:** Detailed statistics will be available once the auto-moderation engine is processing messages."
+        )
+        .setTimestamp();
+
+      if (enabledRules.length === 0) {
+        embed.addFields({
+          name: "⚠️ No Active Rules",
+          value: "Enable some rules to start collecting statistics!",
+          inline: false,
+        });
+      }
+
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+  } catch (error) {
+    logger.error("Error getting auto-mod stats:", error);
+    await interaction.reply({
+      content: "❌ Failed to get auto-moderation statistics. Please try again.",
+      ephemeral: true,
+    });
+  }
 }

@@ -6,6 +6,8 @@ import { prisma } from "../../database/index.js";
 import { ClientEvent } from "../../structures/Event.js";
 
 export default new ClientEvent(Events.MessageCreate, async (message: Message) => {
+  console.log(`[DEBUG] Message created: ${message.content}`); // Test log to see if events work at all
+
   // Ignore bot messages for general logging to prevent spam
   if (message.author.bot) return;
 
@@ -47,6 +49,10 @@ export default new ClientEvent(Events.MessageCreate, async (message: Message) =>
       console.error("Failed to log ticket message:", error);
     }
   }
+
+  // Process auto-moderation rules
+  const { AutoModService } = await import("../../services/autoModService.js");
+  await AutoModService.processMessage(client, message);
 
   // Log the message creation to general logging system
   await client.logManager.log(message.guild.id, "MESSAGE_CREATE", {

@@ -141,6 +141,8 @@ async function logVoiceStateChange(
         logType = newState.streaming ? "VOICE_START_STREAM" : "VOICE_STOP_STREAM";
       } else if (oldState.selfVideo !== newState.selfVideo) {
         logType = newState.selfVideo ? "VOICE_START_VIDEO" : "VOICE_STOP_VIDEO";
+      } else if (oldState.suppress !== newState.suppress) {
+        logType = "VOICE_STAGE_SPEAKER_CHANGE";
       } else {
         return; // No significant change
       }
