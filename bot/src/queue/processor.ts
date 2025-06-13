@@ -1,3 +1,5 @@
+import Bull from "bull";
+
 import { QUEUE_NAMES } from "../../../shared/src/types/queue.js";
 import logger from "../logger.js";
 import type Client from "../structures/Client.js";
@@ -35,7 +37,7 @@ export class QueueProcessor {
       const jobType = processor.getJobType();
 
       // Register the processor with proper error handling
-      void botCommandsQueue.process(jobType, async (job) => {
+      void botCommandsQueue.process(jobType, async (job: Bull.Job) => {
         try {
           const result = await processor.processJob(job);
 

@@ -9,7 +9,7 @@
   "scripts": {
     "postinstall": "prisma generate --no-hints",
     "build": "tsc -p tsconfig.prod.json",
-    "postbuild": "node build/scripts/generateConfig.js",
+    "postbuild": "node build/bot/src/scripts/generateConfig.js",
     "predev": "prisma format && prisma generate --no-hints",
     "dev": "nodemon",
     "lint": "prettier --check . && eslint .",

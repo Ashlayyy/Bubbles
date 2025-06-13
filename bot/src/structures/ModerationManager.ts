@@ -4,7 +4,7 @@ import { EmbedBuilder } from "discord.js";
 import { APPEALS_OAUTH_CONFIG } from "../config/appeals";
 import { prisma } from "../database/index";
 import logger from "../logger";
-import queueService from "../services/QueueService";
+import queueService from "../services/queueService.js";
 import type Client from "./Client";
 import type LogManager from "./LogManager";
 

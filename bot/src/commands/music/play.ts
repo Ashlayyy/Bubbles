@@ -5,7 +5,7 @@ import { getGuildConfig } from "../../database/GuildConfig.js";
 import getQueue from "../../functions/music/getQueue.js";
 import { isQueueRepeatMode } from "../../functions/music/queueRepeatMode.js";
 import logger from "../../logger.js";
-import queueService from "../../services/QueueService.js";
+import queueService from "../../services/queueService";
 import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import QueueMetadata from "../../structures/QueueMetadata.js";

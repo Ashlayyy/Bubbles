@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from "discord.js";
 
 import { PermissionLevel } from "@/structures/PermissionTypes";
-import queueService from "../../services/QueueService";
+import queueService from "../../services/queueService.js";
 import Command from "../../structures/Command";
 
 export default new Command(
