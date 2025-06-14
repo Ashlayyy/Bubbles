@@ -5,7 +5,7 @@ import { createLogger } from './types/shared.js';
 import { config } from './config/index.js';
 import messageRoutes from './routes/messages.js';
 import queueManager from './queue/manager.js';
-import { QUEUE_NAMES } from '../../../shared/src/types/queue.js';
+import { QUEUE_NAMES } from '../../shared/src/types/queue.js';
 
 const logger = createLogger('api-server');
 const app = express();

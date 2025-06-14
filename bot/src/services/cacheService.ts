@@ -76,6 +76,9 @@ export class CacheService {
     this.setupRedisEventHandlers();
     this.startCleanupInterval();
 
+    // Attempt initial connection to test Redis availability
+    void this.initializeRedisConnection();
+
     logger.info("Cache service initialized with Redis and memory layers");
   }
 
@@ -84,7 +87,7 @@ export class CacheService {
       host: process.env.REDIS_HOST ?? "localhost",
       port: parseInt(process.env.REDIS_PORT ?? "6379"),
       password: process.env.REDIS_PASSWORD,
-      db: 1, // Use DB 1 for cache
+      db: 0,
       lazyConnect: true,
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
@@ -141,6 +144,19 @@ export class CacheService {
       this.redisConnected = false;
       this.hasGivenUpReconnecting = true;
     });
+  }
+
+  /**
+   * Initialize Redis connection by attempting a simple operation
+   */
+  private async initializeRedisConnection(): Promise<void> {
+    try {
+      // Attempt to connect and ping Redis
+      await this.redis.ping();
+      logger.info("Cache Redis connection test successful");
+    } catch (error) {
+      logger.warn("Cache Redis connection test failed - will operate in memory-only mode", error);
+    }
   }
 
   /**

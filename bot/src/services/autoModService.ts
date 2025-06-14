@@ -13,6 +13,7 @@ import type {
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import type Client from "../structures/Client.js";
+import { cacheService } from "./cacheService.js";
 
 function isAutoModTriggerConfig(obj: unknown): obj is AutoModTriggerConfig {
   return typeof obj === "object" && obj !== null;
@@ -87,31 +88,66 @@ export class AutoModService {
       return cached.rules;
     }
 
-    const dbRules = await prisma.autoModRule.findMany({
-      where: {
-        guildId,
-        enabled: true,
-      },
-      orderBy: [
-        { triggerCount: "desc" }, // Most triggered rules first for performance
-        { createdAt: "asc" },
-      ],
-    });
+    try {
+      // Use Redis cache service for better caching
+      const cacheKey = `automod:rules:${guildId}`;
+      const cachedRules = await cacheService.get<AutoModRule[]>(cacheKey, "autoModRules");
 
-    // Convert database rules to typed format
-    const rules: AutoModRule[] = dbRules.map((rule) => ({
-      ...rule,
-      triggers: isAutoModTriggerConfig(rule.triggers) ? rule.triggers : {},
-      actions: rule.actions as AutoModActionConfig | string,
-      escalation: rule.escalation ? (rule.escalation as EscalationConfig) : undefined,
-      lastTriggered: rule.lastTriggered ?? undefined,
-      logChannel: rule.logChannel ?? undefined,
-    }));
+      if (cachedRules) {
+        // Update memory cache for backwards compatibility
+        ruleCache.set(guildId, { rules: cachedRules, timestamp: Date.now() });
+        return cachedRules;
+      }
 
-    // Cache the results
-    ruleCache.set(guildId, { rules, timestamp: Date.now() });
+      // Fetch from database if not in Redis cache
+      const dbRules = await prisma.autoModRule.findMany({
+        where: {
+          guildId,
+          enabled: true,
+        },
+        orderBy: [
+          { triggerCount: "desc" }, // Most triggered rules first for performance
+          { createdAt: "asc" },
+        ],
+      });
 
-    return rules;
+      // Convert database rules to typed format
+      const rules: AutoModRule[] = dbRules.map((rule) => ({
+        ...rule,
+        triggers:
+          typeof rule.triggers === "string"
+            ? (JSON.parse(rule.triggers) as AutoModTriggerConfig)
+            : (rule.triggers as AutoModTriggerConfig),
+        actions:
+          typeof rule.actions === "string"
+            ? (JSON.parse(rule.actions) as AutoModActionConfig)
+            : (rule.actions as AutoModActionConfig),
+        escalation: rule.escalation
+          ? typeof rule.escalation === "string"
+            ? (JSON.parse(rule.escalation) as EscalationConfig)
+            : (rule.escalation as EscalationConfig)
+          : undefined,
+        lastTriggered: rule.lastTriggered ?? undefined,
+        logChannel: rule.logChannel ?? undefined,
+      }));
+
+      // Cache in both Redis and memory
+      await cacheService.set(cacheKey, rules, "autoModRules");
+      ruleCache.set(guildId, { rules, timestamp: Date.now() });
+
+      return rules;
+    } catch (error) {
+      logger.error(`Error loading automod rules for guild ${guildId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Invalidate automod rules cache for a guild
+   */
+  static async invalidateRulesCache(guildId: string): Promise<void> {
+    ruleCache.delete(guildId);
+    await cacheService.delete(`automod:rules:${guildId}`);
   }
 
   private static isExempt(message: Message, rules: AutoModRule[]): boolean {
@@ -644,16 +680,8 @@ export class AutoModService {
           lastTriggered: new Date(),
         },
       });
-
-      // Invalidate cache for this rule's guild
-      for (const [guildId, cached] of ruleCache.entries()) {
-        if (cached.rules.some((rule) => rule.id === ruleId)) {
-          ruleCache.delete(guildId);
-          break;
-        }
-      }
-    } catch (error: unknown) {
-      logger.error("Error updating rule statistics:", error);
+    } catch (error) {
+      logger.error("Error updating rule stats:", error);
     }
   }
 }

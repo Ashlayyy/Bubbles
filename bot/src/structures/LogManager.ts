@@ -4,6 +4,7 @@ import { EmbedBuilder as DiscordEmbedBuilder } from "discord.js";
 
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
+import { cacheService } from "../services/cacheService.js";
 import type Client from "./Client.js";
 
 // Log types organized by category for easy management
@@ -356,13 +357,19 @@ export default class LogManager {
   }
 
   /**
-   * Get log settings for a guild (with caching)
+   * Get log settings with caching
    */
   private async getLogSettings(guildId: string): Promise<LogSettings> {
-    const cached = this.settingsCache.get(guildId);
-    if (cached) return cached;
+    const cacheKey = `logs:settings:${guildId}`;
 
     try {
+      // Try cache first
+      const cached = await cacheService.get<LogSettings>(cacheKey, "default");
+      if (cached) {
+        return cached;
+      }
+
+      // Fetch from database
       const settings = await prisma.logSettings.findUnique({
         where: { guildId },
       });
@@ -377,13 +384,12 @@ export default class LogManager {
         customFormats: settings?.customFormats as Record<string, unknown> | undefined,
       };
 
-      // Cache for 5 minutes
-      this.settingsCache.set(guildId, logSettings);
-      setTimeout(() => this.settingsCache.delete(guildId), this.cacheTimeout);
+      // Cache result
+      await cacheService.set(cacheKey, logSettings, "default");
 
       return logSettings;
     } catch (error) {
-      logger.error("Error getting log settings:", error);
+      logger.error(`Error getting log settings for ${guildId}:`, error);
       return {
         channelRouting: {},
         ignoredUsers: [],
@@ -392,6 +398,13 @@ export default class LogManager {
         enabledLogTypes: [],
       };
     }
+  }
+
+  /**
+   * Invalidate log settings cache
+   */
+  static async invalidateLogSettingsCache(guildId: string): Promise<void> {
+    await cacheService.delete(`logs:settings:${guildId}`);
   }
 
   /**
@@ -529,7 +542,7 @@ export default class LogManager {
 
     // Set color based on category/severity
     const category = this.getLogCategory(logType);
-    const color = this.getCategoryColor(category);
+    const color = this.getCategoryColor(category, logType);
     embed.setColor(color);
 
     // Set title and description based on log type
@@ -577,9 +590,21 @@ export default class LogManager {
   /**
    * Get color for category - enhanced with more specific colors
    */
-  private getCategoryColor(category: string | null): number {
+  private getCategoryColor(category: string | null, logType?: string): number {
+    // Message-specific colors for enhanced visual distinction
+    if (category === "MESSAGE" && logType) {
+      const messageColors = {
+        MESSAGE_DELETE: 0xe74c3c, // Red - deleted messages
+        MESSAGE_EDIT: 0xe67e22, // Orange - edited messages
+        MESSAGE_BULK_DELETE: 0xc0392b, // Dark red - bulk deletions
+        MESSAGE_PIN: 0xf39c12, // Gold - pinned messages
+        MESSAGE_UNPIN: 0x95a5a6, // Gray - unpinned messages
+      };
+      return messageColors[logType as keyof typeof messageColors] || 0x3498db; // Default blue
+    }
+
     const colors = {
-      MESSAGE: 0x3498db, // Blue - information
+      MESSAGE: 0x3498db, // Blue - information (fallback)
       MEMBER: 0x2ecc71, // Green - positive/joins
       ROLE: 0x9b59b6, // Purple - permissions/roles
       CHANNEL: 0xe67e22, // Orange - structural changes
@@ -614,12 +639,28 @@ export default class LogManager {
     const channelMention = logEntry.channelId ? `<#${logEntry.channelId}>` : "Unknown Channel";
 
     switch (logType) {
-      case "MESSAGE_DELETE":
+      case "MESSAGE_DELETE": {
+        // Enhanced deletion attribution
+        const metadata = logEntry.metadata as { deletionMethod?: string } | undefined;
+        const deletionMethod = metadata?.deletionMethod ?? "unknown";
+        const executorMention = logEntry.executorId ? `<@${logEntry.executorId}>` : null;
+
+        let description = `A message by ${userMention} was deleted in ${channelMention}`;
+
+        if (executorMention && deletionMethod === "moderator") {
+          description += `\n**Deleted by:** ${executorMention}`;
+        } else if (deletionMethod === "author") {
+          description += `\n**Deleted by:** Message Author`;
+        } else if (deletionMethod === "system") {
+          description += `\n**Deleted by:** System/Bot`;
+        }
+
         return {
           title: "Message Deleted",
-          description: `A message by ${userMention} was deleted in ${channelMention}`,
+          description,
           emoji: "🗑️",
         };
+      }
 
       case "MESSAGE_EDIT":
         return {
@@ -631,9 +672,10 @@ export default class LogManager {
       case "MESSAGE_BULK_DELETE": {
         const metadata = logEntry.metadata as { deletedCount?: number } | undefined;
         const deletedCount = metadata?.deletedCount ?? "multiple";
+        const executorMention = logEntry.executorId ? `<@${logEntry.executorId}>` : "Unknown User";
         return {
           title: "Bulk Message Delete",
-          description: `${deletedCount} messages were bulk deleted in ${channelMention}`,
+          description: `${deletedCount} messages were bulk deleted in ${channelMention}\n**Deleted by:** ${executorMention}`,
           emoji: "🗑️",
         };
       }
@@ -1000,6 +1042,23 @@ export default class LogManager {
       }
       if (typeof metadata.deletedCount === "number") {
         metadataFields.push(`**Messages Deleted:** ${metadata.deletedCount}`);
+      }
+
+      // Enhanced deletion metadata
+      if (logType === "MESSAGE_DELETE") {
+        if (metadata.deletionMethod && typeof metadata.deletionMethod === "string") {
+          const methodEmoji = {
+            moderator: "👮",
+            author: "👤",
+            system: "🤖",
+          };
+          const emoji = methodEmoji[metadata.deletionMethod as keyof typeof methodEmoji] || "❓";
+          metadataFields.push(`**Deletion Method:** ${emoji} ${metadata.deletionMethod}`);
+        }
+        if (metadata.deletionTimestamp && typeof metadata.deletionTimestamp === "string") {
+          const deletionTime = Math.floor(new Date(metadata.deletionTimestamp).getTime() / 1000);
+          metadataFields.push(`**Deleted At:** <t:${deletionTime}:T>`);
+        }
       }
     }
 

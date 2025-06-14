@@ -4,6 +4,7 @@ import { EmbedBuilder } from "discord.js";
 import { APPEALS_OAUTH_CONFIG } from "../config/appeals.js";
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
+import { cacheService } from "../services/cacheService.js";
 import queueService from "../services/queueService.js";
 import type Client from "./Client.js";
 import type LogManager from "./LogManager.js";
@@ -212,23 +213,34 @@ export default class ModerationManager {
   /**
    * Get user's moderation history
    */
-  async getUserHistory(guildId: string, userId: string, limit = 10): Promise<ModerationCase[]> {
-    try {
-      const cases = await prisma.moderationCase.findMany({
-        where: { guildId, userId },
-        orderBy: { createdAt: "desc" },
-        take: limit,
-        include: {
-          notes: true,
-          appeals: true,
-        },
-      });
+  async getUserHistory(guildId: string, userId: string, limit = 50): Promise<ModerationCase[]> {
+    const cacheKey = `moderation:history:${guildId}:${userId}:${limit}`;
 
-      return cases as unknown as ModerationCase[];
-    } catch (error) {
-      logger.error("Error getting user history:", error);
-      return [];
+    // Try to get from cache first
+    const cached = await cacheService.get<ModerationCase[]>(cacheKey, "userInfractions");
+    if (cached) {
+      return cached;
     }
+
+    // Fetch from database if not cached
+    const cases = await prisma.moderationCase.findMany({
+      where: {
+        guildId,
+        userId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: limit,
+      include: {
+        notes: true,
+      },
+    });
+
+    // Cache the result
+    await cacheService.set(cacheKey, cases, "userInfractions");
+
+    return cases as unknown as ModerationCase[];
   }
 
   /**
@@ -283,14 +295,34 @@ export default class ModerationManager {
   }
 
   /**
-   * Get user's current infraction points
+   * Get user's total infraction points
    */
   async getInfractionPoints(guildId: string, userId: string): Promise<number> {
+    const cacheKey = `moderation:points:${guildId}:${userId}`;
+
+    // Try to get from cache first
+    const cached = await cacheService.get<number>(cacheKey, "userInfractions");
+    if (cached !== null) {
+      return cached;
+    }
+
+    // Calculate from database if not cached
     try {
       const infractions = await prisma.userInfractions.findUnique({
-        where: { guildId_userId: { guildId, userId } },
+        where: {
+          guildId_userId: {
+            guildId,
+            userId,
+          },
+        },
       });
-      return infractions?.totalPoints ?? 0;
+
+      const points = infractions?.totalPoints ?? 0;
+
+      // Cache the result with shorter TTL since points change frequently
+      await cacheService.set(cacheKey, points, "userInfractions");
+
+      return points;
     } catch (error) {
       logger.error("Error getting infraction points:", error);
       return 0;
@@ -550,6 +582,9 @@ export default class ModerationManager {
           lastIncident: new Date(),
         },
       });
+
+      // Invalidate cache entries for this user
+      await cacheService.deletePattern(`moderation:*:${guildId}:${userId}*`);
     } catch (error) {
       logger.error("Error updating infraction points:", error);
     }

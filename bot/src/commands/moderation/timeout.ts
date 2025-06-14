@@ -54,7 +54,7 @@ export default new Command(
         }
       }
 
-      // Parse duration
+      // Parse duration using shared utility
       const duration = parseDuration(durationStr);
       if (duration === null) {
         await interaction.reply({
@@ -98,6 +98,7 @@ export default new Command(
         await client.moderationManager.updateCaseNotification(case_.id, false);
       }
 
+      // Use shared formatting utility
       await interaction.reply({
         content: `🔇 **${targetUser.tag}** has been timed out for ${formatDuration(duration)}.\n📋 **Case #${case_.caseNumber}** created.`,
         ephemeral: true,

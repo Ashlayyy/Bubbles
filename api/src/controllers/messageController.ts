@@ -1,11 +1,10 @@
 import type { Response } from 'express';
-import { QueueManager } from '../queue/manager.js';
+import queueManager from '../queue/manager.js';
 import { createLogger, QUEUE_NAMES } from '../types/shared.js';
 import type { SendMessageJob, ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 
 const logger = createLogger('api-messages');
-const queueManager = new QueueManager();
 
 export const sendMessage = async (req: AuthRequest, res: Response) => {
   try {

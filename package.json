@@ -1,38 +1,46 @@
 {
-  "name": "discord-bot-microservices",
-  "version": "1.0.0",
-  "description": "Discord bot with microservices architecture",
-  "private": true,
-
-  "scripts": {
-    "dev": "pm2 start ecosystem.config.js",
-    "dev:logs": "pm2 logs",
-    "build": "npm run build --workspaces",
-    "build:shared": "cd shared && npm run build",
-    "build:api": "cd api && npm run build",
-    "build:bot": "cd bot && npm run build",
-    "build:frontend": "cd frontend && npm run build",
-    "build:all": "npm run build:shared && npm run build:api && npm run build:bot && npm run build:frontend",
-    "start": "pm2 start ecosystem.config.js --env production",
-    "stop": "pm2 stop ecosystem.config.js",
-    "restart": "pm2 restart ecosystem.config.js",
-    "reload": "pm2 reload ecosystem.config.js",
-    "delete": "pm2 delete ecosystem.config.js",
-    "status": "pm2 status",
-    "monit": "pm2 monit",
-    "setup": "npm install && npm run setup --workspaces && npm run build:shared",
-    "setup:prod": "npm run setup && npm run build:all",
-    "lint": "npm run lint --workspaces",
-    "test": "npm run test --workspaces"
-  },
-  "devDependencies": {
-    "typescript": "^5.8.2",
-    "prettier": "^3.5.3",
-    "eslint": "^9.22.0",
-    "pm2": "^5.3.0"
-  },
-  "engines": {
-    "node": ">=20.10.0",
-    "npm": ">=10.0.0"
-  }
-} 
+	"name": "bubbles-discord-bot",
+	"version": "1.0.0",
+	"description": "Discord bot microservices monorepo",
+	"type": "module",
+	"private": true,
+	"workspaces": [
+		"shared",
+		"bot",
+		"api",
+		"frontend"
+	],
+	"scripts": {
+		"build": "npm run build:shared && npm run build:bot && npm run build:api",
+		"build:shared": "cd shared && npm run build",
+		"build:bot": "cd bot && npm run build",
+		"build:api": "cd api && npm run build",
+		"dev": "concurrently \"npm run dev:shared\" \"npm run dev:bot\" \"npm run dev:api\"",
+		"dev:shared": "cd shared && npm run dev",
+		"dev:bot": "cd bot && npm run dev",
+		"dev:api": "cd api && npm run dev",
+		"start": "npm run start:bot",
+		"start:bot": "cd bot && npm start",
+		"start:api": "cd api && npm start",
+		"clean": "npm run clean:shared && npm run clean:bot && npm run clean:api",
+		"clean:shared": "cd shared && rm -rf dist",
+		"clean:bot": "cd bot && rm -rf dist",
+		"clean:api": "cd api && rm -rf dist",
+		"install:all": "npm install && npm run install:shared && npm run install:bot && npm run install:api",
+		"install:shared": "cd shared && npm install",
+		"install:bot": "cd bot && npm install",
+		"install:api": "cd api && npm install",
+		"typecheck": "tsc --noEmit",
+		"typecheck:all": "npm run typecheck:shared && npm run typecheck:bot && npm run typecheck:api",
+		"typecheck:shared": "cd shared && npm run build",
+		"typecheck:bot": "cd bot && npx tsc --noEmit",
+		"typecheck:api": "cd api && npx tsc --noEmit"
+	},
+	"devDependencies": {
+		"concurrently": "^8.2.2",
+		"typescript": "^5.3.3"
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	}
+}
