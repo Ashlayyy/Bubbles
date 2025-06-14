@@ -273,18 +273,14 @@ export default class Client extends DiscordClient {
         }
 
         actionDescriptor = "register";
-        // Filter commands based on enabledOnDev flag in development mode
-        const commandsToRegister = this.devMode
-          ? this.commands.filter((command) => command.enabledOnDev)
-          : this.commands;
+        // Filter commands based on enabledOnDev flag in both dev and production modes
+        const commandsToRegister = this.commands.filter((command) => command.enabledOnDev);
+        const disabledCommands = this.commands.filter((command) => !command.enabledOnDev);
 
-        if (this.devMode) {
-          const disabledCommands = this.commands.filter((command) => !command.enabledOnDev);
-          if (disabledCommands.size > 0) {
-            logger.info(`Skipping ${disabledCommands.size} commands in dev mode:`, {
-              skippedCommands: disabledCommands.map((cmd) => cmd.builder.name),
-            });
-          }
+        if (disabledCommands.size > 0) {
+          logger.info(`Skipping ${disabledCommands.size} disabled commands:`, {
+            skippedCommands: disabledCommands.map((cmd) => cmd.builder.name),
+          });
         }
 
         commandDataArr = commandsToRegister.map((command) => command.builder.toJSON());
