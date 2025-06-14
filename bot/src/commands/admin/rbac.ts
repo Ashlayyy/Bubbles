@@ -1,7 +1,7 @@
 import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
-import { prisma } from "../../database/index";
-import Command, { GuildChatInputCommandInteraction } from "../../structures/Command";
-import { PermissionLevel } from "../../structures/PermissionTypes";
+import { prisma } from "../../database/index.js";
+import Command, { GuildChatInputCommandInteraction } from "../../structures/Command.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 async function handleRoleSubcommand(interaction: GuildChatInputCommandInteraction) {
   const subcommand = interaction.options.getSubcommand();

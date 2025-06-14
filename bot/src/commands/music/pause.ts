@@ -1,8 +1,8 @@
 import { SlashCommandBuilder } from "discord.js";
 
-import { PermissionLevel } from "@/structures/PermissionTypes";
 import queueService from "../../services/queueService.js";
-import Command from "../../structures/Command";
+import Command from "../../structures/Command.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 export default new Command(
   new SlashCommandBuilder().setName("pause").setDescription("ADMIN ONLY: Pause music."),
