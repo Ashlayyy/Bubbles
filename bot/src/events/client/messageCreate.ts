@@ -6,8 +6,6 @@ import { prisma } from "../../database/index.js";
 import { ClientEvent } from "../../structures/Event.js";
 
 export default new ClientEvent(Events.MessageCreate, async (message: Message) => {
-  console.log(`[DEBUG] Message created: ${message.content}`); // Test log to see if events work at all
-
   // Ignore bot messages for general logging to prevent spam
   if (message.author.bot) return;
 

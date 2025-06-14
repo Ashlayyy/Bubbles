@@ -9,6 +9,9 @@ import type Client from "./Client.js";
 // Log types organized by category for easy management
 export const LOG_CATEGORIES = {
   HIGH_VOLUME: [
+    // Message spam - very high volume
+    "MESSAGE_CREATE",
+
     // Voice self-actions & media
     "VOICE_SELF_MUTE",
     "VOICE_SELF_UNMUTE",
@@ -23,25 +26,27 @@ export const LOG_CATEGORIES = {
     "MESSAGE_REACTION_ADD",
     "MESSAGE_REACTION_REMOVE",
 
-    // Presence & status changes
+    // Presence & status changes - extremely high volume
     "MEMBER_STATUS_CHANGE",
     "MEMBER_COME_ONLINE",
     "MEMBER_GO_OFFLINE",
+
+    // Additional high-volume events
+    "MESSAGE_ATTACHMENT_DELETE",
+    "MESSAGE_EMBED_UPDATE",
+    "MESSAGE_CROSSPOST",
+    "MESSAGE_SUPPRESS_EMBEDS",
+    "STICKER_USAGE",
+    "VOICE_STAGE_SPEAKER_CHANGE",
   ],
   MESSAGE: [
-    "MESSAGE_CREATE",
+    // Keep only moderate-volume message events here
     "MESSAGE_DELETE",
     "MESSAGE_EDIT",
     "MESSAGE_BULK_DELETE",
     "MESSAGE_PIN",
-    "MESSAGE_REACTION_ADD",
-    "MESSAGE_REACTION_REMOVE",
     "MESSAGE_REACTION_CLEAR",
-    "MESSAGE_ATTACHMENT_DELETE",
-    "MESSAGE_EMBED_UPDATE",
     "MESSAGE_THREAD_CREATE",
-    "MESSAGE_CROSSPOST",
-    "MESSAGE_SUPPRESS_EMBEDS",
     "MESSAGE_AUTOMOD_TRIGGER",
     "MESSAGE_SPAM_DETECTED",
     "MESSAGE_LINK_FILTER",
@@ -52,6 +57,7 @@ export const LOG_CATEGORIES = {
     "REACTION_REMOVE_ALL",
   ],
   MEMBER: [
+    // Important member events - keep these in standard logging
     "MEMBER_JOIN",
     "MEMBER_LEAVE",
     "MEMBER_UPDATE",
@@ -72,10 +78,6 @@ export const LOG_CATEGORIES = {
     "MEMBER_COMMUNICATION_DISABLED",
     "MEMBER_MOVE",
     "MEMBER_MENTION_SPAM",
-    "MEMBER_STATUS_CHANGE",
-    "MEMBER_COME_ONLINE",
-    "MEMBER_GO_OFFLINE",
-    "MEMBER_START_STREAMING",
   ],
   ROLE: [
     "ROLE_CREATE",
@@ -112,6 +114,7 @@ export const LOG_CATEGORIES = {
     "CHANNEL_FORUM_TAG_UPDATE",
   ],
   VOICE: [
+    // Keep only server-initiated and important voice events
     "VOICE_JOIN",
     "VOICE_LEAVE",
     "VOICE_MOVE",
@@ -121,21 +124,11 @@ export const LOG_CATEGORIES = {
     "VOICE_UNDEAFEN",
     "VOICE_STREAM_START",
     "VOICE_STREAM_STOP",
-    "VOICE_STAGE_SPEAKER_CHANGE",
-    // Server-initiated voice actions
+    // Server-initiated voice actions - these are important
     "VOICE_SERVER_MUTE",
     "VOICE_SERVER_UNMUTE",
     "VOICE_SERVER_DEAFEN",
     "VOICE_SERVER_UNDEAFEN",
-    // Self-initiated voice actions
-    "VOICE_SELF_MUTE",
-    "VOICE_SELF_UNMUTE",
-    "VOICE_SELF_DEAFEN",
-    "VOICE_SELF_UNDEAFEN",
-    "VOICE_START_STREAM",
-    "VOICE_STOP_STREAM",
-    "VOICE_START_VIDEO",
-    "VOICE_STOP_VIDEO",
   ],
   SERVER: [
     "SERVER_UPDATE",
@@ -183,7 +176,6 @@ export const LOG_CATEGORIES = {
     "STICKER_CREATE",
     "STICKER_DELETE",
     "STICKER_UPDATE",
-    "STICKER_USAGE",
   ],
   WEBHOOK: ["WEBHOOK_CREATE", "WEBHOOK_DELETE", "WEBHOOK_UPDATE", "WEBHOOK_MESSAGE", "WEBHOOK_TOKEN_RESET"],
   BOT: [
@@ -246,6 +238,25 @@ export const LOG_CATEGORIES = {
 
 // Flatten all log types for easy validation
 export const ALL_LOG_TYPES = Object.values(LOG_CATEGORIES).flat();
+
+// Standard log types - excludes high-volume events for better defaults
+export const STANDARD_LOG_TYPES = Object.entries(LOG_CATEGORIES)
+  .filter(([category]) => category !== "HIGH_VOLUME")
+  .flatMap(([, types]) => types)
+  .filter((type) => {
+    // Also exclude some specific high-frequency events from other categories
+    const excludeSpecific = [
+      "APPLICATION_COMMAND_USE", // High volume
+      "COMMAND_USERINFO", // High volume
+      "COMMAND_SERVERINFO", // High volume
+      "COMMAND_AVATAR", // High volume
+      "THREAD_LIST_SYNC", // Technical/high volume
+      "THREAD_MEMBERS_UPDATE", // High volume
+      "GUILD_MEMBERS_CHUNK", // Technical/high volume
+      "CHANNEL_PINS_UPDATE", // Can be high volume
+    ];
+    return !excludeSpecific.includes(type);
+  });
 
 export interface LogEvent {
   guildId: string;
@@ -560,23 +571,33 @@ export default class LogManager {
   }
 
   /**
-   * Get color for category
+   * Get color for category - enhanced with more specific colors
    */
   private getCategoryColor(category: string | null): number {
     const colors = {
-      MESSAGE: 0x3498db, // Blue
-      MEMBER: 0x2ecc71, // Green
-      ROLE: 0x9b59b6, // Purple
-      CHANNEL: 0xe67e22, // Orange
-      VOICE: 0x1abc9c, // Turquoise
-      SERVER: 0xf39c12, // Gold
-      MODERATION: 0xe74c3c, // Red
-      INVITE: 0x95a5a6, // Gray
-      EMOJI: 0xf1c40f, // Yellow
-      WEBHOOK: 0x34495e, // Dark gray
-      BOT: 0x8e44ad, // Dark purple
-      REACTION_ROLE: 0x16a085, // Dark turquoise
-      AUTOMOD: 0xc0392b, // Dark red
+      MESSAGE: 0x3498db, // Blue - information
+      MEMBER: 0x2ecc71, // Green - positive/joins
+      ROLE: 0x9b59b6, // Purple - permissions/roles
+      CHANNEL: 0xe67e22, // Orange - structural changes
+      VOICE: 0x1abc9c, // Turquoise - voice activities
+      SERVER: 0xf39c12, // Gold - important server changes
+      MODERATION: 0xe74c3c, // Red - disciplinary actions
+      INVITE: 0x95a5a6, // Gray - invites
+      EMOJI: 0xf1c40f, // Yellow - fun/cosmetic
+      WEBHOOK: 0x34495e, // Dark gray - technical
+      BOT: 0x8e44ad, // Dark purple - bot activities
+      REACTION_ROLE: 0x16a085, // Dark turquoise - automation
+      AUTOMOD: 0xc0392b, // Dark red - automated moderation
+      SYSTEM: 0x2c3e50, // Dark blue - system events
+      TICKET: 0x27ae60, // Green - support
+      COMMAND: 0x6c5ce7, // Light purple - user interactions
+      POLL: 0xa55eea, // Purple - engagement
+      THREAD: 0x3742fa, // Blue - discussions
+      SCHEDULED_EVENT: 0xff6b6b, // Light red - events
+      USER: 0x48dbfb, // Light blue - user changes
+      WELCOME: 0x0be881, // Bright green - welcoming
+      CHANNEL_PINS: 0xffa502, // Orange - highlights
+      HIGH_VOLUME: 0x7f8c8d, // Muted gray - less important
     };
     return colors[category as keyof typeof colors] || 0x95a5a6;
   }
@@ -920,28 +941,18 @@ export default class LogManager {
       metadataFields.push(`**Role:** <@&${metadata.roleId}> (\`${metadata.roleId}\`)`);
     }
 
-    // Add metadata field if we have any
+    // Add metadata fields to embed
     if (metadataFields.length > 0) {
       embed.addFields({
-        name: "ℹ️ Additional Information",
+        name: "📋 Metadata",
         value: metadataFields.join("\n"),
         inline: false,
-      });
-    }
-
-    // Add jump link for message-related events
-    if (metadata.messageId && typeof metadata.messageId === "string" && logEntry.channelId && logEntry.guildId) {
-      embed.addFields({
-        name: "🔗 Links",
-        value: `[Jump to Message](https://discord.com/channels/${logEntry.guildId}/${logEntry.channelId}/${metadata.messageId})`,
-        inline: true,
       });
     }
   }
 
   /**
    * Set up category-based logging
-   * This is the preferred way to configure logging channels
    */
   async setupCategoryLogging(guildId: string, categoryMappings: Record<string, string>) {
     try {
@@ -967,7 +978,7 @@ export default class LogManager {
         create: {
           guildId,
           channelRouting: newRouting,
-          enabledLogTypes: ALL_LOG_TYPES,
+          enabledLogTypes: STANDARD_LOG_TYPES, // Use STANDARD_LOG_TYPES instead of ALL_LOG_TYPES
           ignoredUsers: [],
           ignoredRoles: [],
           ignoredChannels: [],
@@ -986,7 +997,6 @@ export default class LogManager {
 
   /**
    * Easy setup method for initial configuration
-   * @deprecated Use setupCategoryLogging instead
    */
   async setupBasicLogging(guildId: string, channelMappings: Record<string, string>) {
     try {
@@ -994,12 +1004,12 @@ export default class LogManager {
         where: { guildId },
         update: {
           channelRouting: channelMappings,
-          enabledLogTypes: ALL_LOG_TYPES,
+          enabledLogTypes: STANDARD_LOG_TYPES, // Use STANDARD_LOG_TYPES instead of ALL_LOG_TYPES
         },
         create: {
           guildId,
           channelRouting: channelMappings,
-          enabledLogTypes: ALL_LOG_TYPES,
+          enabledLogTypes: STANDARD_LOG_TYPES, // Use STANDARD_LOG_TYPES instead of ALL_LOG_TYPES
           ignoredUsers: [],
           ignoredRoles: [],
           ignoredChannels: [],
@@ -1012,94 +1022,6 @@ export default class LogManager {
       logger.info(`Basic logging setup completed for guild ${guildId}`);
     } catch (error) {
       logger.error("Error setting up basic logging:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Helper method to enable/disable specific log types
-   */
-  async toggleLogType(guildId: string, logType: string, enabled: boolean) {
-    try {
-      const settings = await prisma.logSettings.findUnique({
-        where: { guildId },
-      });
-
-      const enabledTypes = settings?.enabledLogTypes ?? [];
-
-      if (enabled && !enabledTypes.includes(logType)) {
-        enabledTypes.push(logType);
-      } else if (!enabled) {
-        const filteredTypes = enabledTypes.filter((type) => type !== logType);
-
-        await prisma.logSettings.upsert({
-          where: { guildId },
-          update: { enabledLogTypes: filteredTypes },
-          create: {
-            guildId,
-            enabledLogTypes: filteredTypes,
-            channelRouting: {},
-            ignoredUsers: [],
-            ignoredRoles: [],
-            ignoredChannels: [],
-          },
-        });
-
-        // Clear cache
-        this.settingsCache.delete(guildId);
-        return;
-      }
-
-      await prisma.logSettings.upsert({
-        where: { guildId },
-        update: { enabledLogTypes: enabledTypes },
-        create: {
-          guildId,
-          enabledLogTypes: enabledTypes,
-          channelRouting: {},
-          ignoredUsers: [],
-          ignoredRoles: [],
-          ignoredChannels: [],
-        },
-      });
-
-      // Clear cache
-      this.settingsCache.delete(guildId);
-    } catch (error) {
-      logger.error("Error toggling log type:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Set channel routing for specific log types
-   */
-  async setChannelRouting(guildId: string, routing: Record<string, string>) {
-    try {
-      const settings = await prisma.logSettings.findUnique({
-        where: { guildId },
-      });
-
-      const currentRouting = (settings?.channelRouting ?? {}) as Record<string, string>;
-      const updatedRouting = { ...currentRouting, ...routing };
-
-      await prisma.logSettings.upsert({
-        where: { guildId },
-        update: { channelRouting: updatedRouting },
-        create: {
-          guildId,
-          channelRouting: updatedRouting,
-          enabledLogTypes: [],
-          ignoredUsers: [],
-          ignoredRoles: [],
-          ignoredChannels: [],
-        },
-      });
-
-      // Clear cache
-      this.settingsCache.delete(guildId);
-    } catch (error) {
-      logger.error("Error setting channel routing:", error);
       throw error;
     }
   }
@@ -1126,32 +1048,6 @@ export default class LogManager {
       this.settingsCache.delete(guildId);
     } catch (error) {
       logger.error("Error enabling all log types:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Disable all log types for a guild
-   */
-  async disableAllLogTypes(guildId: string) {
-    try {
-      await prisma.logSettings.upsert({
-        where: { guildId },
-        update: { enabledLogTypes: [] },
-        create: {
-          guildId,
-          channelRouting: {},
-          enabledLogTypes: [],
-          ignoredUsers: [],
-          ignoredRoles: [],
-          ignoredChannels: [],
-        },
-      });
-
-      // Clear cache
-      this.settingsCache.delete(guildId);
-    } catch (error) {
-      logger.error("Error disabling all log types:", error);
       throw error;
     }
   }
@@ -1226,6 +1122,32 @@ export default class LogManager {
       this.settingsCache.delete(guildId);
     } catch (error) {
       logger.error("Error disabling log types:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Disable all log types for a guild
+   */
+  async disableAllLogTypes(guildId: string) {
+    try {
+      await prisma.logSettings.upsert({
+        where: { guildId },
+        update: { enabledLogTypes: [] },
+        create: {
+          guildId,
+          channelRouting: {},
+          enabledLogTypes: [],
+          ignoredUsers: [],
+          ignoredRoles: [],
+          ignoredChannels: [],
+        },
+      });
+
+      // Clear cache
+      this.settingsCache.delete(guildId);
+    } catch (error) {
+      logger.error("Error disabling all log types:", error);
       throw error;
     }
   }
