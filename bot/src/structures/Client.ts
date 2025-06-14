@@ -348,7 +348,7 @@ export default class Client extends DiscordClient {
 
     const player = useMainPlayer();
 
-    const eventsDir = this.devMode ? "./src/events" : "./build/events";
+    const eventsDir = this.devMode ? "./src/events" : "./build/bot/src/events";
     console.log(eventsDir);
     const eventEmitterTypes: EventEmitterType[] = [];
     await forNestedDirsFiles(eventsDir, async (eventFilePath, dir, file) => {
