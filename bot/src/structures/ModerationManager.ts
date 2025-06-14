@@ -1,7 +1,7 @@
 import type { Guild } from "discord.js";
 import { EmbedBuilder } from "discord.js";
 
-import { APPEALS_OAUTH_CONFIG } from "../config/appeals";
+import { APPEALS_OAUTH_CONFIG } from "../config/appeals.js";
 import { prisma } from "../database/index";
 import logger from "../logger";
 import queueService from "../services/queueService.js";
