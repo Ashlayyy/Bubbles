@@ -14,9 +14,9 @@
     "dev": "nodemon",
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write .",
-    "commands:register": "node build/scripts/discordAPI/registerCommands.js",
+    "commands:register": "node build/bot/src/scripts/discordAPI/registerCommands.js",
     "commands:resetDev": "tsc && cross-env NODE_ENV=development tsx src/scripts/discordAPI/resetCommands.ts",
-    "commands:resetProd": "node build/scripts/discordAPI/resetCommands.js",
+    "commands:resetProd": "node build/bot/src/scripts/discordAPI/resetCommands.js",
     "start": "node ."
   },
   "dependencies": {
