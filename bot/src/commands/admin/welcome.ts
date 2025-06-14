@@ -11,7 +11,7 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("welcome")
     .setDescription("ADMIN ONLY: Configure welcome system for new members")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
     .addSubcommand((sub) =>
       sub
         .setName("setup")

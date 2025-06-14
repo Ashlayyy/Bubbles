@@ -169,7 +169,7 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("rbac")
     .setDescription("Manage Role-Based Access Control.")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
     .addSubcommandGroup((group) =>
       group
         .setName("role")

@@ -8,7 +8,7 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("cleanup")
     .setDescription("ADMIN ONLY: Database cleanup operations")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
     .addSubcommand((sub) =>
       sub
         .setName("reaction-roles")

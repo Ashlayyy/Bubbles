@@ -81,7 +81,7 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("automod")
     .setDescription("ADMIN ONLY: Configure auto-moderation for your server")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
     .addSubcommand((subcommand) =>
       subcommand
         .setName("create")

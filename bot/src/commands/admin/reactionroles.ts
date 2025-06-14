@@ -10,6 +10,7 @@ import {
   Message,
   MessageFlags,
   ModalBuilder,
+  PermissionsBitField,
   RoleSelectMenuBuilder,
   SlashCommandBuilder,
   TextChannel,
@@ -29,7 +30,7 @@ import { PermissionLevel } from "../../structures/PermissionTypes.js";
 const commandBuilder = new SlashCommandBuilder()
   .setName("reaction-roles")
   .setDescription("Manage reaction roles for your server")
-  .setDefaultMemberPermissions(0)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
   .addSubcommand((subcommand) =>
     subcommand.setName("builder").setDescription("Create a new reaction role message using an interactive builder.")
   )

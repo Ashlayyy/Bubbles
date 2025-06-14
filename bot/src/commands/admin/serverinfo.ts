@@ -8,7 +8,7 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("serverinfo")
     .setDescription("ADMIN ONLY: Get detailed server information")
-    .setDefaultMemberPermissions(0),
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers),
 
   async (client, interaction) => {
     // Type guard to ensure this is a chat input command

@@ -1,4 +1,4 @@
-import { ChannelType, SlashCommandBuilder } from "discord.js";
+import { ChannelType, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
@@ -90,7 +90,7 @@ export default new Command(
         .setDescription("Include bulk operations (bulk message deletes, etc.) - can be spammy")
         .setRequired(false)
     )
-    .setDefaultMemberPermissions(0),
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild),
 
   async (client, interaction) => {
     if (!interaction.isChatInputCommand() || !interaction.guild) return;

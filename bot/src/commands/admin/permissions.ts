@@ -1,5 +1,5 @@
 import type { PermissionResolvable } from "discord.js";
-import { GuildMember, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { GuildMember, MessageFlags, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import Command from "../../structures/Command.js";
 import PermissionManager from "../../structures/PermissionManager.js";
@@ -34,7 +34,7 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("permissions")
     .setDescription("ADMIN ONLY: Manage command permissions")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
     .addSubcommand((sub) =>
       sub
         .setName("check")

@@ -6,6 +6,7 @@ import {
   type ChatInputCommandInteraction,
   ComponentType,
   EmbedBuilder,
+  PermissionsBitField,
   SlashCommandBuilder,
 } from "discord.js";
 
@@ -165,7 +166,7 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("automod-setup")
     .setDescription("🧙‍♂️ Setup auto-moderation with guided wizard")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
     .addSubcommand((sub) => sub.setName("wizard").setDescription("Launch the interactive setup wizard"))
     .addSubcommand((sub) =>
       sub

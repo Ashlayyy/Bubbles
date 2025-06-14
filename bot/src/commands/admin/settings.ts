@@ -7,6 +7,7 @@ import {
   ChannelType,
   ComponentType,
   MessageFlags,
+  PermissionsBitField,
   SlashCommandBuilder,
 } from "discord.js";
 import lodash from "lodash";
@@ -40,7 +41,7 @@ const HIGH_VOLUME_EVENTS = [...LOG_CATEGORIES.HIGH_VOLUME];
 const builder = new SlashCommandBuilder()
   .setName("settings")
   .setDescription("Manage server-specific bot settings.")
-  .setDefaultMemberPermissions(0)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
   .addSubcommand((subcommand) =>
     subcommand
       .setName("set-welcome-channel")

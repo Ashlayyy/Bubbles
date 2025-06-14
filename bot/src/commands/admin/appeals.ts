@@ -7,7 +7,7 @@ export default new Command(
   new SlashCommandBuilder()
     .setName("appeals")
     .setDescription("ADMIN ONLY: Manage user appeals for punishments")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
     .addSubcommand((sub) =>
       sub
         .setName("setup")
