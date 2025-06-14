@@ -68,29 +68,7 @@ const builder = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand.setName("display").setDescription("Show current settings for this guild/server.")
   )
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName("set-reaction-role-log-channel")
-      .setDescription("Set the channel where reaction role activities will be logged.")
-      .addChannelOption((option) =>
-        option
-          .setName("channel")
-          .setDescription("The channel to send reaction role logs to.")
-          .addChannelTypes(ChannelType.GuildText)
-          .setRequired(true)
-      )
-  )
-  .addSubcommand((subcommand) =>
-    subcommand.setName("disable-reaction-role-logging").setDescription("Disable reaction role logging to channel.")
-  )
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName("toggle-reaction-role-db-logging")
-      .setDescription("Enable or disable database logging of reaction role activities.")
-      .addBooleanOption((option) =>
-        option.setName("enabled").setDescription("Enable or disable database logging.").setRequired(true)
-      )
-  )
+
   // Logging is now handled by the comprehensive /logging command
   .addSubcommand((subcommand) =>
     subcommand.setName("logging-help").setDescription("🗂️ Get information about the new comprehensive logging system")
@@ -161,15 +139,7 @@ export default new Command(
       case "set-goodbye-channel":
         await handleSetGoodbyeChannel(interaction);
         break;
-      case "set-reaction-role-log-channel":
-        await handleSetReactionRoleLogChannel(interaction);
-        break;
-      case "disable-reaction-role-logging":
-        await handleDisableReactionRoleLogging(interaction);
-        break;
-      case "toggle-reaction-role-db-logging":
-        await handleToggleReactionRoleDbLogging(interaction);
-        break;
+
       case "display":
         await displayCurrentSettings(client, interaction);
         break;
@@ -473,12 +443,6 @@ function getSettingDisplayValue(settingData: SettingData): string {
       return `\`${toDisplayString(settingData.value)}\``;
     }
 
-    case "logReactionRoles":
-    case "reactionRoleLoggingEnabled": {
-      return typeof settingData.value === "boolean" ? (settingData.value ? "Enabled" : "Disabled") : "Unknown";
-    }
-
-    case "reactionRoleLogChannelId":
     case "welcomeChannelId":
     case "goodbyeChannelId": {
       if (typeof settingData.value === "string" && settingData.value !== "") {
@@ -517,51 +481,11 @@ async function handleSetGoodbyeChannel(interaction: GuildChatInputCommandInterac
   });
 }
 
-async function handleSetReactionRoleLogChannel(interaction: GuildChatInputCommandInteraction) {
-  if (!interaction.guild) return;
-
-  const channel = interaction.options.getChannel("channel", true);
-
-  // Enable logging and set the channel
-  await updateGuildConfig(interaction.guild.id, {
-    reactionRoleLoggingEnabled: true,
-    reactionRoleLogChannelId: channel.id,
-  });
-
-  await interaction.reply({
-    content: `Reaction role activities will now be logged in <#${channel.id}>.`,
-    flags: MessageFlags.Ephemeral,
-  });
-}
-
-async function handleDisableReactionRoleLogging(interaction: GuildChatInputCommandInteraction) {
-  if (!interaction.guild) return;
-
-  await updateGuildConfig(interaction.guild.id, {
-    reactionRoleLoggingEnabled: false,
-    reactionRoleLogChannelId: null,
-  });
-
-  await interaction.reply({
-    content: "Reaction role logging to channel has been disabled.",
-    flags: MessageFlags.Ephemeral,
-  });
-}
-
-async function handleToggleReactionRoleDbLogging(interaction: GuildChatInputCommandInteraction) {
-  if (!interaction.guild) return;
-
-  const enabled = interaction.options.getBoolean("enabled", true);
-
-  await updateGuildConfig(interaction.guild.id, {
-    logReactionRoles: enabled,
-  });
-
-  await interaction.reply({
-    content: `Database logging of reaction role activities has been ${enabled ? "enabled" : "disabled"}.`,
-    flags: MessageFlags.Ephemeral,
-  });
-}
+// ========================================
+// REMOVED: Old reaction role logging functions
+// All reaction role logging is now handled by the comprehensive /logging command
+// Use /logging setup or /logging toggle REACTION_ROLE to configure reaction role logging
+// ========================================
 
 // New comprehensive logging handlers
 

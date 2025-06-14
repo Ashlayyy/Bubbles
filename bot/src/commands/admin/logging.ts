@@ -76,7 +76,7 @@ const LOGGING_PRESETS: LoggingPreset[] = [
     name: "Security Focused",
     description: "Enhanced security logging for servers requiring strict oversight",
     emoji: "🔒",
-    categories: ["MODERATION", "MEMBER", "ROLE", "SERVER", "BOT", "WEBHOOK", "AUTOMOD"],
+    categories: ["MODERATION", "MEMBER", "ROLE", "SERVER", "BOT", "WEBHOOK", "AUTOMOD", "REACTION_ROLE"],
     logTypes: [
       ...LOG_CATEGORIES.MODERATION,
       ...LOG_CATEGORIES.MEMBER,
@@ -85,6 +85,7 @@ const LOGGING_PRESETS: LoggingPreset[] = [
       ...LOG_CATEGORIES.BOT,
       ...LOG_CATEGORIES.WEBHOOK,
       ...LOG_CATEGORIES.AUTOMOD,
+      ...LOG_CATEGORIES.REACTION_ROLE,
       "MESSAGE_DELETE",
       "MESSAGE_EDIT",
       "INVITE_CREATE",
@@ -93,7 +94,7 @@ const LOGGING_PRESETS: LoggingPreset[] = [
     recommendedChannels: [
       {
         name: "Security Log",
-        categories: ["MODERATION", "AUTOMOD", "BOT", "WEBHOOK"],
+        categories: ["MODERATION", "AUTOMOD", "BOT", "WEBHOOK", "REACTION_ROLE"],
         description: "All security-related events and automated actions",
       },
       {

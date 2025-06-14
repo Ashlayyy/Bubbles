@@ -193,10 +193,14 @@ export const LOG_CATEGORIES = {
     "INTEGRATION_DETAILS",
   ],
   REACTION_ROLE: [
-    "REACTION_ROLE_ADD",
-    "REACTION_ROLE_REMOVE",
-    "REACTION_ROLE_CONFIG_CHANGE",
-    "REACTION_ROLE_MESSAGE_UPDATE",
+    "REACTION_ROLE_ADDED", // User gained a role via reaction
+    "REACTION_ROLE_REMOVED", // User lost a role via reaction
+    "REACTION_ROLE_CONFIG_ADD", // Reaction role configuration added
+    "REACTION_ROLE_CONFIG_REMOVE", // Reaction role configuration removed
+    "REACTION_ROLE_MESSAGE_CREATE", // New reaction role message created
+    "REACTION_ROLE_MESSAGE_UPDATE", // Reaction role message edited
+    "REACTION_ROLE_MESSAGE_DELETE", // Reaction role message deleted
+    "REACTION_ROLE_ERROR", // Error in reaction role processing
   ],
   AUTOMOD: [
     "AUTOMOD_RULE_CREATE",
@@ -755,6 +759,82 @@ export default class LogManager {
           description: `${userMention} removed a reaction in ${channelMention}`,
           emoji: "👎",
         };
+
+      // Reaction Role Events
+      case "REACTION_ROLE_ADDED": {
+        const metadata = logEntry.metadata as { roleName?: string; emoji?: string } | undefined;
+        const roleName = metadata?.roleName ?? "Unknown Role";
+        const emoji = metadata?.emoji ?? "❓";
+        return {
+          title: "Reaction Role Added",
+          description: `${userMention} gained the role **${roleName}** via reaction ${emoji}`,
+          emoji: "✅",
+        };
+      }
+
+      case "REACTION_ROLE_REMOVED": {
+        const metadata = logEntry.metadata as { roleName?: string; emoji?: string } | undefined;
+        const roleName = metadata?.roleName ?? "Unknown Role";
+        const emoji = metadata?.emoji ?? "❓";
+        return {
+          title: "Reaction Role Removed",
+          description: `${userMention} lost the role **${roleName}** via reaction ${emoji}`,
+          emoji: "❌",
+        };
+      }
+
+      case "REACTION_ROLE_CONFIG_ADD": {
+        const metadata = logEntry.metadata as { roleName?: string; emoji?: string } | undefined;
+        const roleName = metadata?.roleName ?? "Unknown Role";
+        const emoji = metadata?.emoji ?? "❓";
+        return {
+          title: "Reaction Role Configuration Added",
+          description: `New reaction role configuration: ${emoji} → **${roleName}**`,
+          emoji: "⚙️",
+        };
+      }
+
+      case "REACTION_ROLE_CONFIG_REMOVE": {
+        const metadata = logEntry.metadata as { roleName?: string; emoji?: string } | undefined;
+        const roleName = metadata?.roleName ?? "Unknown Role";
+        const emoji = metadata?.emoji ?? "❓";
+        return {
+          title: "Reaction Role Configuration Removed",
+          description: `Removed reaction role configuration: ${emoji} → **${roleName}**`,
+          emoji: "🗑️",
+        };
+      }
+
+      case "REACTION_ROLE_MESSAGE_CREATE":
+        return {
+          title: "Reaction Role Message Created",
+          description: `New reaction role message created in ${channelMention}`,
+          emoji: "📝",
+        };
+
+      case "REACTION_ROLE_MESSAGE_UPDATE":
+        return {
+          title: "Reaction Role Message Updated",
+          description: `Reaction role message updated in ${channelMention}`,
+          emoji: "✏️",
+        };
+
+      case "REACTION_ROLE_MESSAGE_DELETE":
+        return {
+          title: "Reaction Role Message Deleted",
+          description: `Reaction role message deleted from ${channelMention}`,
+          emoji: "🗑️",
+        };
+
+      case "REACTION_ROLE_ERROR": {
+        const metadata = logEntry.metadata as { error?: string } | undefined;
+        const error = metadata?.error ?? "Unknown error";
+        return {
+          title: "Reaction Role Error",
+          description: `Error processing reaction role: ${error}`,
+          emoji: "⚠️",
+        };
+      }
 
       default:
         return {

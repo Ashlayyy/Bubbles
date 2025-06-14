@@ -408,11 +408,91 @@ export default class ModerationManager {
       });
     } catch (error) {
       logger.error(`Error queuing Discord action ${action.type}:`, error);
-      await prisma.moderationCase.update({
-        where: { id: case_.id },
-        data: { dmSent: false },
-      });
-      throw error;
+
+      // FALLBACK: If queue fails, execute Discord action directly
+      logger.warn(`Queue failed for ${action.type}, falling back to direct execution`);
+      try {
+        await this.executeDiscordActionDirectly(guild, action);
+        logger.info(`Successfully executed ${action.type} directly (fallback mode)`);
+
+        await prisma.moderationCase.update({
+          where: { id: case_.id },
+          data: { dmSent: true },
+        });
+      } catch (fallbackError) {
+        logger.error(`Fallback execution also failed for ${action.type}:`, fallbackError);
+        await prisma.moderationCase.update({
+          where: { id: case_.id },
+          data: { dmSent: false },
+        });
+        throw fallbackError;
+      }
+    }
+  }
+
+  /**
+   * Execute Discord actions directly (fallback when queue system fails)
+   */
+  private async executeDiscordActionDirectly(guild: Guild, action: ModerationAction): Promise<void> {
+    switch (action.type) {
+      case "KICK": {
+        const member = await guild.members.fetch(action.userId).catch(() => null);
+        if (!member) {
+          throw new Error(`Member ${action.userId} not found in guild ${guild.id}`);
+        }
+        await member.kick(action.reason);
+        logger.info(`Direct kick executed for user ${action.userId}`);
+        break;
+      }
+
+      case "BAN": {
+        await guild.members.ban(action.userId, {
+          reason: action.reason,
+          deleteMessageSeconds: 7 * 24 * 60 * 60, // Delete messages from the last 7 days
+        });
+        logger.info(`Direct ban executed for user ${action.userId}`);
+        break;
+      }
+
+      case "TIMEOUT": {
+        const member = await guild.members.fetch(action.userId).catch(() => null);
+        if (!member) {
+          throw new Error(`Member ${action.userId} not found in guild ${guild.id}`);
+        }
+        if (action.duration) {
+          const timeoutDuration = action.duration * 1000; // Convert to milliseconds
+          await member.timeout(timeoutDuration, action.reason);
+          logger.info(`Direct timeout executed for user ${action.userId} for ${action.duration}s`);
+        } else {
+          throw new Error("Duration is required for timeout action");
+        }
+        break;
+      }
+
+      case "UNBAN": {
+        await guild.members.unban(action.userId, action.reason);
+        logger.info(`Direct unban executed for user ${action.userId}`);
+        break;
+      }
+
+      case "UNTIMEOUT": {
+        const member = await guild.members.fetch(action.userId).catch(() => null);
+        if (!member) {
+          throw new Error(`Member ${action.userId} not found in guild ${guild.id}`);
+        }
+        await member.timeout(null, action.reason); // Remove timeout
+        logger.info(`Direct untimeout executed for user ${action.userId}`);
+        break;
+      }
+
+      case "WARN":
+      case "NOTE":
+        // These don't require Discord actions
+        logger.info(`${action.type} processed - no Discord action required`);
+        break;
+
+      default:
+        throw new Error(`Unknown action type: ${action.type}`);
     }
   }
 

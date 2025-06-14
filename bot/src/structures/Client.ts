@@ -177,6 +177,19 @@ export default class Client extends DiscordClient {
       if (this.devMode) await this.manageDiscordAPICommands(DiscordAPIAction.Register);
 
       await connectToDB();
+
+      // Initialize cache and batch services
+      logger.info("Initializing cache and batch operation services...");
+      const { cacheService } = await import("../services/cacheService.js");
+      const { batchOperationManager } = await import("../services/batchOperationManager.js");
+
+      // Warm up cache with current guilds if any
+      const guildIds = this.guilds.cache.map((guild) => guild.id);
+      if (guildIds.length > 0) {
+        logger.info(`Warming up cache for ${guildIds.length} guilds...`);
+        await cacheService.warmup(guildIds);
+      }
+
       logger.info("Loading discord player extractors");
       const player = useMainPlayer();
       await player.extractors.register(YoutubeiExtractor, {});
@@ -190,6 +203,12 @@ export default class Client extends DiscordClient {
       await this.startQueueProcessors();
 
       this.started = true;
+
+      // Log cache statistics after startup
+      const stats = cacheService.getStats();
+      logger.info(
+        `Cache service ready - Memory entries: ${stats.memoryEntries}, Redis connected: ${stats.redisConnected}`
+      );
     } catch (error) {
       logger.error(error);
       logger.error(new Error("Could not start the bot! Make sure your environment variables are valid!"));
@@ -199,9 +218,15 @@ export default class Client extends DiscordClient {
 
   /** Start queue processors */
   private async startQueueProcessors(): Promise<void> {
-    const { QueueProcessor } = await import("../queue/processor.js");
-    const processor = new QueueProcessor(this);
-    processor.start();
+    try {
+      const { QueueProcessor } = await import("../queue/processor.js");
+      const processor = new QueueProcessor(this);
+      await processor.start();
+      logger.info("Queue processors initialization completed");
+    } catch (error) {
+      logger.error("Failed to initialize queue processors:", error);
+      logger.warn("Bot will continue with fallback mode for queue operations");
+    }
   }
 
   /** Load slash commands */
@@ -629,6 +654,34 @@ export default class Client extends DiscordClient {
       } else {
         await interaction.reply(errorReply).catch((e: unknown) => logger.error("Error sending reply error message", e));
       }
+    }
+  }
+
+  /** Gracefully shut down the bot */
+  async shutdown(): Promise<void> {
+    logger.info("Shutting down bot...");
+
+    try {
+      // Shutdown cache and batch services first
+      const { cacheService } = await import("../services/cacheService.js");
+      const { batchOperationManager } = await import("../services/batchOperationManager.js");
+
+      logger.info("Flushing batch operations...");
+      await batchOperationManager.shutdown();
+
+      logger.info("Shutting down cache service...");
+      await cacheService.shutdown();
+
+      // Disconnect from Discord
+      await this.destroy();
+
+      // Disconnect from database
+      const { disconnect } = await import("../database/index.js");
+      await disconnect();
+
+      logger.info("Bot shutdown complete");
+    } catch (error) {
+      logger.error("Error during shutdown:", error);
     }
   }
 }

@@ -8,39 +8,33 @@ datasource db {
 }
 
 model GuildConfig {
-  id                         String          @id @default(auto()) @map("_id") @db.ObjectId
-  guildId                    String          @unique
-  maxMessagesCleared         Int             @default(100)
-  musicChannelId             String          @default("")
-  defaultRepeatMode          Int             @default(0)
-  reactionRoleChannels       String[]        @default([])
-  logReactionRoles           Boolean         @default(false)
-  reactionRoleLoggingEnabled Boolean         @default(false)
-  reactionRoleLogChannelId   String?
-  welcomeChannelId           String?
-  goodbyeChannelId           String?
-  welcomeEnabled             Boolean         @default(true)
-  goodbyeEnabled             Boolean         @default(true)
-  moderationLogChannelId     String?
-  memberLogChannelId         String?
-  messageLogChannelId        String?
-  roleLogChannelId           String?
-  channelLogChannelId        String?
-  voiceLogChannelId          String?
-  serverLogChannelId         String?
-  ticketChannelId            String?
-  ticketCategoryId           String?
-  useTicketThreads           Boolean         @default(true)
-  ticketOnCallRoleId         String?
-  ticketSilentClaim          Boolean         @default(true)
-  ticketAccessType           String?
-  ticketAccessRoleId         String?
-  ticketAccessPermission     String?
-  ticketLogChannelId         String?
-  logSettings                LogSettings?    @relation(fields: [logSettingsId], references: [id])
-  appealSettings             AppealSettings? @relation(fields: [appealSettingsId], references: [id])
-  logSettingsId              String?         @db.ObjectId
-  appealSettingsId           String?         @db.ObjectId
+  id                     String          @id @default(auto()) @map("_id") @db.ObjectId
+  guildId                String          @unique
+  maxMessagesCleared     Int             @default(100)
+  musicChannelId         String          @default("")
+  defaultRepeatMode      Int             @default(0)
+  reactionRoleChannels   String[]        @default([])
+  logReactionRoles       Boolean         @default(false)
+  welcomeChannelId       String?
+  goodbyeChannelId       String?
+  welcomeEnabled         Boolean         @default(true)
+  goodbyeEnabled         Boolean         @default(true)
+  // Ticket system fields
+  ticketChannelId        String?
+  ticketCategoryId       String?
+  useTicketThreads       Boolean         @default(true)
+  ticketOnCallRoleId     String?
+  ticketSilentClaim      Boolean         @default(true)
+  // Ticket access control
+  ticketAccessType       String?
+  ticketAccessRoleId     String?
+  ticketAccessPermission String?
+  ticketLogChannelId     String?
+  // Relations - new LogSettings model handles all logging configuration
+  logSettings            LogSettings?    @relation(fields: [logSettingsId], references: [id])
+  appealSettings         AppealSettings? @relation(fields: [appealSettingsId], references: [id])
+  logSettingsId          String?         @db.ObjectId
+  appealSettingsId       String?         @db.ObjectId
 }
 
 model LogSettings {
