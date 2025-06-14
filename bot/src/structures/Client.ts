@@ -208,7 +208,7 @@ export default class Client extends DiscordClient {
   private async loadCommands(): Promise<void> {
     logger.info("Loading commands");
 
-    const commandsDir = this.devMode ? "./src/commands" : "./build/commands";
+    const commandsDir = this.devMode ? "./src/commands" : "./build/bot/src/commands";
 
     // Use a Set to avoid duplicates if a command is somehow in multiple places
     const loadedCommandFiles = new Set<string>();
