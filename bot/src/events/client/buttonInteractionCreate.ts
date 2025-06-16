@@ -1,4 +1,5 @@
 import type { Interaction } from "discord.js";
+import { handleGiveawayInteraction } from "../../commands/general/giveaway.js";
 import { handlePollInteraction } from "../../commands/moderation/poll.js";
 import { handleTicketButtonInteraction } from "../../functions/discord/ticketManager.js";
 import { ClientEvent } from "../../structures/Event.js";
@@ -7,6 +8,12 @@ export default new ClientEvent("interactionCreate", async (interaction: Interact
   // Handle button interactions
   if (interaction.isButton()) {
     if (!interaction.inGuild()) return;
+
+    // Handle giveaway button interactions
+    if (interaction.customId.startsWith("giveaway_")) {
+      await handleGiveawayInteraction(interaction);
+      return;
+    }
 
     // Handle poll button interactions
     if (interaction.customId.startsWith("poll_")) {

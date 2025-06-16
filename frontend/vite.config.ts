@@ -1,15 +1,23 @@
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import { resolve } from 'path'
 
-export default defineConfig({
-  plugins: [vue()],
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
+import path from "path";
+import { componentTagger } from "lovable-tagger";
+
+// https://vitejs.dev/config/
+export default defineConfig(({ mode }) => ({
   server: {
-    port: 3000
+    host: "::",
+    port: 8080,
   },
+  plugins: [
+    vue(),
+    mode === 'development' &&
+    componentTagger(),
+  ].filter(Boolean),
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src')
-    }
-  }
-}) 
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+}));
