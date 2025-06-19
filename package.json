@@ -19,6 +19,9 @@
 		"dev:shared": "cd shared && npm run dev",
 		"dev:bot": "cd bot && npm run dev",
 		"dev:api": "cd api && npm run dev",
+		"db:generate": "cd shared && npm run db:generate",
+		"db:push": "cd shared && npm run db:push",
+		"db:studio": "cd shared && npm run db:studio",
 		"start": "npm run start:bot",
 		"start:bot": "cd bot && npm start",
 		"start:api": "cd api && npm start",
@@ -42,5 +45,16 @@
 	},
 	"engines": {
 		"node": ">=18.0.0"
+	},
+	"dependencies": {
+		"@types/cors": "^2.8.19",
+		"@types/express": "^5.0.3",
+		"@types/jsonwebtoken": "^9.0.10",
+		"cors": "^2.8.5",
+		"dotenv": "^16.5.0",
+		"express-rate-limit": "^7.5.0",
+		"helmet": "^8.1.0",
+		"joi": "^17.13.3",
+		"jsonwebtoken": "^9.0.2"
 	}
 }
