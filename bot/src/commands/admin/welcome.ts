@@ -115,6 +115,29 @@ async function handleSetup(client: Client, interaction: GuildChatInputCommandInt
         where: { id: guildConfig.id },
         data: updateData,
       });
+
+      // Notify API of welcome system configuration change
+      const customClient = client as any as Client;
+      if (customClient.queueService) {
+        try {
+          await customClient.queueService.processRequest({
+            type: "CONFIG_UPDATE",
+            data: {
+              guildId: interaction.guild.id,
+              section: "WELCOME_SYSTEM",
+              changes: updateData,
+              action: "UPDATE_WELCOME_CONFIG",
+              updatedBy: interaction.user.id,
+            },
+            source: "rest",
+            userId: interaction.user.id,
+            guildId: interaction.guild.id,
+            requiresReliability: true,
+          });
+        } catch (error) {
+          console.warn("Failed to notify API of welcome system change:", error);
+        }
+      }
     }
 
     const embed = new EmbedBuilder().setColor(0x2ecc71).setTitle("✅ Welcome System Configured").setTimestamp();

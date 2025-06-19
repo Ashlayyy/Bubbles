@@ -1,4 +1,4 @@
-import type { Poll } from "@prisma/client";
+import type { Poll } from "@shared/database";
 import {
   ActionRowBuilder,
   ButtonBuilder,

@@ -1,8 +1,7 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@shared/database";
 import type { GuildQueueEvents, Player, PlayerEvents, PlayerEventsEmitter } from "discord-player";
 import type { Awaitable, ClientEvents } from "discord.js";
 
-import { bindEvent as bindDBEvent } from "../database/index.js";
 import type Client from "./Client.js";
 import QueueMetadata from "./QueueMetadata.js";
 
@@ -123,6 +122,7 @@ export type PrismaRunFunction<Ev extends PrismaEvents> = (
 
 export class PrismaEvent<Ev extends PrismaEvents> extends BaseEvent<Ev, PrismaRunFunction<Ev>> implements IBindEvent {
   bindToEventEmitter(): void {
-    bindDBEvent<Ev>(this.event, this.run);
+    // Note: Database event binding has been removed
+    console.warn("PrismaEvent binding is not currently supported");
   }
 }

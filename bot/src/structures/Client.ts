@@ -33,6 +33,8 @@ import { isDevEnvironment } from "../functions/general/environment.js";
 import { forNestedDirsFiles, importDefaultESM } from "../functions/general/fs.js";
 import { camel2Display, isOnlyDigits } from "../functions/general/strings.js";
 import logger from "../logger.js";
+import { UnifiedQueueService } from "../services/unifiedQueueService.js";
+import { WebSocketService } from "../services/websocketService.js";
 import type Command from "./Command.js";
 import { isCommand } from "./Command.js";
 import { EventEmitterType, eventEmitterTypeFromDir, isBaseEvent } from "./Event.js";
@@ -69,6 +71,13 @@ export default class Client extends DiscordClient {
   readonly logManager: LogManager;
   readonly moderationManager: ModerationManager;
 
+  // WebSocket service for API communication
+  public wsService: WebSocketService | null = null;
+  // Queue service for unified queue processing
+  public queueService: UnifiedQueueService | null = null;
+  // Health service for monitoring
+  public healthService: any = null;
+
   /** Get/Generate singleton instance */
   static async get() {
     if (!Client.instance) {
@@ -90,24 +99,26 @@ export default class Client extends DiscordClient {
   }
 
   private constructor() {
+    super({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildModeration,
+        GatewayIntentBits.DirectMessages,
+      ],
+      partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+      allowedMentions: { repliedUser: false },
+      // Shard configuration - ShardingManager will automatically set this when running in shard mode
+      // When running directly, it will use internal sharding if needed
+    });
+
     try {
       logger.info("*** DISCORD.JS BOT: CONSTRUCTION ***");
-
-      super({
-        intents: [
-          GatewayIntentBits.Guilds,
-          GatewayIntentBits.GuildVoiceStates,
-          GatewayIntentBits.GuildMembers,
-          GatewayIntentBits.GuildPresences,
-          GatewayIntentBits.GuildMessages,
-          GatewayIntentBits.MessageContent,
-          GatewayIntentBits.GuildMessageReactions,
-          GatewayIntentBits.GuildModeration,
-          GatewayIntentBits.DirectMessages,
-        ],
-        partials: [Partials.Message, Partials.Channel, Partials.Reaction],
-        allowedMentions: { repliedUser: false },
-      });
 
       this.devMode = isDevEnvironment();
       logger.info(`Loading in ${this.devMode ? "DEVELOPMENT" : "PRODUCTION"} MODE`);
@@ -159,6 +170,9 @@ export default class Client extends DiscordClient {
       logger.info("Initializing managers");
       this.logManager = new LogManager(this);
       this.moderationManager = new ModerationManager(this, this.logManager);
+
+      // Initialize WebSocket service for API communication
+      this.wsService = null; // Will be initialized after login
     } catch (error) {
       logger.error(error);
       logger.error(new Error("Could not construct bot!"));
@@ -187,7 +201,7 @@ export default class Client extends DiscordClient {
       const guildIds = this.guilds.cache.map((guild) => guild.id);
       if (guildIds.length > 0) {
         logger.info(`Warming up cache for ${guildIds.length} guilds...`);
-        await cacheService.warmup(guildIds);
+        cacheService.warmup(guildIds);
       }
 
       logger.info("Loading discord player extractors");
@@ -201,6 +215,42 @@ export default class Client extends DiscordClient {
       // Start queue processing
       logger.info("Starting queue processors...");
       await this.startQueueProcessors();
+
+      // Initialize WebSocket service for API communication
+      try {
+        logger.info("Initializing WebSocket service for API communication...");
+        const { WebSocketService } = await import("../services/websocketService.js");
+        const { DiscordEventForwarder } = await import("../services/discordEventForwarder.js");
+
+        this.wsService = new WebSocketService(this);
+
+        // Set up error handling
+        this.wsService.on("auth_failed", (error: unknown) => {
+          logger.error("Failed to authenticate WebSocket service:", error);
+        });
+
+        // Connect WebSocket service
+        this.wsService.connect();
+
+        // Set up Discord event forwarding
+        new DiscordEventForwarder(this, this.wsService);
+
+        logger.info("WebSocket service initialized and event forwarding setup complete");
+      } catch (error) {
+        logger.error("Failed to initialize WebSocket service:", error);
+        logger.warn("Bot will continue without API WebSocket connection");
+      }
+
+      // Initialize health service
+      try {
+        logger.info("Initializing health monitoring service...");
+        const { BotHealthService } = await import("../services/healthService.js");
+        this.healthService = BotHealthService.getInstance(this);
+        logger.info("Health monitoring service initialized");
+      } catch (error) {
+        logger.error("Failed to initialize health service:", error);
+        logger.warn("Bot will continue without health monitoring");
+      }
 
       this.started = true;
 
@@ -219,12 +269,16 @@ export default class Client extends DiscordClient {
   /** Start queue processors */
   private async startQueueProcessors(): Promise<void> {
     try {
-      const { QueueProcessor } = await import("../queue/processor.js");
-      const processor = new QueueProcessor(this);
-      await processor.start();
-      logger.info("Queue processors initialization completed");
+      const { UnifiedQueueService } = await import("../services/unifiedQueueService.js");
+      const queueService = new UnifiedQueueService(this);
+      await queueService.initialize();
+
+      // Store reference for access throughout the application
+      this.queueService = queueService;
+
+      logger.info("Unified Queue Service initialization completed");
     } catch (error) {
-      logger.error("Failed to initialize queue processors:", error);
+      logger.error("Failed to initialize unified queue service:", error);
       logger.warn("Bot will continue with fallback mode for queue operations");
     }
   }
@@ -578,8 +632,7 @@ export default class Client extends DiscordClient {
           if (e instanceof Error) {
             throw e;
           } else {
-            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-            throw new Error(`Could not update message component collector: ${e}`);
+            throw new Error(`Could not update message component collector: ${String(e)}`);
           }
         });
       });
@@ -622,17 +675,23 @@ export default class Client extends DiscordClient {
 
     // Keep existing music channel restrictions
     if (command.category === "music") {
-      const { musicChannelId } = await getGuildConfig(interaction.guildId);
+      try {
+        const guildConfig = await getGuildConfig(interaction.guildId);
+        const musicChannelId = guildConfig.musicChannelId;
 
-      if (musicChannelId !== "" && interaction.channelId !== musicChannelId) {
-        const musicChannelName =
-          (await interaction.guild?.channels.fetch(musicChannelId))?.name ?? "MUSIC_CHANNEL_NAME";
+        if (musicChannelId !== "" && interaction.channelId !== musicChannelId) {
+          const musicChannelName =
+            (await interaction.guild?.channels.fetch(musicChannelId))?.name ?? "MUSIC_CHANNEL_NAME";
 
-        await interaction.reply({
-          content: `Must enter music commands in ${musicChannelName}!`,
-          flags: 64 /* MessageFlags.Ephemeral */,
-        });
-        return;
+          await interaction.reply({
+            content: `Must enter music commands in ${musicChannelName}!`,
+            flags: 64 /* MessageFlags.Ephemeral */,
+          });
+          return;
+        }
+      } catch (error) {
+        logger.error("Error fetching guild config for music channel check:", error);
+        // Continue without music channel restriction if config fetch fails
       }
     }
 
@@ -641,8 +700,8 @@ export default class Client extends DiscordClient {
     );
     try {
       await command.run(this, interaction);
-    } catch (error) {
-      logger.error(error);
+    } catch (error: unknown) {
+      logger.error("Command execution error:", error);
       const errorReply = {
         content: `There was an error while executing the \`${command.builder.name}\` command!`,
         flags: 64 /* MessageFlags.Ephemeral */,
@@ -650,9 +709,11 @@ export default class Client extends DiscordClient {
       if (interaction.replied || interaction.deferred) {
         await interaction
           .followUp(errorReply)
-          .catch((e: unknown) => logger.error("Error sending followup error message", e));
+          .catch((e: unknown) => logger.error("Error sending followup error message:", e));
       } else {
-        await interaction.reply(errorReply).catch((e: unknown) => logger.error("Error sending reply error message", e));
+        await interaction
+          .reply(errorReply)
+          .catch((e: unknown) => logger.error("Error sending reply error message:", e));
       }
     }
   }
@@ -671,6 +732,12 @@ export default class Client extends DiscordClient {
 
       logger.info("Shutting down cache service...");
       await cacheService.shutdown();
+
+      // Disconnect WebSocket service
+      if (this.wsService) {
+        logger.info("Disconnecting WebSocket service...");
+        this.wsService.disconnect();
+      }
 
       // Disconnect from Discord
       await this.destroy();

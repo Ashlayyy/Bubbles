@@ -5,7 +5,6 @@ import { APPEALS_OAUTH_CONFIG } from "../config/appeals.js";
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import { cacheService } from "../services/cacheService.js";
-import queueService from "../services/queueService.js";
 import type Client from "./Client.js";
 import type LogManager from "./LogManager.js";
 
@@ -368,70 +367,119 @@ export default class ModerationManager {
 
   private async queueDiscordAction(guild: Guild, action: ModerationAction, case_: ModerationCase): Promise<void> {
     try {
-      let jobId: string | null = null;
+      let success = false;
 
-      switch (action.type) {
-        case "KICK": {
-          jobId = await queueService.addModerationAction({
-            type: "KICK_USER",
-            targetUserId: action.userId,
-            guildId: guild.id,
-            reason: action.reason,
-          });
-          break;
+      // Use unified queue system if available
+      if (this.client.queueService) {
+        try {
+          switch (action.type) {
+            case "KICK": {
+              await this.client.queueService.processRequest({
+                type: "KICK_USER",
+                data: {
+                  targetUserId: action.userId,
+                  guildId: guild.id,
+                  reason: action.reason,
+                },
+                source: "rest",
+                userId: action.moderatorId,
+                guildId: guild.id,
+                requiresReliability: true,
+              });
+              success = true;
+              break;
+            }
+
+            case "BAN": {
+              await this.client.queueService.processRequest({
+                type: "BAN_USER",
+                data: {
+                  targetUserId: action.userId,
+                  guildId: guild.id,
+                  reason: action.reason,
+                },
+                source: "rest",
+                userId: action.moderatorId,
+                guildId: guild.id,
+                requiresReliability: true,
+              });
+              success = true;
+              break;
+            }
+
+            case "TIMEOUT": {
+              const timeoutDuration = (action.duration ?? 0) * 1000;
+              await this.client.queueService.processRequest({
+                type: "TIMEOUT_USER",
+                data: {
+                  targetUserId: action.userId,
+                  guildId: guild.id,
+                  reason: action.reason,
+                  duration: timeoutDuration,
+                },
+                source: "rest",
+                userId: action.moderatorId,
+                guildId: guild.id,
+                requiresReliability: true,
+              });
+              success = true;
+              break;
+            }
+
+            case "UNBAN": {
+              await this.client.queueService.processRequest({
+                type: "UNBAN_USER",
+                data: {
+                  targetUserId: action.userId,
+                  guildId: guild.id,
+                  reason: action.reason,
+                },
+                source: "rest",
+                userId: action.moderatorId,
+                guildId: guild.id,
+                requiresReliability: true,
+              });
+              success = true;
+              break;
+            }
+
+            case "UNTIMEOUT": {
+              await this.client.queueService.processRequest({
+                type: "TIMEOUT_USER",
+                data: {
+                  targetUserId: action.userId,
+                  guildId: guild.id,
+                  reason: action.reason,
+                  duration: undefined,
+                },
+                source: "rest",
+                userId: action.moderatorId,
+                guildId: guild.id,
+                requiresReliability: true,
+              });
+              success = true;
+              break;
+            }
+
+            case "WARN":
+            case "NOTE":
+              logger.info(`Case created for ${action.type}, no Discord action required`);
+              success = true;
+              break;
+          }
+
+          logger.info(`Processed Discord action ${action.type} via unified queue system`);
+        } catch (queueError) {
+          logger.warn(`Unified queue failed for ${action.type}, falling back to direct execution:`, queueError);
+          success = false;
         }
-
-        case "BAN": {
-          jobId = await queueService.addModerationAction({
-            type: "BAN_USER",
-            targetUserId: action.userId,
-            guildId: guild.id,
-            reason: action.reason,
-          });
-          break;
-        }
-
-        case "TIMEOUT": {
-          const timeoutDuration = (action.duration ?? 0) * 1000;
-          jobId = await queueService.addModerationAction({
-            type: "TIMEOUT_USER",
-            targetUserId: action.userId,
-            guildId: guild.id,
-            reason: action.reason,
-            duration: timeoutDuration,
-          });
-          break;
-        }
-
-        case "UNBAN": {
-          jobId = await queueService.addModerationAction({
-            type: "UNBAN_USER",
-            targetUserId: action.userId,
-            guildId: guild.id,
-            reason: action.reason,
-          });
-          break;
-        }
-
-        case "UNTIMEOUT": {
-          jobId = await queueService.addModerationAction({
-            type: "TIMEOUT_USER",
-            targetUserId: action.userId,
-            guildId: guild.id,
-            reason: action.reason,
-            duration: undefined,
-          });
-          break;
-        }
-
-        case "WARN":
-        case "NOTE":
-          logger.info(`Case created for ${action.type}, no Discord action required`);
-          break;
       }
 
-      if (jobId) {
-        logger.info(`Processed Discord action ${action.type} with job ID: ${jobId}`);
+      // Fallback to direct execution if queue service unavailable or failed
+      if (!success) {
+        logger.warn(`Queue not available for ${action.type}, falling back to direct execution`);
+        await this.executeDiscordActionDirectly(guild, action);
+        logger.info(`Successfully executed ${action.type} directly (fallback mode)`);
       }
 
       await prisma.moderationCase.update({
@@ -439,26 +487,12 @@ export default class ModerationManager {
         data: { dmSent: true },
       });
     } catch (error) {
-      logger.error(`Error queuing Discord action ${action.type}:`, error);
-
-      // FALLBACK: If queue fails, execute Discord action directly
-      logger.warn(`Queue failed for ${action.type}, falling back to direct execution`);
-      try {
-        await this.executeDiscordActionDirectly(guild, action);
-        logger.info(`Successfully executed ${action.type} directly (fallback mode)`);
-
-        await prisma.moderationCase.update({
-          where: { id: case_.id },
-          data: { dmSent: true },
-        });
-      } catch (fallbackError) {
-        logger.error(`Fallback execution also failed for ${action.type}:`, fallbackError);
-        await prisma.moderationCase.update({
-          where: { id: case_.id },
-          data: { dmSent: false },
-        });
-        throw fallbackError;
-      }
+      logger.error(`Error in Discord action ${action.type}:`, error);
+      await prisma.moderationCase.update({
+        where: { id: case_.id },
+        data: { dmSent: false },
+      });
+      throw error;
     }
   }
 

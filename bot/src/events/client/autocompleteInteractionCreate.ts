@@ -324,7 +324,7 @@ async function handleRbacAutocomplete(interaction: AutocompleteInteraction, clie
 
   if (focusedOption.name === "role") {
     const roles = await prisma.customRole.findMany({ where: { guildId, name: { startsWith: focusedOption.value } } });
-    await interaction.respond(roles.map((role) => ({ name: role.name, value: role.name })).slice(0, 25));
+    await interaction.respond(roles.map((role: any) => ({ name: role.name, value: role.name })).slice(0, 25));
   } else if (focusedOption.name === "permission") {
     const allPermissions = client.commands.map((c) => `command.${c.builder.name}`);
     allPermissions.push("command.*"); // Add wildcard option
@@ -336,8 +336,8 @@ async function handleRbacAutocomplete(interaction: AutocompleteInteraction, clie
         if (role) {
           // For 'remove', suggest only permissions the role has
           if (interaction.options.getSubcommand() === "permission_remove") {
-            const filtered = role.permissions.filter((p) => p.startsWith(focusedOption.value));
-            await interaction.respond(filtered.map((p) => ({ name: p, value: p })).slice(0, 25));
+            const filtered = role.permissions.filter((p: any) => p.startsWith(focusedOption.value));
+            await interaction.respond(filtered.map((p: any) => ({ name: p, value: p })).slice(0, 25));
             return;
           }
         }

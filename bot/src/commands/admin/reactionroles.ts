@@ -18,7 +18,7 @@ import {
   TextInputStyle,
 } from "discord.js";
 
-import type { ReactionRole } from "@prisma/client";
+import type { ReactionRole } from "@shared/database";
 import { addReactionRole, getReactionRolesByMessage, removeReactionRole } from "../../database/ReactionRoles.js";
 import { parseEmoji } from "../../functions/general/emojis.js";
 import logger from "../../logger.js";
@@ -122,6 +122,31 @@ async function handleAdd(client: Client, interaction: GuildChatInputCommandInter
       return;
     }
     await message.react(emoji.name);
+
+    // Notify API of reaction role addition
+    const customClient = client as any as Client;
+    if (customClient.queueService) {
+      try {
+        await customClient.queueService.processRequest({
+          type: "REACTION_ROLE_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            messageId: messageId,
+            action: "ADD_REACTION_ROLE",
+            emoji: emojiRaw,
+            roleId: role.id,
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of reaction role addition:", error);
+      }
+    }
+
     await interaction.followUp({
       content: `Successfully added reaction role: ${emoji.name} -> ${role.name}`,
       flags: MessageFlags.Ephemeral,
@@ -171,6 +196,30 @@ async function handleRemove(client: Client, interaction: GuildChatInputCommandIn
     await removeReactionRole(client, messageId, emojiRaw);
     // Remove all reactions for this emoji
     await message.reactions.resolve(emoji.identifier)?.remove();
+
+    // Notify API of reaction role removal
+    const customClient = client as any as Client;
+    if (customClient.queueService) {
+      try {
+        await customClient.queueService.processRequest({
+          type: "REACTION_ROLE_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            messageId: messageId,
+            action: "REMOVE_REACTION_ROLE",
+            emoji: emojiRaw,
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of reaction role removal:", error);
+      }
+    }
+
     await interaction.followUp({
       content: `Successfully removed reaction role for ${emoji.name}.`,
       flags: MessageFlags.Ephemeral,

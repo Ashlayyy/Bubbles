@@ -1,35 +1,43 @@
 import { SlashCommandBuilder } from "discord.js";
 
-import queueService from "../../services/queueService.js";
 import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 export default new Command(
-  new SlashCommandBuilder().setName("skip").setDescription("ADMIN ONLY: Skip the current track."),
-  async (_client, interaction) => {
+  new SlashCommandBuilder().setName("skip").setDescription("ADMIN ONLY: Skip music."),
+
+  async (client, interaction) => {
     if (!interaction.isChatInputCommand() || !interaction.guild) return;
 
     await interaction.deferReply({ ephemeral: true });
 
     try {
-      // Show loading message
-      await interaction.editReply({
-        content: "⏭️ Skipping track...",
-      });
+      // Use unified queue system for skip action
+      if (client.queueService) {
+        await client.queueService.processRequest({
+          type: "SKIP_MUSIC",
+          data: {
+            guildId: interaction.guild.id,
+            userId: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresRealTime: true,
+        });
 
-      // Use queue system for skip action
-      await queueService.addMusicAction({
-        type: "SKIP_MUSIC",
-        guildId: interaction.guild.id,
-        userId: interaction.user.id,
-      });
-
-      await interaction.editReply({
-        content: "⏭️ Track has been skipped!",
-      });
+        await interaction.editReply({
+          content: "⏭️ Music has been skipped!",
+        });
+      } else {
+        // Fallback: inform user that queue service is not available
+        await interaction.editReply({
+          content: "❌ Music queue service is not available. Please try again later.",
+        });
+      }
     } catch (error) {
       await interaction.editReply({
-        content: "❌ Failed to skip track. Please try again.",
+        content: "❌ Failed to skip music. Please try again.",
       });
     }
   },

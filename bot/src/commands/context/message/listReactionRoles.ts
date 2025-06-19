@@ -1,4 +1,4 @@
-import type { ReactionRole } from "@prisma/client";
+import type { ReactionRole } from "@shared/database";
 import { ApplicationCommandType, ContextMenuCommandBuilder, EmbedBuilder } from "discord.js";
 import { getReactionRolesByMessage } from "../../../database/ReactionRoles.js";
 import Command from "../../../structures/Command.js";

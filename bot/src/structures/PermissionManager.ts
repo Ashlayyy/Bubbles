@@ -100,7 +100,7 @@ export default class PermissionManager {
       const assignments = await prisma.customRoleAssignment.findMany({
         where: { userId: member.user.id, guildId },
       });
-      const roleIds = assignments.map((a) => a.roleId);
+      const roleIds = assignments.map((a: any) => a.roleId);
       const roles = await prisma.customRole.findMany({
         where: { id: { in: roleIds } },
       });

@@ -1,8 +1,8 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src",
+    "outDir": "./build",
+    "rootDir": ".",
     "composite": true,
     "declaration": true,
     "declarationMap": true,
@@ -10,12 +10,13 @@
     "baseUrl": "..",
     "paths": {
       "@shared/*": ["shared/src/*"],
+      "@shared/database": ["shared/src/database"],
       "@shared/types": ["shared/src/types/index"],
       "@shared/queue": ["shared/src/queue/index"],
       "@shared/utils/*": ["shared/src/utils/*"]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
+  "include": ["src/**/*", "shard.ts"],
+  "exclude": ["node_modules", "build"],
   "references": [{ "path": "../shared" }]
 }

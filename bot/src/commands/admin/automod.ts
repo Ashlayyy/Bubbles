@@ -256,6 +256,34 @@ async function handleCreate(client: Client, interaction: ChatInputCommandInterac
       },
     });
 
+    // Notify API of automod rule creation
+    if ((client as any).queueService) {
+      try {
+        await (client as any).queueService.processRequest({
+          type: "AUTOMOD_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            ruleId: rule.id,
+            action: "CREATE_RULE",
+            ruleData: {
+              name,
+              type,
+              sensitivity,
+              actions: action,
+              enabled: true,
+            },
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of automod rule creation:", error);
+      }
+    }
+
     const embed = new EmbedBuilder()
       .setColor(0x2ecc71)
       .setTitle("✅ Auto-Moderation Rule Created")
@@ -415,6 +443,29 @@ async function handleToggle(client: Client, interaction: ChatInputCommandInterac
       where: { id: ruleId },
       data: { enabled },
     });
+
+    // Notify API of automod rule toggle
+    if ((client as any).queueService) {
+      try {
+        await (client as any).queueService.processRequest({
+          type: "AUTOMOD_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            ruleId: ruleId,
+            action: "TOGGLE_RULE",
+            enabled: enabled,
+            ruleName: rule.name,
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of automod rule toggle:", error);
+      }
+    }
 
     const embed = new EmbedBuilder()
       .setColor(enabled ? 0x2ecc71 : 0xe74c3c)

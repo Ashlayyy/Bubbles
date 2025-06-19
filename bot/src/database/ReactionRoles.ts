@@ -1,5 +1,5 @@
-import type { ReactionRole, ReactionRoleLog, ReactionRoleMessage } from "@prisma/client";
-import { PrismaClient } from "@prisma/client";
+import type { ReactionRole, ReactionRoleLog, ReactionRoleMessage } from "@shared/database";
+import { PrismaClient } from "@shared/database";
 import { ChatInputCommandInteraction, MessageContextMenuCommandInteraction } from "discord.js";
 import { parseEmoji } from "../functions/general/emojis.js";
 import logger from "../logger.js";

@@ -1,13 +1,12 @@
 import { SlashCommandBuilder } from "discord.js";
 
-import queueService from "../../services/queueService.js";
 import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 export default new Command(
   new SlashCommandBuilder().setName("pause").setDescription("ADMIN ONLY: Pause music."),
 
-  async (_client, interaction) => {
+  async (client, interaction) => {
     if (!interaction.isChatInputCommand() || !interaction.guild) return;
 
     await interaction.deferReply({ ephemeral: true });
@@ -18,12 +17,27 @@ export default new Command(
         content: "⏸️ Pausing music...",
       });
 
-      // Use queue system for pause action
-      await queueService.addMusicAction({
-        type: "PAUSE_MUSIC",
-        guildId: interaction.guild.id,
-        userId: interaction.user.id,
-      });
+      // Use unified queue system for pause action
+      if (client.queueService) {
+        await client.queueService.processRequest({
+          type: "PAUSE_MUSIC",
+          data: {
+            guildId: interaction.guild.id,
+            userId: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresRealTime: true,
+        });
+      } else {
+        // Fallback: direct music player access
+        const { useQueue } = await import("discord-player");
+        const queue = useQueue(interaction.guild.id);
+        if (queue?.isPlaying()) {
+          queue.node.pause();
+        }
+      }
 
       await interaction.editReply({
         content: "⏸️ Music has been paused!",

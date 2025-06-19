@@ -7,7 +7,6 @@ import {
   ChannelType,
   ComponentType,
   EmbedBuilder,
-  MessageFlags,
   PermissionsBitField,
   SlashCommandBuilder,
 } from "discord.js";
@@ -414,9 +413,35 @@ async function resetSettings(interaction: GuildChatInputCommandInteraction) {
 
 async function changeSetting(interaction: GuildChatInputCommandInteraction, newSettingData: SettingData) {
   await interaction.deferReply({ flags: 64 /* MessageFlags.Ephemeral */ });
+
+  // Update the configuration in database
   await updateGuildConfig(interaction.guildId, {
     [newSettingData.name]: newSettingData.value,
   });
+
+  // Notify API of configuration change via unified queue
+  const customClient = interaction.client as any as Client;
+  if (customClient.queueService) {
+    try {
+      await customClient.queueService.processRequest({
+        type: "CONFIG_UPDATE",
+        data: {
+          guildId: interaction.guildId,
+          setting: newSettingData.name,
+          value: newSettingData.value,
+          action: "UPDATE_SETTING",
+          updatedBy: interaction.user.id,
+        },
+        source: "rest",
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        requiresReliability: true,
+      });
+    } catch (error) {
+      // Log but don't fail the command if API notification fails
+      console.warn("Failed to notify API of setting change:", error);
+    }
+  }
 
   const newSettingDisplay: SettingDisplay = {
     name: kebabCase(newSettingData.name),
@@ -458,26 +483,70 @@ function getSettingDisplayValue(settingData: SettingData): string {
 }
 
 async function handleSetWelcomeChannel(interaction: GuildChatInputCommandInteraction) {
-  if (!interaction.guild) return;
-
   const channel = interaction.options.getChannel("channel", true);
-  await setWelcomeChannel(interaction.guild.id, channel.id);
+  await interaction.deferReply({ ephemeral: true });
 
-  await interaction.reply({
-    content: `Welcome messages will now be sent in <#${channel.id}>.`,
-    flags: MessageFlags.Ephemeral,
+  await setWelcomeChannel(interaction.guildId, channel.id);
+
+  // Notify API of welcome channel change
+  const customClient = interaction.client as any as Client;
+  if (customClient.queueService) {
+    try {
+      await customClient.queueService.processRequest({
+        type: "CONFIG_UPDATE",
+        data: {
+          guildId: interaction.guildId,
+          setting: "welcomeChannel",
+          value: channel.id,
+          action: "SET_WELCOME_CHANNEL",
+          updatedBy: interaction.user.id,
+        },
+        source: "rest",
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        requiresReliability: true,
+      });
+    } catch (error) {
+      console.warn("Failed to notify API of welcome channel change:", error);
+    }
+  }
+
+  await interaction.editReply({
+    content: `Set welcome channel to <#${channel.id}>`,
   });
 }
 
 async function handleSetGoodbyeChannel(interaction: GuildChatInputCommandInteraction) {
-  if (!interaction.guild) return;
-
   const channel = interaction.options.getChannel("channel", true);
-  await setGoodbyeChannel(interaction.guild.id, channel.id);
+  await interaction.deferReply({ ephemeral: true });
 
-  await interaction.reply({
-    content: `Goodbye messages will now be sent in <#${channel.id}>.`,
-    flags: MessageFlags.Ephemeral,
+  await setGoodbyeChannel(interaction.guildId, channel.id);
+
+  // Notify API of goodbye channel change
+  const customClient = interaction.client as any as Client;
+  if (customClient.queueService) {
+    try {
+      await customClient.queueService.processRequest({
+        type: "CONFIG_UPDATE",
+        data: {
+          guildId: interaction.guildId,
+          setting: "goodbyeChannel",
+          value: channel.id,
+          action: "SET_GOODBYE_CHANNEL",
+          updatedBy: interaction.user.id,
+        },
+        source: "rest",
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        requiresReliability: true,
+      });
+    } catch (error) {
+      console.warn("Failed to notify API of goodbye channel change:", error);
+    }
+  }
+
+  await interaction.editReply({
+    content: `Set goodbye channel to <#${channel.id}>`,
   });
 }
 

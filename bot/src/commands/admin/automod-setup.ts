@@ -514,6 +514,34 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
       }
     }
 
+    // Notify API of automod preset application
+    const customClient = client as any as Client;
+    if (customClient.queueService) {
+      try {
+        await customClient.queueService.processRequest({
+          type: "AUTOMOD_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            action: "APPLY_PRESET",
+            presetName: preset.name,
+            rulesCreated: createdRules,
+            rules: preset.rules.map((rule) => ({
+              name: rule.name,
+              type: rule.type,
+              sensitivity: rule.sensitivity,
+            })),
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of automod preset application:", error);
+      }
+    }
+
     const successEmbed = new EmbedBuilder()
       .setColor(0x2ecc71)
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied`)
@@ -622,6 +650,34 @@ async function applyPreset(client: Client, interaction: ChatInputCommandInteract
       }
     }
 
+    // Notify API of automod preset application
+    const customClient = client as any as Client;
+    if (customClient.queueService) {
+      try {
+        await customClient.queueService.processRequest({
+          type: "AUTOMOD_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            action: "APPLY_PRESET",
+            presetName: preset.name,
+            rulesCreated: createdRules,
+            rules: preset.rules.map((rule: AutoModPreset["rules"][0]) => ({
+              name: rule.name,
+              type: rule.type,
+              sensitivity: rule.sensitivity,
+            })),
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of automod preset application:", error);
+      }
+    }
+
     const successEmbed = new EmbedBuilder()
       .setColor(0x2ecc71)
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied`)
@@ -633,7 +689,9 @@ async function applyPreset(client: Client, interaction: ChatInputCommandInteract
       )
       .addFields({
         name: "📋 Applied Rules",
-        value: preset.rules.map((rule, index) => `${index + 1}. **${rule.name}** (${rule.type})`).join("\n"),
+        value: preset.rules
+          .map((rule: AutoModPreset["rules"][0], index: number) => `${index + 1}. **${rule.name}** (${rule.type})`)
+          .join("\n"),
         inline: false,
       })
       .addFields({
@@ -725,7 +783,7 @@ async function showStatus(client: Client, interaction: ChatInputCommandInteracti
           value:
             enabledRules.length > 0
               ? enabledRules
-                  .map((rule) => `• **${rule.type}** (${rule.sensitivity.toLowerCase()})`)
+                  .map((rule: any) => `• **${rule.type}** (${rule.sensitivity.toLowerCase()})`)
                   .slice(0, 6)
                   .join("\n") + (enabledRules.length > 6 ? `\n... and ${enabledRules.length - 6} more` : "")
               : "No protection currently active",

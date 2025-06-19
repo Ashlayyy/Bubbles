@@ -1,6 +1,5 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 
-import queueService from "../../services/queueService.js";
 import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
@@ -13,63 +12,84 @@ export default new Command(
     await interaction.deferReply({ ephemeral: true });
 
     try {
-      // Check Redis connection
-      const isRedisAvailable = await queueService.isRedisAvailable();
+      // Access the unified queue service from the client
+      const queueService = client.queueService;
 
-      // Get queue stats
-      const stats = await queueService.getQueueStats();
+      if (!queueService) {
+        const embed = new EmbedBuilder()
+          .setTitle("🔧 Queue System Status")
+          .setColor("Red")
+          .setDescription("❌ **Queue service not initialized**\nThe unified queue service is not available.")
+          .addFields({
+            name: "Status",
+            value: "❌ Not Running",
+            inline: true,
+          })
+          .setTimestamp();
 
-      // Check if processors are running (if we can access them)
-      let processorStatus = "Unknown";
-      try {
-        const { QueueProcessor } = await import("../../queue/processor.js");
-        // We can't get the actual instance easily, so just check if Redis is working
-        processorStatus = isRedisAvailable ? "Running" : "Fallback Mode";
-      } catch (error) {
-        processorStatus = "Error loading processor";
+        await interaction.editReply({ embeds: [embed] });
+        return;
       }
 
+      // Check if the queue service is ready
+      const isReady = queueService.isReady();
+
+      // Get system health
+      const health = await queueService.getHealth();
+
+      // Get metrics
+      const metrics = queueService.getMetrics();
+
       const embed = new EmbedBuilder()
-        .setTitle("🔧 Queue System Status")
-        .setColor(isRedisAvailable ? "Green" : "Orange")
+        .setTitle("🔧 Unified Queue System Status")
+        .setColor(isReady ? "Green" : "Orange")
         .addFields(
           {
-            name: "Redis Connection",
-            value: isRedisAvailable ? "✅ Connected" : "❌ Disconnected",
+            name: "Queue Service",
+            value: isReady ? "✅ Ready" : "❌ Not Ready",
             inline: true,
           },
           {
-            name: "Queue Processor",
-            value: processorStatus,
+            name: "WebSocket Protocol",
+            value: health.protocols.websocket.healthy ? "✅ Healthy" : "❌ Unhealthy",
             inline: true,
           },
           {
-            name: "Fallback Mode",
-            value: isRedisAvailable ? "❌ Disabled" : "✅ Active",
+            name: "Queue Protocol",
+            value: health.protocols.queue.healthy ? "✅ Healthy" : "❌ Unhealthy",
             inline: true,
           },
           {
-            name: "Queue Statistics",
+            name: "System Metrics",
             value: [
-              `**Waiting:** ${Array.isArray(stats.waiting) ? stats.waiting.length : stats.waiting}`,
-              `**Active:** ${Array.isArray(stats.active) ? stats.active.length : stats.active}`,
-              `**Completed:** ${Array.isArray(stats.completed) ? stats.completed.length : stats.completed}`,
-              `**Failed:** ${Array.isArray(stats.failed) ? stats.failed.length : stats.failed}`,
-              `**Delayed:** ${Array.isArray(stats.delayed) ? stats.delayed.length : stats.delayed}`,
+              `**REST Requests:** ${metrics.restRequests}`,
+              `**WebSocket Messages:** ${metrics.websocketMessages}`,
+              `**Queue Jobs:** ${metrics.queueJobs}`,
+              `**Duplicate Operations:** ${metrics.duplicateOperations}`,
+              `**Protocol Failures:** ${metrics.totalProtocolFailures}`,
+            ].join("\n"),
+            inline: false,
+          },
+          {
+            name: "Cross-Protocol Performance",
+            value: [
+              `**REST→WebSocket Delay:** ${metrics.restToWebSocketDelay.toFixed(2)}ms`,
+              `**Queue→WebSocket Delay:** ${metrics.queueToWebSocketDelay.toFixed(2)}ms`,
+              `**WebSocket Fallbacks:** ${metrics.websocketFallbackToQueue}`,
+              `**Queue Fallbacks:** ${metrics.queueFallbackToWebSocket}`,
             ].join("\n"),
             inline: false,
           }
         )
-        .setFooter({ text: "Queue system handles moderation, music, and config actions" })
+        .setFooter({ text: "Unified system handles cross-protocol request routing" })
         .setTimestamp();
 
-      if (!isRedisAvailable) {
+      if (!isReady) {
         embed.setDescription(
-          "⚠️ **Redis is not connected**\n" +
-            "Queue system is operating in fallback mode. Actions will be executed directly instead of being queued."
+          "⚠️ **Queue system not ready**\n" + "The unified processor may still be initializing or experiencing issues."
         );
       } else {
-        embed.setDescription("✅ Queue system is operating normally with Redis backend.");
+        embed.setDescription("✅ Unified queue system is operating normally with multi-protocol support.");
       }
 
       await interaction.editReply({ embeds: [embed] });

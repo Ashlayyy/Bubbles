@@ -2,6 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
+import type Client from "../../structures/Client.js";
 import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
@@ -112,6 +113,30 @@ export default new Command(
             },
           });
 
+          // Notify API of alias creation
+          const customClient = client as any as Client;
+          if (customClient.queueService) {
+            try {
+              await customClient.queueService.processRequest({
+                type: "ALIAS_UPDATE",
+                data: {
+                  guildId: interaction.guild.id,
+                  action: "CREATE_ALIAS",
+                  aliasName: name,
+                  content: content,
+                  category: category,
+                  updatedBy: interaction.user.id,
+                },
+                source: "rest",
+                userId: interaction.user.id,
+                guildId: interaction.guild.id,
+                requiresReliability: true,
+              });
+            } catch (error) {
+              console.warn("Failed to notify API of alias creation:", error);
+            }
+          }
+
           await interaction.reply({
             content: `✅ Created alias **${name}**\n\n📝 **Content:** ${content}\n🏷️ **Category:** ${category}\n\n💡 *Use it with \`/alias use ${name}\`*`,
             ephemeral: true,
@@ -178,10 +203,10 @@ export default new Command(
           }
 
           // Group by category
-          const grouped = aliases.reduce<Record<string, typeof aliases>>((acc, alias) => {
+          const grouped = aliases.reduce((acc: Record<string, typeof aliases>, alias: (typeof aliases)[0]) => {
             const category = alias.category;
             acc[category] = acc[category] ?? [];
-            acc[category].push(alias);
+            acc[category]!.push(alias);
             return acc;
           }, {});
 
@@ -190,8 +215,8 @@ export default new Command(
             description: `Found ${aliases.length.toString()} alias${aliases.length !== 1 ? "es" : ""}`,
             fields: Object.entries(grouped).map(([cat, catAliases]) => ({
               name: `🏷️ ${cat}`,
-              value: catAliases
-                .map((alias) => `**${alias.name}** (used ${alias.usageCount.toString()} times)`)
+              value: (catAliases as typeof aliases)
+                .map((alias: (typeof aliases)[0]) => `**${alias.name}** (used ${alias.usageCount.toString()} times)`)
                 .join("\n"),
               inline: false,
             })),
@@ -221,6 +246,28 @@ export default new Command(
             where: { id: alias.id },
           });
 
+          // Notify API of alias deletion
+          const customClient = client as any as Client;
+          if (customClient.queueService) {
+            try {
+              await customClient.queueService.processRequest({
+                type: "ALIAS_UPDATE",
+                data: {
+                  guildId: interaction.guild.id,
+                  action: "DELETE_ALIAS",
+                  aliasName: name,
+                  updatedBy: interaction.user.id,
+                },
+                source: "rest",
+                userId: interaction.user.id,
+                guildId: interaction.guild.id,
+                requiresReliability: true,
+              });
+            } catch (error) {
+              console.warn("Failed to notify API of alias deletion:", error);
+            }
+          }
+
           await interaction.reply({
             content: `✅ Deleted alias **${name}**`,
             ephemeral: true,
@@ -248,6 +295,29 @@ export default new Command(
             where: { id: alias.id },
             data: { content },
           });
+
+          // Notify API of alias edit
+          const customClient = client as any as Client;
+          if (customClient.queueService) {
+            try {
+              await customClient.queueService.processRequest({
+                type: "ALIAS_UPDATE",
+                data: {
+                  guildId: interaction.guild.id,
+                  action: "EDIT_ALIAS",
+                  aliasName: name,
+                  newContent: content,
+                  updatedBy: interaction.user.id,
+                },
+                source: "rest",
+                userId: interaction.user.id,
+                guildId: interaction.guild.id,
+                requiresReliability: true,
+              });
+            } catch (error) {
+              console.warn("Failed to notify API of alias edit:", error);
+            }
+          }
 
           await interaction.reply({
             content: `✅ Updated alias **${name}**\n\n📝 **New content:** ${content}`,

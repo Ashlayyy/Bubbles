@@ -1,99 +1,224 @@
-import type { Job } from "bull";
-import { useMainPlayer } from "discord-player";
-import type { MusicActionJob } from "../../../../shared/src/types/queue.js";
+import type { MusicActionJob } from "@shared/types/queue";
 import type Client from "../../structures/Client.js";
 import { BaseProcessor, type ProcessorResult } from "./BaseProcessor.js";
+
+interface QueueInterface {
+  isPlaying(): boolean;
+  addTrack(track: TrackInterface): void;
+  node: {
+    play(): Promise<void>;
+    pause(): void;
+    skip(): void;
+    setVolume(volume: number): void;
+  };
+  currentTrack?: TrackInterface;
+  tracks: { size: number };
+  delete(): void;
+}
+
+interface TrackInterface {
+  title: string;
+  artist?: string;
+  duration?: number;
+  url?: string;
+}
+
+interface PlayerInterface {
+  queues: {
+    get(guildId: string): QueueInterface | undefined;
+    create(guildId: string, options?: unknown): QueueInterface;
+  };
+  search(
+    query: string,
+    options: { requestedBy: string }
+  ): Promise<{
+    tracks?: TrackInterface[];
+  }>;
+}
+
+interface MusicResult {
+  track?: string;
+  queued?: number;
+  paused?: boolean;
+  skipped?: string;
+  next?: string;
+  stopped?: boolean;
+  volume?: number;
+}
 
 export class MusicProcessor extends BaseProcessor<MusicActionJob> {
   constructor(client: Client) {
     super(client, "MusicProcessor");
   }
 
-  getJobType(): string {
-    return "music-action";
+  getJobTypes(): string[] {
+    return ["PLAY_MUSIC", "PAUSE_MUSIC", "SKIP_MUSIC", "STOP_MUSIC", "SET_VOLUME"];
   }
 
-  async processJob(job: Job<MusicActionJob>): Promise<ProcessorResult> {
-    const data = job.data;
-    this.logStart(data.id, `${data.type} action`);
+  async processJob(job: MusicActionJob): Promise<ProcessorResult> {
+    const { type, query, volume, guildId } = job;
 
-    try {
-      const player = useMainPlayer();
-
-      // Get guild from the job data
-      if (!data.guildId) {
-        throw new Error("Guild ID is required for music actions");
-      }
-
-      const guild = await this.client.guilds.fetch(data.guildId).catch(() => null);
-      if (!guild) {
-        throw new Error(`Guild ${data.guildId} not found`);
-      }
-
-      const queue = player.nodes.get(guild.id);
-
-      switch (data.type) {
-        case "PLAY_MUSIC": {
-          // This would need more context like voice channel, etc.
-          // For now, just validate the query is provided
-          if (!data.query) {
-            throw new Error("Query is required for play music action");
-          }
-          this.logSuccess(data.id, `Play music request processed: ${data.query}`);
-          break;
-        }
-        case "PAUSE_MUSIC": {
-          if (!queue) {
-            throw new Error("No active music queue found");
-          }
-          queue.node.setPaused(true);
-          this.logSuccess(data.id, "Music paused");
-          break;
-        }
-        case "SKIP_MUSIC": {
-          if (!queue) {
-            throw new Error("No active music queue found");
-          }
-          const success = queue.node.skip();
-          if (success) {
-            this.logSuccess(data.id, "Music skipped");
-          } else {
-            throw new Error("Failed to skip track");
-          }
-          break;
-        }
-        case "STOP_MUSIC": {
-          if (!queue) {
-            throw new Error("No active music queue found");
-          }
-          queue.delete();
-          this.logSuccess(data.id, "Music stopped and queue cleared");
-          break;
-        }
-        case "SET_VOLUME": {
-          if (!queue) {
-            throw new Error("No active music queue found");
-          }
-          if (data.volume === undefined || data.volume < 0 || data.volume > 100) {
-            throw new Error("Volume must be between 0 and 100");
-          }
-          queue.node.setVolume(data.volume);
-          this.logSuccess(data.id, `Volume set to: ${data.volume}%`);
-          break;
-        }
-        default: {
-          throw new Error(`Unknown music action type: ${data.type}`);
-        }
-      }
-
-      return { success: true, jobId: data.id };
-    } catch (error) {
-      this.logError(data.id, error);
+    if (!guildId) {
       return {
         success: false,
-        jobId: data.id,
-        error: error instanceof Error ? error.message : String(error),
+        error: "Guild ID is required for music actions",
+        timestamp: Date.now(),
       };
     }
+
+    try {
+      // Validate the guild exists
+      const guild = await this.fetchGuild(guildId);
+
+      // Get the music player
+      const { useMainPlayer } = await import("discord-player");
+      const player = useMainPlayer() as unknown as PlayerInterface;
+
+      let result: MusicResult;
+
+      switch (type) {
+        case "PLAY_MUSIC":
+          result = await this.playMusic(player, guild, query, job.userId);
+          break;
+        case "PAUSE_MUSIC":
+          result = this.pauseMusic(player, guildId);
+          break;
+        case "SKIP_MUSIC":
+          result = this.skipMusic(player, guildId);
+          break;
+        case "STOP_MUSIC":
+          result = this.stopMusic(player, guildId);
+          break;
+        case "SET_VOLUME":
+          result = this.setVolume(player, guildId, volume);
+          break;
+        default:
+          return {
+            success: false,
+            error: `Unknown music action type: ${type}`,
+            timestamp: Date.now(),
+          };
+      }
+
+      return {
+        success: true,
+        data: {
+          type,
+          guildId,
+          result,
+        },
+        timestamp: Date.now(),
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      return {
+        success: false,
+        error: errorMessage,
+        timestamp: Date.now(),
+      };
+    }
+  }
+
+  private async playMusic(
+    player: PlayerInterface,
+    guild: { id: string },
+    query?: string,
+    userId?: string
+  ): Promise<MusicResult> {
+    if (!query) {
+      throw new Error("Query is required for playing music");
+    }
+
+    let queue = player.queues.get(guild.id);
+    queue ??= player.queues.create(guild.id);
+
+    const searchResult = await player.search(query, {
+      requestedBy: userId ?? "Unknown",
+    });
+
+    if (!searchResult.tracks?.length) {
+      throw new Error("No tracks found for the given query");
+    }
+
+    queue.addTrack(searchResult.tracks[0]);
+
+    if (!queue.isPlaying()) {
+      await queue.node.play();
+    }
+
+    return {
+      track: searchResult.tracks[0].title,
+      queued: queue.tracks.size,
+    };
+  }
+
+  private pauseMusic(player: PlayerInterface, guildId: string): MusicResult {
+    const queue = player.queues.get(guildId);
+    if (!queue) {
+      throw new Error("No music queue found for this guild");
+    }
+
+    if (!queue.isPlaying()) {
+      throw new Error("No music is currently playing");
+    }
+
+    queue.node.pause();
+    return { paused: true };
+  }
+
+  private skipMusic(player: PlayerInterface, guildId: string): MusicResult {
+    const queue = player.queues.get(guildId);
+    if (!queue) {
+      throw new Error("No music queue found for this guild");
+    }
+
+    if (!queue.isPlaying()) {
+      throw new Error("No music is currently playing");
+    }
+
+    const currentTrack = queue.currentTrack;
+    queue.node.skip();
+
+    return {
+      skipped: currentTrack ? currentTrack.title : "Unknown track",
+      next: queue.currentTrack ? queue.currentTrack.title : "Queue empty",
+    };
+  }
+
+  private stopMusic(player: PlayerInterface, guildId: string): MusicResult {
+    const queue = player.queues.get(guildId);
+    if (!queue) {
+      throw new Error("No music queue found for this guild");
+    }
+
+    queue.delete();
+    return { stopped: true };
+  }
+
+  private setVolume(player: PlayerInterface, guildId: string, volume?: number): MusicResult {
+    const queue = player.queues.get(guildId);
+    if (!queue) {
+      throw new Error("No music queue found for this guild");
+    }
+
+    if (volume === undefined || volume < 0 || volume > 100) {
+      throw new Error("Volume must be between 0 and 100");
+    }
+
+    queue.node.setVolume(volume);
+    return { volume };
+  }
+
+  protected getEventPrefix(): string {
+    return "MUSIC";
+  }
+
+  protected getAdditionalEventData(job: MusicActionJob): Record<string, unknown> {
+    return {
+      ...super.getAdditionalEventData(job),
+      musicAction: job.type,
+      query: job.query,
+      volume: job.volume,
+    };
   }
 }

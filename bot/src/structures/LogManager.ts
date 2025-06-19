@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@shared/database";
 import type { EmbedBuilder, TextChannel, User } from "discord.js";
 import { EmbedBuilder as DiscordEmbedBuilder } from "discord.js";
 
@@ -1242,7 +1242,7 @@ export default class LogManager {
       const enabledTypes = settings?.enabledLogTypes ?? [];
 
       // Remove specified log types
-      const filteredTypes = enabledTypes.filter((type) => !logTypes.includes(type));
+      const filteredTypes = enabledTypes.filter((type: string) => !logTypes.includes(type));
 
       await prisma.logSettings.upsert({
         where: { guildId },

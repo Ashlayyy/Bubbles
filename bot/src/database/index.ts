@@ -1,17 +1,10 @@
 // import below force loads `.env` file if present AND `schema.prisma` refers to an environment variable that is unset
-import { PrismaClient } from "@prisma/client";
+import { createPrismaClient, PrismaClient } from "@shared/database";
 
 import logger from "../logger.js";
-import type { PrismaEvents, PrismaRunFunction } from "../structures/Event.js";
 
-export const prisma = new PrismaClient({
-  log: [
-    { emit: "event", level: "error" },
-    { emit: "event", level: "info" },
-    { emit: "event", level: "query" },
-    { emit: "event", level: "warn" },
-  ],
-});
+// Create our own configured Prisma client instance
+export const prisma: PrismaClient = createPrismaClient();
 
 let hasDoneInitialConnection = false;
 /** Connects to database with `DB_URL` environment variable specified in `prisma/schema.prisma` file.
@@ -31,10 +24,6 @@ export async function connect() {
   }
 }
 
-/** Disconnect from the database until next query/request
- *
- * Should NOT need to call this method (see {@link https://www.prisma.io/docs/concepts/components/prisma-client/working-with-prismaclient/connection-management#disconnect here})
- */
 export async function disconnect() {
   try {
     logger.info("Disconnecting from database...");
@@ -46,8 +35,4 @@ export async function disconnect() {
   }
 }
 
-export function bindEvent<Ev extends PrismaEvents>(event: Ev, eventFunction: PrismaRunFunction<Ev>) {
-  prisma.$on(event, eventFunction);
-}
-
-export default { connect, disconnect, bindEvent };
+export default { connect, disconnect };

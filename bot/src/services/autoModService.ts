@@ -9,7 +9,7 @@ import type {
   AutoModTriggerConfig,
   EscalationConfig,
   LegacyActionType,
-} from "../../../shared/src/types/automod.js";
+} from "@shared/types";
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import type Client from "../structures/Client.js";

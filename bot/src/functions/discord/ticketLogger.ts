@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@shared/database";
 import { EmbedBuilder, type Guild } from "discord.js";
 
 import { getGuildConfig } from "../../database/GuildConfig.js";

@@ -1,5 +1,5 @@
-import type { Job } from "bull";
-import type { ModerationActionJob } from "../../../../shared/src/types/queue.js";
+import type { ModerationActionJob } from "@shared/types/queue";
+import type { Guild } from "discord.js";
 import type Client from "../../structures/Client.js";
 import { BaseProcessor, type ProcessorResult } from "./BaseProcessor.js";
 
@@ -8,72 +8,134 @@ export class ModerationProcessor extends BaseProcessor<ModerationActionJob> {
     super(client, "ModerationProcessor");
   }
 
-  getJobType(): string {
-    return "moderation-action";
+  getJobTypes(): string[] {
+    return ["BAN_USER", "KICK_USER", "TIMEOUT_USER", "UNBAN_USER"];
   }
 
-  async processJob(job: Job<ModerationActionJob>): Promise<ProcessorResult> {
-    const data = job.data;
-    this.logStart(data.id, `${data.type} for user ${data.targetUserId}`);
+  async processJob(job: ModerationActionJob): Promise<ProcessorResult> {
+    const { type, targetUserId, guildId, reason, duration, caseId, moderatorId } = job;
 
-    try {
-      const guild = await this.client.guilds.fetch(data.guildId ?? "").catch(() => null);
-      if (!guild) {
-        throw new Error(`Guild ${data.guildId} not found`);
-      }
-
-      switch (data.type) {
-        case "BAN_USER": {
-          await guild.members.ban(data.targetUserId, {
-            reason: data.reason,
-            deleteMessageSeconds: 7 * 24 * 60 * 60, // Delete messages from the last 7 days
-          });
-          this.logSuccess(
-            data.id,
-            `Banned user ${data.targetUserId} from guild ${data.guildId} and deleted their messages`
-          );
-          break;
-        }
-        case "KICK_USER": {
-          const member = await guild.members.fetch(data.targetUserId).catch(() => null);
-          if (!member) {
-            throw new Error(`Member ${data.targetUserId} not found in guild ${data.guildId}`);
-          }
-          await member.kick(data.reason);
-          this.logSuccess(data.id, `Kicked user ${data.targetUserId} from guild ${data.guildId}`);
-          break;
-        }
-        case "TIMEOUT_USER": {
-          const member = await guild.members.fetch(data.targetUserId).catch(() => null);
-          if (!member) {
-            throw new Error(`Member ${data.targetUserId} not found in guild ${data.guildId}`);
-          }
-          if (data.duration) {
-            await member.timeout(data.duration, data.reason);
-            this.logSuccess(data.id, `Timed out user ${data.targetUserId} for ${data.duration}ms`);
-          } else {
-            throw new Error("Duration is required for timeout action");
-          }
-          break;
-        }
-        case "UNBAN_USER": {
-          await guild.members.unban(data.targetUserId, data.reason);
-          this.logSuccess(data.id, `Unbanned user ${data.targetUserId} from guild ${data.guildId}`);
-          break;
-        }
-        default: {
-          throw new Error(`Unknown moderation action type: ${data.type}`);
-        }
-      }
-
-      return { success: true, jobId: data.id };
-    } catch (error) {
-      this.logError(data.id, error);
+    if (!guildId) {
       return {
         success: false,
-        jobId: data.id,
-        error: error instanceof Error ? error.message : String(error),
+        error: "Guild ID is required for moderation actions",
+        timestamp: Date.now(),
       };
     }
+
+    if (!targetUserId) {
+      return {
+        success: false,
+        error: "Target user ID is required for moderation actions",
+        timestamp: Date.now(),
+      };
+    }
+
+    try {
+      const guild = await this.fetchGuild(guildId);
+      let success = false;
+
+      switch (type) {
+        case "BAN_USER":
+          success = await this.processBanUser(guild, targetUserId, reason);
+          break;
+        case "KICK_USER":
+          success = await this.processKickUser(guild, targetUserId, reason);
+          break;
+        case "TIMEOUT_USER":
+          success = await this.processTimeoutUser(guild, targetUserId, reason, duration);
+          break;
+        case "UNBAN_USER":
+          success = await this.processUnbanUser(guild, targetUserId, reason);
+          break;
+        default:
+          return {
+            success: false,
+            error: `Unknown moderation action type: ${type}`,
+            timestamp: Date.now(),
+          };
+      }
+
+      return {
+        success,
+        data: {
+          type,
+          targetUserId,
+          guildId,
+          caseId,
+          moderatorId,
+          completedAt: Date.now(),
+        },
+        timestamp: Date.now(),
+      };
+    } catch (actionError) {
+      const errorMessage = actionError instanceof Error ? actionError.message : "Unknown error";
+      return {
+        success: false,
+        error: errorMessage,
+        timestamp: Date.now(),
+      };
+    }
+  }
+
+  private async processBanUser(guild: Guild, userId: string, reason?: string): Promise<boolean> {
+    try {
+      await guild.members.ban(userId, {
+        reason: reason ?? "No reason provided",
+        deleteMessageSeconds: 7 * 24 * 60 * 60, // 7 days
+      });
+      return true;
+    } catch (error) {
+      throw new Error(`Failed to ban user ${userId}: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  private async processKickUser(guild: Guild, userId: string, reason?: string): Promise<boolean> {
+    try {
+      const member = await guild.members.fetch(userId);
+      await member.kick(reason ?? "No reason provided");
+      return true;
+    } catch (error) {
+      throw new Error(`Failed to kick user ${userId}: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  private async processTimeoutUser(guild: Guild, userId: string, reason?: string, duration?: number): Promise<boolean> {
+    try {
+      const member = await guild.members.fetch(userId);
+      const timeoutDuration = duration ? duration * 1000 : 300000; // Default 5 minutes
+
+      // Discord timeout limit is 28 days
+      const maxTimeout = 28 * 24 * 60 * 60 * 1000;
+      const actualTimeout = Math.min(timeoutDuration, maxTimeout);
+
+      await member.timeout(actualTimeout, reason ?? "No reason provided");
+      return true;
+    } catch (error) {
+      throw new Error(`Failed to timeout user ${userId}: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  private async processUnbanUser(guild: Guild, userId: string, reason?: string): Promise<boolean> {
+    try {
+      await guild.members.unban(userId, reason ?? "No reason provided");
+      return true;
+    } catch (error) {
+      throw new Error(`Failed to unban user ${userId}: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  protected getEventPrefix(): string {
+    return "MODERATION";
+  }
+
+  protected getAdditionalEventData(job: ModerationActionJob): Record<string, unknown> {
+    return {
+      ...super.getAdditionalEventData(job),
+      targetUserId: job.targetUserId,
+      moderationType: job.type,
+      caseId: job.caseId ?? undefined,
+      moderatorId: job.moderatorId ?? undefined,
+    };
   }
 }

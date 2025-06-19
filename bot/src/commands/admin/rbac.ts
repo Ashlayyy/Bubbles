@@ -52,7 +52,7 @@ async function handleRoleSubcommand(interaction: GuildChatInputCommandInteractio
       }
 
       const rolesWithCounts = await Promise.all(
-        roles.map(async (role) => {
+        roles.map(async (role: any) => {
           const count = await prisma.customRoleAssignment.count({ where: { roleId: role.id } });
           return { ...role, userCount: count };
         })

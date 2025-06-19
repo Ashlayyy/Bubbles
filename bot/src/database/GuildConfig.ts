@@ -1,5 +1,5 @@
-import type { GuildConfig } from "@prisma/client";
-import { getCachedGuildConfig, GuildConfigCacheManager } from "./GuildConfigCache.js";
+import type { GuildConfig } from "@shared/database";
+import { GuildConfigCacheManager } from "./GuildConfigCache.js";
 
 import logger from "../logger.js";
 import { prisma } from "./index.js";
@@ -45,7 +45,7 @@ export async function getGuildConfig(guildId: string): Promise<GuildConfig> {
 
   try {
     // Use the new cache service with getOrSet pattern for atomic operation
-    return await GuildConfigCacheManager.getOrSetGuildConfig(guildId, async () => {
+    const config = await GuildConfigCacheManager.getOrSetGuildConfig(guildId, async (): Promise<GuildConfig> => {
       logger.verbose("DB.getGuildConfig(): Cache miss, fetching from database");
 
       const existingConfig = await prisma.guildConfig.findUnique({
@@ -68,17 +68,32 @@ export async function getGuildConfig(guildId: string): Promise<GuildConfig> {
 
       return defaultConfig;
     });
+
+    // Ensure we have a valid GuildConfig with guildId
+    if (!config.guildId) {
+      throw new Error(`Invalid guild config returned for ${guildId}`);
+    }
+
+    return config;
   } catch (error) {
     logger.error(`Error getting guild config for ${guildId}:`, error);
 
-    // Fallback to legacy cache check
-    const cachedConfig = getCachedGuildConfig(guildId);
-    if (cachedConfig) {
-      logger.warn("Using legacy cached config as fallback");
-      return cachedConfig;
+    // Final fallback: create a default config directly
+    logger.warn(`Creating emergency default config for guild ${guildId}`);
+    try {
+      const emergencyConfig = await prisma.guildConfig.create({
+        data: {
+          guildId,
+          ...defaults,
+        },
+      });
+      return emergencyConfig;
+    } catch (createError) {
+      logger.error("Failed to create emergency config:", createError);
+      throw new Error(
+        `Unable to get or create guild config for ${guildId}: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
-
-    throw error;
   }
 }
 

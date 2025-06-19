@@ -1,4 +1,4 @@
-import type { Giveaway } from "@prisma/client";
+import type { Giveaway } from "@shared/database";
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -282,7 +282,7 @@ async function handleRerollGiveaway(client: Client, interaction: ChatInputComman
 
     // Select new winners
     const newWinners = selectRandomWinners(
-      eligibleEntries.map((e) => e.userId),
+      eligibleEntries.map((e: any) => e.userId),
       winnersToSelect
     );
 
@@ -359,7 +359,7 @@ async function handleListGiveaways(client: Client, interaction: ChatInputCommand
       embed.setDescription("No active giveaways in this server.");
     } else {
       const giveawayList = giveaways
-        .map((g) => {
+        .map((g: any) => {
           const endsTimestamp = Math.floor(g.endsAt.getTime() / 1000);
           return `**${g.prize}** (ID: \`${g.giveawayId}\`)\n🏆 ${g.winnersCount} winner(s) • 👥 ${g.totalEntries} entries\n⏰ Ends <t:${endsTimestamp}:R>`;
         })

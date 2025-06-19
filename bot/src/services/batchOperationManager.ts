@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-extraneous-class */
+import type { GuildConfig } from "@shared/database";
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import { cacheService } from "./cacheService.js";
@@ -27,6 +28,11 @@ interface BatchOperation<T> {
   flushSize: number;
   flushInterval: number;
   lastFlush: number;
+}
+
+interface BulkGuildConfigUpdate {
+  guildId: string;
+  data: Partial<Omit<GuildConfig, "id" | "guildId">>;
 }
 
 export class BatchOperationManager {
@@ -104,7 +110,7 @@ export class BatchOperationManager {
         })),
       });
 
-      logger.info(`Flushed ${logs.length} moderation logs to database`);
+      logger.info(`Flushed ${logs.length.toString()} moderation logs to database`);
     } catch (error) {
       logger.error("Failed to flush moderation logs:", error);
       // Re-add failed logs to retry later (with limit to prevent infinite growth)
@@ -175,8 +181,8 @@ export class BulkOperationHelpers {
   /**
    * Bulk upsert guild configurations
    */
-  static async bulkUpsertGuildConfigs(configs: { guildId: string; data: object }[]): Promise<void> {
-    logger.info(`Bulk upserting ${configs.length} guild configurations`);
+  static async bulkUpsertGuildConfigs(configs: BulkGuildConfigUpdate[]): Promise<void> {
+    logger.info(`Bulk upserting ${configs.length.toString()} guild configurations`);
 
     try {
       // Use Prisma transaction for consistency
@@ -196,7 +202,7 @@ export class BulkOperationHelpers {
       // Clear cache for all updated guilds
       await Promise.all(configs.map(({ guildId }) => cacheService.delete(`guild:config:${guildId}`)));
 
-      logger.info(`Bulk upsert completed for ${configs.length} guild configurations`);
+      logger.info(`Bulk upsert completed for ${configs.length.toString()} guild configurations`);
     } catch (error) {
       logger.error("Error in bulk guild config upsert:", error);
       throw error;
@@ -207,7 +213,7 @@ export class BulkOperationHelpers {
    * Bulk delete expired moderation cases
    */
   static async cleanupExpiredModerationCases(batchSize = 1000): Promise<number> {
-    logger.info(`Cleaning up expired moderation cases (batch size: ${batchSize})`);
+    logger.info(`Cleaning up expired moderation cases (batch size: ${batchSize.toString()})`);
 
     try {
       const expiredCases = await prisma.moderationCase.findMany({

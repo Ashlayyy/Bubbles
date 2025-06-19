@@ -7,21 +7,21 @@
   "main": "build/index.js",
   "type": "module",
   "scripts": {
-    "postinstall": "prisma generate --no-hints",
     "build": "tsc -p tsconfig.prod.json",
     "postbuild": "node build/bot/src/scripts/generateConfig.js",
-    "predev": "prisma format && prisma generate --no-hints",
     "dev": "nodemon",
+    "dev:shard": "tsx shard.ts",
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write .",
     "commands:register": "node build/bot/src/scripts/discordAPI/registerCommands.js",
     "commands:resetDev": "tsc && cross-env NODE_ENV=development tsx src/scripts/discordAPI/resetCommands.ts",
     "commands:resetProd": "node build/bot/src/scripts/discordAPI/resetCommands.js",
-    "start": "node ."
+    "start": "node .",
+    "start:shard": "node build/shard.js"
   },
   "dependencies": {
+    "@bubbles/shared": "file:../shared",
     "@discord-player/extractor": "^7.1.0",
-    "@prisma/client": "^6.9.0",
     "@twemoji/parser": "^16.0.0",
     "ajv": "^8.17.1",
     "ajv-errors": "^3.0.0",
@@ -36,13 +36,17 @@
     "mediaplex": "^1.0.0",
     "winston": "^3.17.0",
     "bull": "^4.12.9",
-    "ioredis": "^5.4.1"
+    "ioredis": "^5.4.1",
+    "ws": "^8.18.0",
+    "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
     "@types/bull": "^4.10.0",
     "@types/lodash": "^4.17.16",
     "@types/node": "^22.13.10",
+    "@types/ws": "^8.5.12",
+    "@types/jsonwebtoken": "^9.0.7",
     "@typescript-eslint/parser": "^8.26.1",
     "cross-env": "^7.0.3",
     "eslint": "^9.22.0",
@@ -54,7 +58,6 @@
     "nodemon": "^3.1.9",
     "prettier": "^3.5.3",
     "prettier-plugin-organize-imports": "^4.1.0",
-    "prisma": "^6.9.0",
     "tslib": "^2.8.1",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",

@@ -252,6 +252,30 @@ async function handleChannelSetup(client: Client, interaction: ChatInputCommandI
     ticketChannelId: channel.id,
   });
 
+  // Notify API of ticket configuration change
+  const customClient = client as any as Client;
+  if (customClient.queueService) {
+    try {
+      await customClient.queueService.processRequest({
+        type: "CONFIG_UPDATE",
+        data: {
+          guildId: interaction.guild.id,
+          section: "TICKET_SYSTEM",
+          setting: "channelId",
+          value: channel.id,
+          action: "UPDATE_TICKET_CHANNEL",
+          updatedBy: interaction.user.id,
+        },
+        source: "rest",
+        userId: interaction.user.id,
+        guildId: interaction.guild.id,
+        requiresReliability: true,
+      });
+    } catch (error) {
+      console.warn("Failed to notify API of ticket channel change:", error);
+    }
+  }
+
   await interaction.reply({
     embeds: [
       new EmbedBuilder()
@@ -288,6 +312,30 @@ async function handleThreadsConfig(client: Client, interaction: ChatInputCommand
   await updateGuildConfig(interaction.guild.id, {
     useTicketThreads: enabled,
   });
+
+  // Notify API of ticket configuration change
+  const customClient = client as any as Client;
+  if (customClient.queueService) {
+    try {
+      await customClient.queueService.processRequest({
+        type: "CONFIG_UPDATE",
+        data: {
+          guildId: interaction.guild.id,
+          section: "TICKET_SYSTEM",
+          setting: "useThreads",
+          value: enabled,
+          action: "UPDATE_TICKET_THREADS",
+          updatedBy: interaction.user.id,
+        },
+        source: "rest",
+        userId: interaction.user.id,
+        guildId: interaction.guild.id,
+        requiresReliability: true,
+      });
+    } catch (error) {
+      console.warn("Failed to notify API of ticket threads config change:", error);
+    }
+  }
 
   await interaction.reply({
     embeds: [
@@ -328,6 +376,30 @@ async function handleOnCallConfig(client: Client, interaction: ChatInputCommandI
   await updateGuildConfig(interaction.guild.id, {
     ticketOnCallRoleId: roleId,
   });
+
+  // Notify API of ticket configuration change
+  const customClient = client as any as Client;
+  if (customClient.queueService) {
+    try {
+      await customClient.queueService.processRequest({
+        type: "CONFIG_UPDATE",
+        data: {
+          guildId: interaction.guild.id,
+          section: "TICKET_SYSTEM",
+          setting: "onCallRole",
+          value: roleId,
+          action: "UPDATE_TICKET_ONCALL_ROLE",
+          updatedBy: interaction.user.id,
+        },
+        source: "rest",
+        userId: interaction.user.id,
+        guildId: interaction.guild.id,
+        requiresReliability: true,
+      });
+    } catch (error) {
+      console.warn("Failed to notify API of ticket on-call role change:", error);
+    }
+  }
 
   await interaction.reply({
     embeds: [
@@ -378,6 +450,30 @@ async function handleCategoryConfig(client: Client, interaction: ChatInputComman
   await updateGuildConfig(interaction.guild.id, {
     ticketCategoryId: category.id,
   });
+
+  // Notify API of ticket configuration change
+  const customClient = client as any as Client;
+  if (customClient.queueService) {
+    try {
+      await customClient.queueService.processRequest({
+        type: "CONFIG_UPDATE",
+        data: {
+          guildId: interaction.guild.id,
+          section: "TICKET_SYSTEM",
+          setting: "categoryId",
+          value: category.id,
+          action: "UPDATE_TICKET_CATEGORY",
+          updatedBy: interaction.user.id,
+        },
+        source: "rest",
+        userId: interaction.user.id,
+        guildId: interaction.guild.id,
+        requiresReliability: true,
+      });
+    } catch (error) {
+      console.warn("Failed to notify API of ticket category change:", error);
+    }
+  }
 
   await interaction.reply({
     embeds: [
@@ -709,6 +805,30 @@ async function handleAccessTypeConfig(client: Client, interaction: ChatInputComm
     ticketAccessType: accessType,
   });
 
+  // Notify API of ticket configuration change
+  const customClient = client as any as Client;
+  if (customClient.queueService) {
+    try {
+      await customClient.queueService.processRequest({
+        type: "CONFIG_UPDATE",
+        data: {
+          guildId: interaction.guild.id,
+          section: "TICKET_SYSTEM",
+          setting: "accessType",
+          value: accessType,
+          action: "UPDATE_TICKET_ACCESS_TYPE",
+          updatedBy: interaction.user.id,
+        },
+        source: "rest",
+        userId: interaction.user.id,
+        guildId: interaction.guild.id,
+        requiresReliability: true,
+      });
+    } catch (error) {
+      console.warn("Failed to notify API of ticket access type change:", error);
+    }
+  }
+
   await interaction.reply({
     embeds: [
       new EmbedBuilder()
@@ -762,6 +882,31 @@ async function handleAccessRoleConfig(client: Client, interaction: ChatInputComm
   await updateGuildConfig(interaction.guild.id, {
     ticketAccessRoleId: role.id,
   });
+
+  // Notify API of ticket configuration change
+  const customClient = client as any as Client;
+  if (customClient.queueService) {
+    try {
+      await customClient.queueService.processRequest({
+        type: "CONFIG_UPDATE",
+        data: {
+          guildId: interaction.guild.id,
+          section: "TICKET_SYSTEM",
+          setting: "accessRoleId",
+          value: role.id,
+          roleName: role.name,
+          action: "UPDATE_TICKET_ACCESS_ROLE",
+          updatedBy: interaction.user.id,
+        },
+        source: "rest",
+        userId: interaction.user.id,
+        guildId: interaction.guild.id,
+        requiresReliability: true,
+      });
+    } catch (error) {
+      console.warn("Failed to notify API of ticket access role change:", error);
+    }
+  }
 
   await interaction.reply({
     embeds: [

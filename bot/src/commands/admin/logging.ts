@@ -520,6 +520,28 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
     // Apply the preset configuration
     await client.logManager.enableLogTypes(interaction.guild.id, preset.logTypes);
 
+    // Notify API of logging preset change
+    if ((client as any).queueService) {
+      try {
+        await (client as any).queueService.processRequest({
+          type: "LOGGING_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            preset: presetType,
+            enabledLogTypes: preset.logTypes,
+            action: "APPLY_PRESET",
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of logging preset change:", error);
+      }
+    }
+
     const successEmbed = new EmbedBuilder()
       .setColor(0x2ecc71)
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied!`)
@@ -672,6 +694,28 @@ async function applyLoggingPreset(client: Client, interaction: ChatInputCommandI
 
   try {
     await client.logManager.enableLogTypes(interaction.guild.id, preset.logTypes);
+
+    // Notify API of logging preset change
+    if ((client as any).queueService) {
+      try {
+        await (client as any).queueService.processRequest({
+          type: "LOGGING_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            preset: presetType,
+            enabledLogTypes: preset.logTypes,
+            action: "APPLY_PRESET",
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of logging preset change:", error);
+      }
+    }
 
     const successEmbed = new EmbedBuilder()
       .setColor(0x2ecc71)
@@ -1365,6 +1409,29 @@ async function toggleCategory(client: Client, interaction: ChatInputCommandInter
       await client.logManager.enableLogTypes(interaction.guild.id, [...categoryTypes]);
     } else {
       await client.logManager.disableLogTypes(interaction.guild.id, [...categoryTypes]);
+    }
+
+    // Notify API of category toggle change
+    if ((client as any).queueService) {
+      try {
+        await (client as any).queueService.processRequest({
+          type: "LOGGING_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            category: category,
+            enabled: enabled,
+            logTypes: categoryTypes,
+            action: "TOGGLE_CATEGORY",
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of logging category toggle:", error);
+      }
     }
 
     const statusEmoji = enabled ? "✅" : "❌";

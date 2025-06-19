@@ -1,15 +1,8 @@
-import { GuildConfig } from "@prisma/client";
+import { GuildConfig } from "@shared/database";
 import logger from "../logger.js";
 import { cacheService } from "../services/cacheService.js";
 
 // Legacy compatibility functions for existing code
-export function getCachedGuildConfig(guildId: string): GuildConfig | undefined {
-  // For synchronous compatibility, we'll still use the old memory cache
-  // The new async cache will be used in the main GuildConfig.ts file
-  logger.debug("Using legacy sync cache lookup for guild config");
-  return undefined; // Let the main function handle async caching
-}
-
 export function setCachedGuildConfig(guildId: string, config: GuildConfig): void {
   // Set in new cache service asynchronously
   void cacheService.set(`guild:config:${guildId}`, config, "guildConfig");

@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@shared/database";
 import type { Message, PartialMessage } from "discord.js";
 import { AuditLogEvent, Events } from "discord.js";
 
