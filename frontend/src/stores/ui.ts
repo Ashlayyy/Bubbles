@@ -10,28 +10,31 @@ export const useUIStore = defineStore('ui', () => {
       const savedTheme = localStorage.getItem('theme')
       if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark')) {
         theme.value = savedTheme
-      } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-        theme.value = 'light'
+        applyTheme(savedTheme)
       } else {
         theme.value = 'dark'
+        applyTheme('dark')
       }
     }
   }
 
   const toggleTheme = () => {
     theme.value = theme.value === 'light' ? 'dark' : 'light'
+    applyTheme(theme.value)
   }
 
-  watch(theme, (newTheme) => {
-    if (typeof window !== 'undefined') {
-      if (newTheme === 'dark') {
-        document.documentElement.classList.add('dark')
-      } else {
-        document.documentElement.classList.remove('dark')
-      }
-      localStorage.setItem('theme', newTheme)
+  function applyTheme(newTheme: 'light' | 'dark') {
+    if (typeof window === 'undefined') return
+    
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
     }
-  })
+    localStorage.setItem('theme', newTheme)
+  }
+
+  watch(theme, applyTheme)
 
   setInitialTheme()
 

@@ -13,6 +13,7 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const isAuthenticated = ref(false)
   const loading = ref(false)
+  const isDemoUser = ref(false)
 
   const avatarUrl = computed(() => {
     if (!user.value) return null
@@ -35,22 +36,30 @@ export const useAuthStore = defineStore('auth', () => {
       avatar: null
     }
     isAuthenticated.value = true
+    isDemoUser.value = true
     loading.value = false
   }
 
   const logout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' })
+      // Only try to call logout API if not a demo user
+      if (!isDemoUser.value) {
+        await fetch('/api/auth/logout', { method: 'POST' })
+      }
     } catch (error) {
       console.error('Logout failed, logging out locally:', error)
     } finally {
       user.value = null
       isAuthenticated.value = false
+      isDemoUser.value = false
     }
   }
 
   const checkAuth = async () => {
     if (isAuthenticated.value) return
+
+    // If we're already a demo user, don't make API calls
+    if (isDemoUser.value) return
 
     loading.value = true
     try {
@@ -61,9 +70,13 @@ export const useAuthStore = defineStore('auth', () => {
       const userData = await response.json()
       user.value = userData
       isAuthenticated.value = true
+      isDemoUser.value = false
     } catch (error) {
-      user.value = null
-      isAuthenticated.value = false
+      // Only reset auth state if we're not a demo user
+      if (!isDemoUser.value) {
+        user.value = null
+        isAuthenticated.value = false
+      }
     } finally {
       loading.value = false
     }
@@ -73,6 +86,7 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     isAuthenticated,
     loading,
+    isDemoUser,
     avatarUrl,
     login,
     loginAsDemoUser,

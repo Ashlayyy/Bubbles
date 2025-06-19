@@ -74,6 +74,6 @@ defineEmits<{
 const toastStore = useToastStore();
 
 const saveChanges = () => {
-  toastStore.addToast('Level up message saved!', 'success');
+  toastStore.addToast('Level up message settings saved successfully!', 'success');
 };
 </script>

@@ -71,10 +71,10 @@ const modActionsChartOptions = computed((): ChartOptions<'bar'> => {
         display: false,
       },
       tooltip: {
-        backgroundColor: isDark ? '#1e293b' : '#ffffff',
-        titleColor: isDark ? '#cbd5e1' : '#1e293b',
-        bodyColor: isDark ? '#cbd5e1' : '#1e293b',
-        borderColor: isDark ? '#334155' : '#e2e8f0',
+        backgroundColor: isDark ? 'hsl(var(--card))' : 'hsl(var(--card))',
+        titleColor: isDark ? 'hsl(var(--card-foreground))' : 'hsl(var(--card-foreground))',
+        bodyColor: isDark ? 'hsl(var(--card-foreground))' : 'hsl(var(--card-foreground))',
+        borderColor: isDark ? 'hsl(var(--border))' : 'hsl(var(--border))',
         borderWidth: 1,
       }
     },
@@ -82,10 +82,10 @@ const modActionsChartOptions = computed((): ChartOptions<'bar'> => {
       y: {
         beginAtZero: true,
         grid: {
-          color: isDark ? '#334155' : '#e2e8f0'
+          color: isDark ? 'hsl(var(--border))' : 'hsl(var(--border))'
         },
         ticks: {
-          color: isDark ? '#94a3b8' : '#64748b'
+          color: isDark ? 'hsl(var(--muted-foreground))' : 'hsl(var(--muted-foreground))'
         }
       },
       x: {
@@ -93,7 +93,7 @@ const modActionsChartOptions = computed((): ChartOptions<'bar'> => {
           display: false
         },
         ticks: {
-          color: isDark ? '#94a3b8' : '#64748b'
+          color: isDark ? 'hsl(var(--muted-foreground))' : 'hsl(var(--muted-foreground))'
         }
       }
     }

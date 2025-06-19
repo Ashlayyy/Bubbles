@@ -1,4 +1,3 @@
-
 <template>
   <div class="bg-slate-900 border border-slate-800 rounded-xl">
     <div class="p-6 border-b border-slate-800">
@@ -58,6 +57,6 @@ defineEmits<{
 const toastStore = useToastStore();
 
 const saveChanges = () => {
-  toastStore.addToast('Ignored items saved!', 'success');
+  toastStore.addToast('Ignored items settings saved successfully!', 'success');
 };
 </script>

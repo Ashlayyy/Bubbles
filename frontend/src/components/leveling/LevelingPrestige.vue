@@ -68,6 +68,6 @@ defineEmits<{
 const toastStore = useToastStore();
 
 const saveChanges = () => {
-  toastStore.addToast('Prestige settings saved!', 'success');
+  toastStore.addToast('Prestige settings saved successfully!', 'success');
 };
 </script>

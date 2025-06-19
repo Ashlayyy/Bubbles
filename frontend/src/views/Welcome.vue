@@ -1,6 +1,5 @@
-
 <template>
-  <div class="p-8">
+  <div>
     <h1 class="text-3xl font-bold text-foreground mb-6">Welcome & Leave</h1>
 
     <!-- Tabs -->
@@ -240,9 +239,11 @@ import { useWelcomeStore } from '@/stores/welcome'
 import { storeToRefs } from 'pinia'
 import DiscordItemSelector from '@/components/common/DiscordItemSelector.vue'
 import MultiMessageInput from '@/components/common/MultiMessageInput.vue'
+import { useToastStore } from '@/stores/toast'
 
 const welcomeStore = useWelcomeStore()
 const { welcomeSettings, leaveSettings } = storeToRefs(welcomeStore)
+const toastStore = useToastStore()
 
 const activeTab = ref<'welcome' | 'leave'>('welcome')
 
@@ -255,10 +256,12 @@ const mockChannels = [
 ]
 
 const saveWelcomeSettings = () => {
-  console.log('Welcome settings saved')
+  welcomeStore.updateWelcomeSettings(welcomeSettings.value)
+  toastStore.addToast('Welcome settings saved successfully!', 'success')
 }
 
 const saveLeaveSettings = () => {
-  console.log('Leave settings saved')
+  welcomeStore.updateLeaveSettings(leaveSettings.value)
+  toastStore.addToast('Leave settings saved successfully!', 'success')
 }
 </script>

@@ -130,7 +130,7 @@ const updateMultiplierValue = (index: number, multiplier: number) => {
 };
 
 const saveChanges = () => {
-  toastStore.addToast('XP Multipliers saved!', 'success');
+  toastStore.addToast('XP multipliers saved successfully!', 'success');
 };
 </script>
 

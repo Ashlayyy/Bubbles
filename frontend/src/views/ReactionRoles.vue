@@ -1,9 +1,8 @@
-
 <template>
-  <div class="p-8">
+  <div>
     <div class="flex items-center justify-between mb-8">
-      <h1 class="text-3xl font-bold text-white">Reaction Roles</h1>
-      <button @click="openCreateModal" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors flex items-center space-x-2">
+      <h1 class="text-3xl font-bold text-foreground">Reaction Roles</h1>
+      <button @click="openCreateModal" class="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-4 py-2 rounded-lg transition-colors flex items-center space-x-2">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
         <span>Create New</span>
       </button>
@@ -86,12 +85,16 @@
 import { ref } from 'vue';
 import ReactionRoleModal from '@/components/reaction-roles/ReactionRoleModal.vue';
 import type { ReactionRoleMessage, ReactionMapping, Role } from '@/types/reaction-roles';
+import { useToastStore } from '@/stores/toast';
+
+const toastStore = useToastStore();
 
 const reactionRoleMessages = ref<ReactionRoleMessage[]>([
   {
     id: 'rr-1',
     channelId: 'channel-123',
     channelName: 'rules-and-roles',
+    messageId: 'msg-abc-123',
     messageContent: 'React to this message to get your roles!\n\n👍 - General Access\n🚀 - Project Updates',
     mappings: [
       { 
@@ -160,7 +163,13 @@ const closeModal = () => {
 
 const deleteMessage = (messageId: string) => {
   if (confirm('Are you sure you want to delete this reaction role message?')) {
-    reactionRoleMessages.value = reactionRoleMessages.value.filter(m => m.id !== messageId);
+    const messageIndex = reactionRoleMessages.value.findIndex(m => m.id === messageId)
+    if (messageIndex !== -1) {
+      const messageName = reactionRoleMessages.value[messageIndex].channelName
+      reactionRoleMessages.value.splice(messageIndex, 1)
+      
+      toastStore.addToast(`Reaction role message in #${messageName} deleted successfully!`, 'success')
+    }
   }
 };
 
@@ -177,6 +186,7 @@ const saveMessage = (messageData: Omit<ReactionRoleMessage, 'id' | 'channelId' |
         }))
       }));
       reactionRoleMessages.value[index] = { ...reactionRoleMessages.value[index], ...messageData, mappings: updatedMappings as ReactionMapping[] };
+      toastStore.addToast('Reaction role message updated successfully!', 'success')
     }
   } else {
     // Create new
@@ -195,8 +205,8 @@ const saveMessage = (messageData: Omit<ReactionRoleMessage, 'id' | 'channelId' |
       mappings: newMappings as ReactionMapping[],
     };
     reactionRoleMessages.value.push(newMessage);
+    toastStore.addToast('Reaction role message created successfully!', 'success')
   }
   closeModal();
-};
-
+}
 </script>

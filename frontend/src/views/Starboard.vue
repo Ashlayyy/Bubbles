@@ -1,6 +1,5 @@
-
 <template>
-  <div class="p-8">
+  <div>
     <h1 class="text-3xl font-bold text-foreground mb-6">Starboard</h1>
 
     <!-- Tabs -->
@@ -149,14 +148,17 @@
 import { ref } from 'vue'
 import { useStarboardStore } from '@/stores/starboard'
 import { storeToRefs } from 'pinia'
+import { useToastStore } from '@/stores/toast'
 
 const starboardStore = useStarboardStore()
 const { settings, starredMessages, stats } = storeToRefs(starboardStore)
+const toastStore = useToastStore()
 
 const activeTab = ref<'overview' | 'messages' | 'settings'>('overview')
 
 const saveSettings = () => {
-  console.log('Starboard settings saved')
+  starboardStore.updateSettings(settings.value)
+  toastStore.addToast('Starboard settings saved successfully!', 'success')
 }
 
 const formatDate = (dateString: string) => {

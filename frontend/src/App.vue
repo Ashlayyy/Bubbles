@@ -38,11 +38,11 @@ useUIStore()
 const getToastClass = (type: string) => {
   switch (type) {
     case 'success':
-      return 'bg-green-100 border-green-300 text-green-900 dark:bg-green-900 dark:border-green-700 dark:text-green-100'
+      return 'bg-green-100 border-green-300 text-green-900 dark:bg-green-800/50 dark:border-green-700/50 dark:text-green-100'
     case 'error':
-      return 'bg-red-100 border-red-300 text-red-900 dark:bg-red-900 dark:border-red-700 dark:text-red-100'
+      return 'bg-red-100 border-red-300 text-red-900 dark:bg-red-800/50 dark:border-red-700/50 dark:text-red-100'
     default:
-      return 'bg-blue-100 border-blue-300 text-blue-900 dark:bg-blue-900 dark:border-blue-700 dark:text-blue-100'
+      return 'bg-blue-100 border-blue-300 text-blue-900 dark:bg-blue-800/50 dark:border-blue-700/50 dark:text-blue-100'
   }
 }
 

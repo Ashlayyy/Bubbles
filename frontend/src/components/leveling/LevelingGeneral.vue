@@ -59,6 +59,6 @@ const toastStore = useToastStore();
 
 const saveChanges = () => {
   // In a real app, this would make an API call.
-  toastStore.addToast('General settings saved!', 'success');
+  toastStore.addToast('General leveling settings saved successfully!', 'success');
 };
 </script>

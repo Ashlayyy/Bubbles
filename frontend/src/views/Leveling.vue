@@ -1,7 +1,6 @@
-
 <template>
-  <div class="p-8">
-    <h1 class="text-3xl font-bold text-white mb-8">Leveling System</h1>
+  <div>
+    <h1 class="text-3xl font-bold text-foreground mb-8">Leveling System</h1>
 
     <div class="space-y-8 max-w-4xl">
       <LevelingGeneral
@@ -59,6 +58,9 @@ import LevelingMultipliers from '@/components/leveling/LevelingMultipliers.vue';
 import LevelingRoleRewards from '@/components/leveling/LevelingRoleRewards.vue';
 import LevelingPrestige from '@/components/leveling/LevelingPrestige.vue';
 import LevelingIgnoredItems from '@/components/leveling/LevelingIgnoredItems.vue';
+import { useToastStore } from '@/stores/toast';
+
+const toastStore = useToastStore();
 
 const levelingEnabled = ref(true);
 const xpPerMessage = ref(15);
@@ -122,4 +124,10 @@ const allChannels = ref<DiscordItem[]>([
   { id: 'channel-memes', name: 'memes' },
   { id: 'channel-art', name: 'art' },
 ]);
+
+// Watch for changes and show save confirmations
+const saveAllSettings = () => {
+  // In a real app, this would save all settings to the backend
+  toastStore.addToast('All leveling settings saved successfully!', 'success');
+};
 </script>

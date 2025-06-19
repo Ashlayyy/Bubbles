@@ -1,6 +1,6 @@
 
 <template>
-  <div class="p-8">
+  <div>
     <div class="flex justify-between items-center mb-6">
       <h1 class="text-3xl font-bold text-foreground">Reminders</h1>
       <button @click="showCreateModal = true" class="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-4 py-2 rounded-lg transition-colors">

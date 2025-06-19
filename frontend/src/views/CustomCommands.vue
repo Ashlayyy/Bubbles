@@ -1,6 +1,6 @@
 
 <template>
-  <div class="p-8">
+  <div>
     <div class="flex justify-between items-start mb-6">
       <div>
         <h1 class="text-3xl font-bold text-foreground mb-2">Custom Commands</h1>
@@ -194,10 +194,7 @@ const closeDeleteModal = () => {
 const confirmDelete = () => {
   if (commandToDelete.value) {
     commandsStore.deleteCommand(commandToDelete.value.id)
-    toastStore.addToast({
-      message: `Command "${commandToDelete.value.name}" deleted successfully!`,
-      type: 'success'
-    })
+    toastStore.addToast(`Command "${commandToDelete.value.name}" deleted successfully!`, 'success')
   }
   closeDeleteModal()
 }

@@ -1,11 +1,11 @@
 
 ```vue
 <template>
-  <div class="p-8 max-w-7xl mx-auto">
+  <div class="max-w-7xl mx-auto">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-4">
         <div>
-            <h1 class="text-3xl font-bold text-white">Audit Log</h1>
-            <p class="text-slate-400 mt-1">View and search through events that have happened on your server.</p>
+            <h1 class="text-3xl font-bold text-foreground">Audit Log</h1>
+            <p class="text-muted-foreground mt-1">View and search through events that have happened on your server.</p>
         </div>
     </div>
 

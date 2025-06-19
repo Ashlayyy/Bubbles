@@ -97,6 +97,6 @@ const updateRewardRole = (index: number, roleId: string) => {
 
 const saveChanges = () => {
   // Can add validation here to ensure all rewards are fully configured
-  toastStore.addToast('Role rewards saved!', 'success');
+  toastStore.addToast('Role rewards saved successfully!', 'success');
 };
 </script>

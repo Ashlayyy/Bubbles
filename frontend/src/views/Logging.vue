@@ -1,5 +1,5 @@
 <template>
-  <div class="p-8 text-white">
+  <div>
     <LoggingHeader />
 
     <div class="space-y-8">

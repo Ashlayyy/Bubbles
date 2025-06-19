@@ -286,16 +286,10 @@ watch(() => props.command, (newCommand) => {
 const handleSubmit = () => {
   if (isEdit.value && props.command) {
     commandsStore.updateCommand(props.command.id, form.value)
-    toastStore.addToast({
-      message: `Command "${form.value.name}" updated successfully!`,
-      type: 'success'
-    })
+    toastStore.addToast(`Command "${form.value.name}" updated successfully!`, 'success')
   } else {
     commandsStore.addCommand(form.value)
-    toastStore.addToast({
-      message: `Command "${form.value.name}" created successfully!`,
-      type: 'success'
-    })
+    toastStore.addToast(`Command "${form.value.name}" created successfully!`, 'success')
   }
   emit('close')
 }

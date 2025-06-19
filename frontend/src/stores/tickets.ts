@@ -54,7 +54,9 @@ export const useTicketsStore = defineStore('tickets', () => {
     transcriptChannelName: 'ticket-logs',
     maxTicketsPerUser: 3,
     closeInactiveAfter: 72,
-    pingRoleOnCreate: ['Support Staff']
+    pingRoleOnCreate: ['Support Staff'],
+    requireCloseReason: false,
+    autoAssignStaff: true
   })
 
   const categories = ref<TicketCategory[]>([
@@ -116,6 +118,32 @@ export const useTicketsStore = defineStore('tickets', () => {
   const updateSettings = (newSettings: Partial<TicketSettings>) => {
     settings.value = { ...settings.value, ...newSettings }
   }
+  
+  const updateCategory = (id: string, updates: Partial<TicketCategory>) => {
+    const index = categories.value.findIndex(c => c.id === id)
+    if (index !== -1) {
+      categories.value[index] = { ...categories.value[index], ...updates }
+    }
+  }
+  
+  const deleteCategory = (id: string) => {
+    const index = categories.value.findIndex(c => c.id === id)
+    if (index !== -1) {
+      categories.value.splice(index, 1)
+    }
+  }
+  
+  const closeTicket = (id: string, reason?: string) => {
+    const index = tickets.value.findIndex(t => t.id === id)
+    if (index !== -1) {
+      tickets.value[index] = {
+        ...tickets.value[index],
+        status: 'closed',
+        closedAt: new Date().toISOString(),
+        closedBy: 'Current User'
+      }
+    }
+  }
 
   return {
     settings,
@@ -124,6 +152,9 @@ export const useTicketsStore = defineStore('tickets', () => {
     openTickets,
     closedTickets,
     addCategory,
-    updateSettings
+    updateSettings,
+    updateCategory,
+    deleteCategory,
+    closeTicket
   }
 })

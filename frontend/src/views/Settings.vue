@@ -1,6 +1,6 @@
 
 <template>
-  <div class="p-8">
+  <div>
     <h1 class="text-3xl font-bold text-foreground mb-8">Settings</h1>
 
     <div class="space-y-8 max-w-4xl">
@@ -22,7 +22,7 @@
           </div>
         </div>
         <div class="p-6 bg-secondary/50 border-t border-border rounded-b-xl flex justify-end">
-          <button class="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-4 py-2 rounded-lg transition-colors">Save Changes</button>
+          <button @click="saveGeneralSettings" class="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-4 py-2 rounded-lg transition-colors">Save Changes</button>
         </div>
       </div>
 
@@ -70,7 +70,7 @@
           </div>
         </div>
         <div class="p-6 bg-secondary/50 border-t border-border rounded-b-xl flex justify-end">
-          <button class="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-4 py-2 rounded-lg transition-colors">Save Changes</button>
+          <button @click="saveGeneralSettings" class="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-4 py-2 rounded-lg transition-colors">Save Changes</button>
         </div>
       </div>
 
@@ -103,11 +103,44 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref } from 'vue'
+import { useToastStore } from '@/stores/toast'
+
+const { addToast } = useToastStore()
 
 const language = ref('en');
 const welcomeEnabled = ref(true);
 const welcomeChannelId = ref('');
 const goodbyeEnabled = ref(true);
 const goodbyeChannelId = ref('');
+
+const saveGeneralSettings = () => {
+  // Save general settings
+  addToast('General settings saved successfully!', 'success')
+}
+
+const saveWelcomeSettings = () => {
+  // Save welcome/goodbye settings
+  addToast('Welcome & goodbye settings saved successfully!', 'success')
+}
+
+const resetAllSettings = () => {
+  if (confirm('Are you sure you want to reset ALL settings? This action cannot be undone.')) {
+    // Reset all settings to defaults
+    language.value = 'en'
+    welcomeEnabled.value = false
+    welcomeChannelId.value = ''
+    goodbyeEnabled.value = false
+    goodbyeChannelId.value = ''
+    
+    addToast('All settings have been reset to defaults!', 'success')
+  }
+}
+
+const leaveServer = () => {
+  if (confirm('Are you sure you want the bot to leave this server? You will need to re-invite it to use it again.')) {
+    addToast('Bot will leave the server...', 'info')
+    // In a real app, this would trigger the bot to leave
+  }
+}
 </script>

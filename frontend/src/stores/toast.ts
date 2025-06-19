@@ -11,9 +11,20 @@ interface Toast {
 export const useToastStore = defineStore('toast', () => {
   const toasts = ref<Toast[]>([])
 
-  const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+  const addToast = (message: string | { message: string; type: 'success' | 'error' | 'info' }, type: 'success' | 'error' | 'info' = 'info') => {
+    let toastMessage: string
+    let toastType: 'success' | 'error' | 'info'
+    
+    if (typeof message === 'string') {
+      toastMessage = message
+      toastType = type
+    } else {
+      toastMessage = message.message
+      toastType = message.type
+    }
+    
     const id = Math.random().toString(36).substr(2, 9)
-    const toast: Toast = { id, message, type }
+    const toast: Toast = { id, message: toastMessage, type: toastType }
     toasts.value.push(toast)
     
     // Auto remove after 5 seconds

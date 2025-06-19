@@ -1,6 +1,6 @@
 
 <template>
-  <div class="p-8">
+  <div>
     <h1 class="text-3xl font-bold text-foreground mb-6">Appeals</h1>
 
     <!-- Tabs -->
