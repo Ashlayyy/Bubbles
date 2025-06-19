@@ -1,27 +1,26 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ES2022",
-    "lib": ["ES2022"],
-    "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
-    "allowJs": true,
-    "strict": true,
-    "declaration": false,
-    "sourceMap": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "types": ["node"]
-  },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
-} 
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ES2022",
+		"lib": ["ES2022"],
+		"moduleResolution": "bundler",
+		"allowSyntheticDefaultImports": true,
+		"esModuleInterop": true,
+		"allowJs": true,
+		"strict": true,
+		"declaration": false,
+		"sourceMap": true,
+		"outDir": "./dist",
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"types": ["node"],
+		"baseUrl": ".",
+		"paths": {
+			"@shared/*": ["../shared/src/*"],
+			"@shared/database": ["../shared/src/database"]
+		}
+	},
+	"include": ["src/**/*"],
+	"exclude": ["node_modules", "dist"]
+}

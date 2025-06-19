@@ -1,0 +1,252 @@
+import { Request, Response, NextFunction } from 'express';
+import type { ApiResponse } from '../types/shared.js';
+import type { AuthRequest } from './auth.js';
+
+// Discord permission flags
+export const DiscordPermissions = {
+	CREATE_INSTANT_INVITE: '1',
+	KICK_MEMBERS: '2',
+	BAN_MEMBERS: '4',
+	ADMINISTRATOR: '8',
+	MANAGE_CHANNELS: '16',
+	MANAGE_GUILD: '32',
+	ADD_REACTIONS: '64',
+	VIEW_AUDIT_LOG: '128',
+	PRIORITY_SPEAKER: '256',
+	STREAM: '512',
+	VIEW_CHANNEL: '1024',
+	SEND_MESSAGES: '2048',
+	SEND_TTS_MESSAGES: '4096',
+	MANAGE_MESSAGES: '8192',
+	EMBED_LINKS: '16384',
+	ATTACH_FILES: '32768',
+	READ_MESSAGE_HISTORY: '65536',
+	MENTION_EVERYONE: '131072',
+	USE_EXTERNAL_EMOJIS: '262144',
+	VIEW_GUILD_INSIGHTS: '524288',
+	CONNECT: '1048576',
+	SPEAK: '2097152',
+	MUTE_MEMBERS: '4194304',
+	DEAFEN_MEMBERS: '8388608',
+	MOVE_MEMBERS: '16777216',
+	USE_VAD: '33554432',
+	CHANGE_NICKNAME: '67108864',
+	MANAGE_NICKNAMES: '134217728',
+	MANAGE_ROLES: '268435456',
+	MANAGE_WEBHOOKS: '536870912',
+	MANAGE_EMOJIS_AND_STICKERS: '1073741824',
+	USE_APPLICATION_COMMANDS: '2147483648',
+	REQUEST_TO_SPEAK: '4294967296',
+	MANAGE_EVENTS: '8589934592',
+	MANAGE_THREADS: '17179869184',
+	CREATE_PUBLIC_THREADS: '34359738368',
+	CREATE_PRIVATE_THREADS: '68719476736',
+	USE_EXTERNAL_STICKERS: '137438953472',
+	SEND_MESSAGES_IN_THREADS: '274877906944',
+	USE_EMBEDDED_ACTIVITIES: '549755813888',
+	MODERATE_MEMBERS: '1099511627776',
+} as const;
+
+// Permission requirements for different features
+const featurePermissions = {
+	// Moderation features
+	moderation: {
+		ban: [DiscordPermissions.BAN_MEMBERS],
+		kick: [DiscordPermissions.KICK_MEMBERS],
+		timeout: [DiscordPermissions.MODERATE_MEMBERS],
+		manageMessages: [DiscordPermissions.MANAGE_MESSAGES],
+		viewAuditLog: [DiscordPermissions.VIEW_AUDIT_LOG],
+	},
+
+	// Channel management
+	channels: {
+		manage: [DiscordPermissions.MANAGE_CHANNELS],
+		view: [DiscordPermissions.VIEW_CHANNEL],
+		sendMessages: [DiscordPermissions.SEND_MESSAGES],
+	},
+
+	// Role management
+	roles: {
+		manage: [DiscordPermissions.MANAGE_ROLES],
+		view: [DiscordPermissions.VIEW_CHANNEL],
+	},
+
+	// Guild management
+	guild: {
+		manage: [DiscordPermissions.MANAGE_GUILD],
+		administrator: [DiscordPermissions.ADMINISTRATOR],
+		viewInsights: [DiscordPermissions.VIEW_GUILD_INSIGHTS],
+	},
+
+	// Webhook management
+	webhooks: {
+		manage: [DiscordPermissions.MANAGE_WEBHOOKS],
+	},
+
+	// Thread management
+	threads: {
+		manage: [DiscordPermissions.MANAGE_THREADS],
+		create: [
+			DiscordPermissions.CREATE_PUBLIC_THREADS,
+			DiscordPermissions.CREATE_PRIVATE_THREADS,
+		],
+	},
+
+	// Events
+	events: {
+		manage: [DiscordPermissions.MANAGE_EVENTS],
+	},
+} as const;
+
+// Permission checking utility
+const hasPermission = (
+	userPermissions: string,
+	requiredPermissions: string[]
+): boolean => {
+	const userPerms = BigInt(userPermissions);
+
+	// Administrator has all permissions
+	if ((userPerms & BigInt(DiscordPermissions.ADMINISTRATOR)) !== 0n) {
+		return true;
+	}
+
+	// Check if user has any of the required permissions
+	return requiredPermissions.some((perm) => {
+		const permBigInt = BigInt(perm);
+		return (userPerms & permBigInt) !== 0n;
+	});
+};
+
+// Middleware factory for permission checking
+export const requirePermissions = (permissions: string[]) => {
+	return async (req: AuthRequest, res: Response, next: NextFunction) => {
+		try {
+			const user = req.user;
+			const { guildId } = req.params;
+
+			if (!user) {
+				return res.status(401).json({
+					success: false,
+					error: 'Authentication required',
+				} as ApiResponse);
+			}
+
+			// TODO: Fetch user's permissions in the guild from Discord API
+			// This is a placeholder - you'll need to implement actual permission checking
+			// against Discord's API or your cached guild data
+
+			// For now, we'll assume the user has permissions
+			// In a real implementation, you would:
+			// 1. Check if user is in the guild
+			// 2. Get their roles and permissions
+			// 3. Calculate effective permissions
+			// 4. Check against required permissions
+
+			const userGuildPermissions = '8'; // Placeholder - Administrator permission
+
+			if (!hasPermission(userGuildPermissions, permissions)) {
+				return res.status(403).json({
+					success: false,
+					error: 'Insufficient permissions for this action',
+					details: {
+						required: permissions,
+						userPermissions: userGuildPermissions,
+					},
+				} as ApiResponse);
+			}
+
+			next();
+		} catch (error) {
+			return res.status(500).json({
+				success: false,
+				error: 'Failed to check permissions',
+			} as ApiResponse);
+		}
+	};
+};
+
+// Specific permission middleware
+export const requireModerationPermissions = requirePermissions([
+	...featurePermissions.moderation.ban,
+	...featurePermissions.moderation.kick,
+	...featurePermissions.moderation.timeout,
+]);
+
+export const requireChannelManagement = requirePermissions([
+	...featurePermissions.channels.manage,
+]);
+export const requireRoleManagement = requirePermissions([
+	...featurePermissions.roles.manage,
+]);
+export const requireGuildManagement = requirePermissions([
+	...featurePermissions.guild.manage,
+]);
+export const requireWebhookManagement = requirePermissions([
+	...featurePermissions.webhooks.manage,
+]);
+export const requireAdministrator = requirePermissions([
+	...featurePermissions.guild.administrator,
+]);
+
+// Feature-specific permission checks
+export const requireFeaturePermission = (
+	feature: keyof typeof featurePermissions,
+	action: string
+) => {
+	return (req: AuthRequest, res: Response, next: NextFunction) => {
+		const permissions =
+			featurePermissions[feature]?.[
+				action as keyof (typeof featurePermissions)[typeof feature]
+			];
+
+		if (!permissions) {
+			return res.status(500).json({
+				success: false,
+				error: 'Invalid permission configuration',
+			} as ApiResponse);
+		}
+
+		return requirePermissions(permissions as string[])(req, res, next);
+	};
+};
+
+// Guild ownership check
+export const requireGuildOwner = async (
+	req: AuthRequest,
+	res: Response,
+	next: NextFunction
+) => {
+	try {
+		const user = req.user;
+		const { guildId } = req.params;
+
+		if (!user) {
+			return res.status(401).json({
+				success: false,
+				error: 'Authentication required',
+			} as ApiResponse);
+		}
+
+		// TODO: Check if user is the guild owner
+		// This would query Discord API or your cached data
+		// For now, we'll pass through
+
+		next();
+	} catch (error) {
+		return res.status(500).json({
+			success: false,
+			error: 'Failed to verify guild ownership',
+		} as ApiResponse);
+	}
+};
+
+// Music permission middleware
+export const requireMusicPermissions = requirePermissions([
+	DiscordPermissions.CONNECT,
+	DiscordPermissions.SPEAK,
+]);
+
+// Admin permission middleware
+export const requireAdminPermissions = requirePermissions([
+	DiscordPermissions.ADMINISTRATOR,
+]);

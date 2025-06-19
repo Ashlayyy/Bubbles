@@ -1,38 +1,45 @@
 {
-  "name": "@bubbles/api",
-  "version": "1.0.0",
-  "description": "Discord bot API service",
-  "main": "dist/index.js",
-  "type": "module",
-  "scripts": {
-    "build": "tsc",
-    "dev": "nodemon",
-    "start": "node dist/index.js",
-    "setup": "npm install && npm run build"
-  },
-  "dependencies": {
-    "axios": "^1.6.0",
-    "bcryptjs": "^2.4.3",
-    "bull": "^4.12.9",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.18.2",
-    "express-rate-limit": "^7.1.5",
-    "helmet": "^7.1.0",
-    "joi": "^17.11.0",
-    "jsonwebtoken": "^9.0.2",
-    "socket.io": "^4.7.5",
-    "winston": "^3.17.0"
-  },
-  "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/bull": "^4.10.0",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
-    "@types/jsonwebtoken": "^9.0.6",
-    "@types/node": "^20.10.0",
-    "nodemon": "^3.1.9",
-    "tsx": "^4.19.3",
-    "typescript": "^5.3.3"
-  }
+	"name": "@bubbles/api",
+	"version": "1.0.0",
+	"description": "Discord bot API service",
+	"main": "dist/index.js",
+	"type": "module",
+	"scripts": {
+		"build": "tsc",
+		"dev": "nodemon",
+		"start": "node dist/index.js",
+		"setup": "npm install && npm run build",
+		"lint": "echo 'Linting not configured yet'",
+		"format": "echo 'Formatting not configured yet'"
+	},
+	"dependencies": {
+		"@bubbles/shared": "file:../shared",
+		"@types/ws": "^8.18.1",
+		"axios": "^1.6.0",
+		"bcryptjs": "^2.4.3",
+		"bull": "^4.12.9",
+		"cors": "^2.8.5",
+		"dotenv": "^16.4.7",
+		"express": "^5.1.0",
+		"express-rate-limit": "^7.5.0",
+		"helmet": "^7.2.0",
+		"ioredis": "^5.4.1",
+		"joi": "^17.13.3",
+		"jsonwebtoken": "^9.0.2",
+		"socket.io": "^4.7.5",
+		"winston": "^3.17.0",
+		"ws": "^8.17.1"
+	},
+	"devDependencies": {
+		"@types/bcryptjs": "^2.4.6",
+		"@types/bull": "^4.10.0",
+		"@types/cors": "^2.8.19",
+		"@types/express": "^4.17.23",
+		"@types/ioredis": "^5.0.0",
+		"@types/jsonwebtoken": "^9.0.10",
+		"@types/node": "^20.10.0",
+		"nodemon": "^3.1.9",
+		"tsx": "^4.19.3",
+		"typescript": "^5.3.3"
+	}
 }
