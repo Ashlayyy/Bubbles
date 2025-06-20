@@ -375,7 +375,7 @@ export class UnifiedProcessor {
           ...baseJob,
           type: request.type,
           targetUserId: (request.data.targetUserId ?? request.data.userId) as string,
-          moderatorId: request.userId ?? "system",
+          moderatorId: request.userId,
           reason: request.data.reason as string,
           duration: request.data.duration as number,
           caseId: request.data.caseId as string,

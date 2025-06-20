@@ -40,6 +40,7 @@ export class WebSocketService extends EventEmitter {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 5000; // 5 seconds
+  private permissionListenersSetup = false;
 
   constructor(client: Client) {
     super();
@@ -53,9 +54,14 @@ export class WebSocketService extends EventEmitter {
     }
 
     const wsUrl = process.env.WS_URL ?? "ws://localhost:3001/ws";
-    logger.info(`Connecting to API WebSocket: ${wsUrl}`);
+    const originHeader = process.env.WS_ORIGIN;
+    logger.info(`Connecting to API WebSocket: ${wsUrl}${originHeader ? ` (origin: ${originHeader})` : ""}`);
 
-    this.ws = new WebSocket(wsUrl);
+    if (originHeader) {
+      this.ws = new WebSocket(wsUrl, undefined, { headers: { Origin: originHeader } });
+    } else {
+      this.ws = new WebSocket(wsUrl);
+    }
     logger.debug(`Created WebSocket instance. Ready state: ${this.ws.readyState}`);
 
     this.ws.on("open", () => {
@@ -168,6 +174,8 @@ export class WebSocketService extends EventEmitter {
       this.authenticated = true;
       logger.info("Successfully authenticated with API server");
       this.startHeartbeat();
+      this.sendPermissionSnapshot();
+      this.setupPermissionListeners();
       this.emit("authenticated");
     } else {
       logger.error("Authentication failed:", message.data);
@@ -551,5 +559,62 @@ export class WebSocketService extends EventEmitter {
     } as WebSocketMessage;
 
     this.ws.send(JSON.stringify(full));
+  }
+
+  private buildPermissionSnapshot(): { guildId: string; bitfield: string }[] {
+    const snapshot: { guildId: string; bitfield: string }[] = [];
+
+    for (const guild of this.client.guilds.cache.values()) {
+      const me = guild.members.me;
+      if (me) {
+        snapshot.push({ guildId: guild.id, bitfield: me.permissions.bitfield.toString() });
+      }
+    }
+
+    return snapshot;
+  }
+
+  private sendPermissionSnapshot(): void {
+    const data = this.buildPermissionSnapshot();
+    this.internalSendMessage({
+      type: "SYNC_PERMISSIONS",
+      event: "PERMISSION_SNAPSHOT",
+      data,
+    });
+  }
+
+  private sendPermissionUpdate(guildId: string, bitfield: bigint): void {
+    this.internalSendMessage({
+      type: "SYNC_PERMISSIONS",
+      event: "PERMISSION_UPDATE",
+      data: { guildId, bitfield: bitfield.toString() },
+    });
+  }
+
+  private setupPermissionListeners(): void {
+    if (this.permissionListenersSetup) return;
+    this.permissionListenersSetup = true;
+
+    this.client.on("guildMemberUpdate", (oldMember, newMember) => {
+      if (newMember.id === this.client.user?.id) {
+        this.sendPermissionUpdate(newMember.guild.id, newMember.permissions.bitfield);
+      }
+    });
+
+    this.client.on("roleUpdate", (_oldRole, newRole) => {
+      const guild = newRole.guild;
+      const me = guild.members.me;
+      if (me) {
+        this.sendPermissionUpdate(guild.id, me.permissions.bitfield);
+      }
+    });
+
+    this.client.on("roleDelete", (role) => {
+      const guild = role.guild;
+      const me = guild.members.me;
+      if (me) {
+        this.sendPermissionUpdate(guild.id, me.permissions.bitfield);
+      }
+    });
   }
 }

@@ -95,7 +95,7 @@ class BotHealthService {
     let overall: "healthy" | "degraded" | "unhealthy";
     if (healthyComponents === totalComponents) {
       overall = "healthy";
-    } else if (healthyComponents >= totalComponents * 0.7) {
+    } else if (healthyComponents >= totalComponents * 0.6) {
       overall = "degraded";
     } else {
       overall = "unhealthy";
@@ -122,9 +122,9 @@ class BotHealthService {
       const shards = this.client.shard?.count;
 
       let status: "healthy" | "degraded" | "unhealthy";
-      if (ping < 100 && this.client.isReady()) {
+      if (ping < 200 && this.client.isReady()) {
         status = "healthy";
-      } else if (ping < 300 && this.client.isReady()) {
+      } else if (ping < 500 && this.client.isReady()) {
         status = "degraded";
       } else {
         status = "unhealthy";
@@ -157,7 +157,7 @@ class BotHealthService {
       const latency = Date.now() - startTime;
 
       return {
-        status: latency < 100 ? ("healthy" as const) : ("degraded" as const),
+        status: latency < 200 ? ("healthy" as const) : ("degraded" as const),
         latency,
         lastCheck: Date.now(),
       };

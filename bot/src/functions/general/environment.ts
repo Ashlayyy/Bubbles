@@ -7,7 +7,7 @@ export function isDevEnvironment(): boolean {
   switch (process.env.NODE_ENV) {
     case "development": {
       if (!loadedFile) {
-        config({ path: "dev.env" });
+        config({ path: ".env.development" });
         loadedFile = true;
       }
       return true;

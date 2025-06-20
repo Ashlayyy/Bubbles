@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 
 const logger = createLogger('websocket-manager');
+const LOG_ALL_WS = process.env.WS_LOG_ALL === 'true';
 
 export interface WebSocketConnection {
 	id: string;
@@ -40,6 +41,7 @@ export class WebSocketManager extends EventEmitter {
 	private userConnections = new Map<string, Set<string>>(); // userId -> connection IDs
 	private pingInterval: NodeJS.Timeout | null = null;
 	private cleanupInterval: NodeJS.Timeout | null = null;
+	private guildPermissionCache = new Map<string, bigint>();
 
 	constructor() {
 		super();
@@ -159,6 +161,15 @@ export class WebSocketManager extends EventEmitter {
 		connectionId: string,
 		message: any
 	): Promise<void> {
+		if (LOG_ALL_WS) {
+			try {
+				logger.debug(
+					'[WS-IN]',
+					connectionId,
+					JSON.stringify(message).slice(0, 1000)
+				);
+			} catch {}
+		}
 		const connection = this.connections.get(connectionId);
 		if (!connection) return;
 
@@ -191,6 +202,10 @@ export class WebSocketManager extends EventEmitter {
 					timestamp: Date.now(),
 					messageId: this.generateMessageId(),
 				});
+				break;
+
+			case 'SYNC_PERMISSIONS':
+				await this.handlePermissionSync(connectionId, message);
 				break;
 
 			default:
@@ -506,6 +521,15 @@ export class WebSocketManager extends EventEmitter {
 		connectionId: string,
 		message: WebSocketMessage
 	): boolean {
+		if (LOG_ALL_WS) {
+			try {
+				logger.debug(
+					'[WS-OUT]',
+					connectionId,
+					JSON.stringify(message).slice(0, 1000)
+				);
+			} catch {}
+		}
 		const connection = this.connections.get(connectionId);
 		if (!connection || connection.ws.readyState !== WebSocket.OPEN) {
 			return false;
@@ -1072,16 +1096,72 @@ export class WebSocketManager extends EventEmitter {
 		}
 	}
 
+	private async handlePermissionSync(
+		connectionId: string,
+		message: any
+	): Promise<void> {
+		const connection = this.connections.get(connectionId);
+		if (!connection || connection.type !== 'BOT') {
+			// Only bot connections are allowed to sync permissions
+			return;
+		}
+
+		try {
+			const { event, data } = message;
+
+			if (event === 'PERMISSION_SNAPSHOT' && Array.isArray(data)) {
+				for (const entry of data) {
+					if (entry.guildId && entry.bitfield) {
+						this.guildPermissionCache.set(
+							entry.guildId,
+							BigInt(entry.bitfield)
+						);
+					}
+				}
+			} else if (
+				event === 'PERMISSION_UPDATE' &&
+				data?.guildId &&
+				data?.bitfield
+			) {
+				this.guildPermissionCache.set(data.guildId, BigInt(data.bitfield));
+			}
+		} catch (error) {
+			logger.error('Failed to process permission sync:', error);
+		}
+	}
+
+	// =========================================================================
+	// PERMISSION CHECKING
+	// =========================================================================
 	private hasGuildPermission(
 		connection: WebSocketConnection,
 		guildId: string
 	): boolean {
-		// Implement your permission logic here
-		return (
-			connection.permissions.includes('GUILD_ACCESS') ||
-			connection.permissions.includes('ADMIN') ||
-			connection.guildId === guildId
-		);
+		// Bot and admin sockets always permitted
+		if (connection.type === 'BOT' || connection.type === 'ADMIN') return true;
+
+		// If the connection is explicitly scoped to the guild
+		if (connection.guildId && connection.guildId === guildId) return true;
+
+		// Capability-level permission
+		if (connection.permissions?.includes('GUILD_ACCESS')) return true;
+
+		// Client-provided guild permission bitfield (if present)
+		const guildPerms = connection.metadata?.guildPermissions?.[guildId];
+		if (guildPerms) {
+			const bitfield = BigInt(guildPerms);
+			// Administrator (0x00000008) or ViewChannel (0x00000400)
+			if (bitfield & BigInt(0x8) || bitfield & BigInt(0x400)) return true;
+		}
+
+		// Fallback to server-side cached bot bitfield for the guild
+		const cached = this.guildPermissionCache.get(guildId);
+		if (cached && cached & BigInt(0x8)) {
+			// If the bot has admin in the guild, allow read-only
+			return true;
+		}
+
+		return false;
 	}
 
 	private handleDisconnection(
