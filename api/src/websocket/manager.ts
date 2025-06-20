@@ -235,9 +235,7 @@ export class WebSocketManager extends EventEmitter {
 				this.addToUserConnections(connection.userId, connectionId);
 			}
 
-			logger.info(
-				`Connection ${connectionId} authenticated as ${type} for user ${connection.userId}`
-			);
+			logger.info(`Connection ${connectionId} authenticated as ${type}`);
 
 			this.sendMessage(connectionId, {
 				type: 'AUTH',

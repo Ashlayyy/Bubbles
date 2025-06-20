@@ -10,6 +10,8 @@ export class ProtocolHealthMonitor {
   private healthCache = new Map<string, ProtocolHealthStatus>();
   private lastHealthCheck = 0;
   private readonly healthCacheTTL = 5000; // 5 seconds
+  private readonly startupGracePeriod = Number(process.env.HEALTH_GRACE_PERIOD_MS ?? 15000); // 15 s default
+  private readonly startedAt = Date.now();
 
   constructor(client: Client) {
     this.client = client;
@@ -18,7 +20,7 @@ export class ProtocolHealthMonitor {
   }
 
   private initializeCircuitBreakers(): void {
-    const protocols = ["redis", "discord-api", "bot-websocket", "frontend-websocket", "queue-processor"];
+    const protocols = ["redis", "discord-api", "bot-websocket", "queue-processor"];
 
     protocols.forEach((protocol) => {
       const breaker = new CircuitBreaker(() => this.performHealthCheck(protocol), protocol, {
@@ -34,6 +36,29 @@ export class ProtocolHealthMonitor {
 
   async getSystemHealth(): Promise<SystemHealth> {
     const now = Date.now();
+
+    // During the initial grace period, optimistically assume services are healthy to avoid noisy startup warnings
+    if (now - this.startedAt < this.startupGracePeriod) {
+      if (this.healthCache.size === 0) {
+        // Seed the cache with optimistic healthy statuses so downstream code has data to read
+        this.protocolBreakers.forEach((_, protocol) => {
+          this.healthCache.set(protocol, {
+            protocol,
+            healthy: true,
+            latency: 0,
+            lastCheck: now,
+            errorRate: 0,
+            circuitBreakerState: "CLOSED",
+          });
+        });
+      }
+
+      logger.debug(
+        `ProtocolHealthMonitor in startup grace period (remaining ${(this.startupGracePeriod - (now - this.startedAt)) / 1000}s)`
+      );
+
+      return this.buildSystemHealthFromCache();
+    }
 
     // Use cached health if recent
     if (now - this.lastHealthCheck < this.healthCacheTTL) {
@@ -90,9 +115,6 @@ export class ProtocolHealthMonitor {
       case "bot-websocket":
         await this.checkBotWebSocketHealth();
         break;
-      case "frontend-websocket":
-        await this.checkFrontendWebSocketHealth();
-        break;
       case "queue-processor":
         await this.checkQueueProcessorHealth();
         break;
@@ -131,18 +153,6 @@ export class ProtocolHealthMonitor {
       const wsService = this.client.wsService as { isConnected?: () => boolean } | null;
       if (!wsService?.isConnected?.()) {
         reject(new Error("Bot WebSocket not connected"));
-      } else {
-        resolve();
-      }
-    });
-  }
-
-  private checkFrontendWebSocketHealth(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // This would need to be implemented based on your frontend WebSocket monitoring
-      // For now, we'll assume it's healthy if the service exists
-      if (!this.client.wsService) {
-        reject(new Error("Frontend WebSocket service not available"));
       } else {
         resolve();
       }
