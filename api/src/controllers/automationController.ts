@@ -597,3 +597,54 @@ function parsePeriod(period: string): number {
 			return 7 * 24 * 60 * 60 * 1000;
 	}
 }
+
+// Get available triggers
+export const getAvailableTriggers = async (req: AuthRequest, res: Response) => {
+	try {
+		const { guildId } = req.params;
+		const prisma = getPrismaClient();
+
+		const triggers = await prisma.automationRule.findMany({
+			where: { guildId },
+			select: { trigger: true },
+			distinct: ['trigger'],
+		});
+
+		res.json({
+			success: true,
+			data: triggers.map((t: { trigger: string }) => t.trigger),
+		} as ApiResponse);
+	} catch (error) {
+		logger.error('Error fetching triggers:', error);
+		res.status(500).json({
+			success: false,
+			error: 'Failed to fetch triggers',
+		} as ApiResponse);
+	}
+};
+
+// Get available actions
+export const getAvailableActions = async (req: AuthRequest, res: Response) => {
+	try {
+		const { guildId } = req.params;
+		const prisma = getPrismaClient();
+
+		const actionsRaw = await prisma.automationRule.findMany({
+			where: { guildId },
+			select: { actions: true },
+		});
+
+		const actionSet = new Set<string>();
+		actionsRaw.forEach((rule: any) => {
+			rule.actions.forEach((a: string) => actionSet.add(a));
+		});
+
+		res.json({ success: true, data: Array.from(actionSet) } as ApiResponse);
+	} catch (error) {
+		logger.error('Error fetching actions:', error);
+		res.status(500).json({
+			success: false,
+			error: 'Failed to fetch actions',
+		} as ApiResponse);
+	}
+};

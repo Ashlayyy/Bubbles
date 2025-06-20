@@ -63,14 +63,17 @@ interface MusicPlaylist {
 // In-memory storage
 const musicQueues = new Map<string, MusicQueue>();
 const musicPlaylists = new Map<string, MusicPlaylist>();
-const trackHistory = new Map<string, Array<{
-	title: string;
-	artist: string;
-	url: string;
-	duration: number;
-	requestedBy: string;
-	playedAt: Date;
-}>>();
+const trackHistory = new Map<
+	string,
+	Array<{
+		title: string;
+		artist: string;
+		url: string;
+		duration: number;
+		requestedBy: string;
+		playedAt: Date;
+	}>
+>();
 
 // Helper function to create WebSocket messages
 function createWebSocketMessage(event: string, data: any) {
@@ -96,7 +99,7 @@ export const getMusicStatus = async (req: AuthRequest, res: Response) => {
 		const { guildId } = req.params;
 
 		const queue = musicQueues.get(guildId);
-		
+
 		const status = {
 			isPlaying: queue?.playing || false,
 			isPaused: queue?.paused || false,
@@ -411,7 +414,8 @@ export const getQueue = async (req: AuthRequest, res: Response) => {
 		const { includeHistory = false } = req.query;
 
 		const queue = musicQueues.get(guildId);
-		const history = includeHistory === 'true' ? (trackHistory.get(guildId) || []) : [];
+		const history =
+			includeHistory === 'true' ? trackHistory.get(guildId) || [] : [];
 
 		if (!queue) {
 			return res.json({
@@ -705,12 +709,14 @@ export const getPlaylists = async (req: AuthRequest, res: Response) => {
 
 		// Get playlists for guild
 		const guildPlaylists = Array.from(musicPlaylists.values())
-			.filter(playlist => {
+			.filter((playlist) => {
 				if (playlist.guildId !== guildId) return false;
 				if (search) {
 					const searchLower = (search as string).toLowerCase();
-					return playlist.name.toLowerCase().includes(searchLower) ||
-						   playlist.description?.toLowerCase().includes(searchLower);
+					return (
+						playlist.name.toLowerCase().includes(searchLower) ||
+						playlist.description?.toLowerCase().includes(searchLower)
+					);
 				}
 				return true;
 			})
@@ -719,13 +725,16 @@ export const getPlaylists = async (req: AuthRequest, res: Response) => {
 		const total = guildPlaylists.length;
 		const playlists = guildPlaylists.slice(skip, skip + take);
 
-		const formattedPlaylists = playlists.map(playlist => ({
+		const formattedPlaylists = playlists.map((playlist) => ({
 			id: playlist.id,
 			name: playlist.name,
 			description: playlist.description,
 			isPublic: playlist.isPublic,
 			trackCount: playlist.tracks.length,
-			totalDuration: playlist.tracks.reduce((sum, track) => sum + track.duration, 0),
+			totalDuration: playlist.tracks.reduce(
+				(sum, track) => sum + track.duration,
+				0
+			),
 			createdAt: playlist.createdAt,
 			updatedAt: playlist.updatedAt,
 		}));
@@ -758,8 +767,10 @@ export const createPlaylist = async (req: AuthRequest, res: Response) => {
 		const { name, description = '', isPublic = true } = req.body;
 
 		// Check if playlist name exists
-		const existingPlaylist = Array.from(musicPlaylists.values())
-			.find(p => p.guildId === guildId && p.name.toLowerCase() === name.toLowerCase());
+		const existingPlaylist = Array.from(musicPlaylists.values()).find(
+			(p) =>
+				p.guildId === guildId && p.name.toLowerCase() === name.toLowerCase()
+		);
 
 		if (existingPlaylist) {
 			return res.status(400).json({
@@ -870,20 +881,24 @@ export const getMusicStatistics = async (req: AuthRequest, res: Response) => {
 		const { guildId } = req.params;
 		const { period = '7d' } = req.query;
 
-		const playlists = Array.from(musicPlaylists.values())
-			.filter(p => p.guildId === guildId);
-		
+		const playlists = Array.from(musicPlaylists.values()).filter(
+			(p) => p.guildId === guildId
+		);
+
 		const history = trackHistory.get(guildId) || [];
 		const queue = musicQueues.get(guildId);
 
 		// Calculate statistics
 		const totalPlaylists = playlists.length;
-		const totalPlaylistTracks = playlists.reduce((sum, p) => sum + p.tracks.length, 0);
+		const totalPlaylistTracks = playlists.reduce(
+			(sum, p) => sum + p.tracks.length,
+			0
+		);
 		const recentHistory = history.length;
 
 		// Get most played tracks (from history)
 		const trackCounts = new Map<string, { count: number; track: any }>();
-		history.forEach(track => {
+		history.forEach((track) => {
 			const key = `${track.title}-${track.artist}`;
 			const existing = trackCounts.get(key);
 			if (existing) {
@@ -904,7 +919,7 @@ export const getMusicStatistics = async (req: AuthRequest, res: Response) => {
 
 		// Get most active users
 		const userCounts = new Map<string, number>();
-		history.forEach(track => {
+		history.forEach((track) => {
 			const existing = userCounts.get(track.requestedBy);
 			userCounts.set(track.requestedBy, (existing || 0) + 1);
 		});
@@ -928,12 +943,14 @@ export const getMusicStatistics = async (req: AuthRequest, res: Response) => {
 			},
 			topTracks,
 			topUsers,
-			currentQueue: queue ? {
-				playing: queue.playing,
-				paused: queue.paused,
-				trackCount: queue.tracks.length,
-				currentTrack: queue.currentTrack?.title || null,
-			} : null,
+			currentQueue: queue
+				? {
+						playing: queue.playing,
+						paused: queue.paused,
+						trackCount: queue.tracks.length,
+						currentTrack: queue.currentTrack?.title || null,
+				  }
+				: null,
 		};
 
 		res.json({
@@ -948,485 +965,3 @@ export const getMusicStatistics = async (req: AuthRequest, res: Response) => {
 		} as ApiResponse);
 	}
 };
-			where: { guildId },
-			include: {
-				tracks: {
-					orderBy: { position: 'asc' },
-					take: 1,
-				},
-			},
-		});
-
-		if (!queue) {
-			return res.status(404).json({
-				success: false,
-				error: 'No active music queue',
-			} as ApiResponse);
-		}
-
-		let updateData: any = {};
-		let message = '';
-
-		switch (action) {
-			case 'play':
-				updateData = { playing: true, paused: false };
-				message = 'Playback started';
-				break;
-
-			case 'pause':
-				updateData = { paused: true };
-				message = 'Playback paused';
-				break;
-
-			case 'stop':
-				updateData = { playing: false, paused: false };
-				message = 'Playback stopped';
-				// Clear queue
-				await prisma.musicTrack.deleteMany({
-					where: { queueId: queue.id },
-				});
-				break;
-
-			case 'skip':
-				// Move current track to history if playing
-				if (queue.currentTrack && queue.playing) {
-					await prisma.musicTrackHistory.create({
-						data: {
-							guildId,
-							title: queue.currentTrack.title,
-							artist: queue.currentTrack.artist,
-							url: queue.currentTrack.url,
-							duration: queue.currentTrack.duration,
-							requestedBy: queue.currentTrack.requestedBy,
-						},
-					});
-				}
-
-				// Get next track
-				const nextTrack = queue.tracks[0];
-				if (nextTrack) {
-					updateData = {
-						currentTrack: {
-							title: nextTrack.title,
-							artist: nextTrack.artist,
-							url: nextTrack.url,
-							thumbnail: nextTrack.thumbnail,
-							duration: nextTrack.duration,
-							requestedBy: nextTrack.requestedBy,
-						},
-					};
-					// Remove from queue
-					await prisma.musicTrack.delete({
-						where: { id: nextTrack.id },
-					});
-					// Update positions
-					await prisma.musicTrack.updateMany({
-						where: { queueId: queue.id },
-						data: { position: { decrement: 1 } },
-					});
-				} else {
-					updateData = { playing: false, currentTrack: null };
-				}
-				message = 'Track skipped';
-				break;
-
-			case 'volume':
-				if (volume !== undefined && volume >= 0 && volume <= 100) {
-					updateData = { volume };
-					message = `Volume set to ${volume}%`;
-				} else {
-					return res.status(400).json({
-						success: false,
-						error: 'Volume must be between 0 and 100',
-					} as ApiResponse);
-				}
-				break;
-
-			default:
-				return res.status(400).json({
-					success: false,
-					error: 'Invalid action',
-				} as ApiResponse);
-		}
-
-		// Update queue
-		const updatedQueue = await prisma.musicQueue.update({
-			where: { id: queue.id },
-			data: updateData,
-		});
-
-		// Broadcast playback control
-		wsManager.broadcastToGuild(
-			guildId,
-			createWebSocketMessage('musicPlaybackControl', {
-				action,
-				queue: updatedQueue,
-			})
-		);
-
-		logger.info(`Music ${action} for guild ${guildId}`, {
-			queueId: queue.id,
-			userId: req.user?.id,
-		});
-
-		res.json({
-			success: true,
-			message,
-			data: updatedQueue,
-		} as ApiResponse);
-	} catch (error) {
-		logger.error('Error controlling playback:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to control playback',
-		} as ApiResponse);
-	}
-};
-
-// Get playlists
-export const getPlaylists = async (req: AuthRequest, res: Response) => {
-	try {
-		const { guildId } = req.params;
-		const { page = 1, limit = 20, search } = req.query;
-		const prisma = getPrismaClient();
-
-		const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
-		const take = parseInt(limit as string);
-
-		// Build where clause
-		const where: any = { guildId };
-		if (search) {
-			where.OR = [
-				{ name: { contains: search as string, mode: 'insensitive' } },
-				{ description: { contains: search as string, mode: 'insensitive' } },
-			];
-		}
-
-		// Fetch playlists
-		const [playlists, total] = await Promise.all([
-			prisma.musicPlaylist.findMany({
-				where,
-				include: {
-					tracks: {
-						select: {
-							id: true,
-							title: true,
-							artist: true,
-							duration: true,
-						},
-					},
-					_count: {
-						select: { tracks: true },
-					},
-				},
-				orderBy: { createdAt: 'desc' },
-				skip,
-				take,
-			}),
-			prisma.musicPlaylist.count({ where }),
-		]);
-
-		const formattedPlaylists = playlists.map((playlist: any) => ({
-			id: playlist.id,
-			name: playlist.name,
-			description: playlist.description,
-			isPublic: playlist.isPublic,
-			trackCount: playlist.tracks.length,
-			totalDuration: playlist.tracks.reduce(
-				(sum: number, track: any) => sum + (track.duration || 0),
-				0
-			),
-			createdAt: playlist.createdAt,
-			updatedAt: playlist.updatedAt,
-		}));
-
-		res.json({
-			success: true,
-			data: {
-				playlists: formattedPlaylists,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
-			},
-		} as ApiResponse);
-	} catch (error) {
-		logger.error('Error fetching playlists:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch playlists',
-		} as ApiResponse);
-	}
-};
-
-// Create playlist
-export const createPlaylist = async (req: AuthRequest, res: Response) => {
-	try {
-		const { guildId } = req.params;
-		const { name, description = '', isPublic = true } = req.body;
-		const prisma = getPrismaClient();
-
-		// Check if playlist name exists
-		const existingPlaylist = await prisma.musicPlaylist.findFirst({
-			where: {
-				guildId,
-				name: { equals: name, mode: 'insensitive' },
-			},
-		});
-
-		if (existingPlaylist) {
-			return res.status(400).json({
-				success: false,
-				error: 'Playlist name already exists',
-			} as ApiResponse);
-		}
-
-		// Create playlist
-		const playlist = await prisma.musicPlaylist.create({
-			data: {
-				guildId,
-				name,
-				description,
-				isPublic,
-				createdBy: req.user?.id || 'unknown',
-			},
-		});
-
-		// Broadcast playlist creation
-		wsManager.broadcastToGuild(
-			guildId,
-			createWebSocketMessage('musicPlaylistCreate', playlist)
-		);
-
-		logger.info(`Created playlist '${name}' for guild ${guildId}`, {
-			playlistId: playlist.id,
-			createdBy: req.user?.id,
-		});
-
-		res.status(201).json({
-			success: true,
-			message: 'Playlist created successfully',
-			data: playlist,
-		} as ApiResponse);
-	} catch (error) {
-		logger.error('Error creating playlist:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to create playlist',
-		} as ApiResponse);
-	}
-};
-
-// Add tracks to playlist
-export const addToPlaylist = async (req: AuthRequest, res: Response) => {
-	try {
-		const { guildId, playlistId } = req.params;
-		const { tracks } = req.body;
-		const prisma = getPrismaClient();
-
-		// Verify playlist exists
-		const playlist = await prisma.musicPlaylist.findFirst({
-			where: {
-				id: playlistId,
-				guildId,
-			},
-		});
-
-		if (!playlist) {
-			return res.status(404).json({
-				success: false,
-				error: 'Playlist not found',
-			} as ApiResponse);
-		}
-
-		// Get current track count for position
-		const currentCount = await prisma.musicPlaylistTrack.count({
-			where: { playlistId },
-		});
-
-		// Add tracks to playlist
-		const playlistTracks = await Promise.all(
-			tracks.map((track: any, index: number) =>
-				prisma.musicPlaylistTrack.create({
-					data: {
-						playlistId,
-						title: track.title,
-						artist: track.artist || 'Unknown Artist',
-						url: track.url,
-						thumbnail: track.thumbnail || null,
-						duration: track.duration || 0,
-						position: currentCount + index,
-						addedBy: req.user?.id || 'unknown',
-					},
-				})
-			)
-		);
-
-		// Update playlist timestamp
-		await prisma.musicPlaylist.update({
-			where: { id: playlistId },
-			data: { updatedAt: new Date() },
-		});
-
-		// Broadcast playlist update
-		wsManager.broadcastToGuild(
-			guildId,
-			createWebSocketMessage('musicPlaylistUpdate', {
-				playlistId,
-				tracksAdded: playlistTracks.length,
-			})
-		);
-
-		logger.info(
-			`Added ${tracks.length} tracks to playlist ${playlistId} for guild ${guildId}`
-		);
-
-		res.json({
-			success: true,
-			message: `Added ${tracks.length} tracks to playlist`,
-			data: playlistTracks,
-		} as ApiResponse);
-	} catch (error) {
-		logger.error('Error adding tracks to playlist:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to add tracks to playlist',
-		} as ApiResponse);
-	}
-};
-
-// Get music statistics
-export const getMusicStatistics = async (req: AuthRequest, res: Response) => {
-	try {
-		const { guildId } = req.params;
-		const { period = '7d' } = req.query;
-		const prisma = getPrismaClient();
-
-		const periodMs = parsePeriod(period as string);
-		const startDate = new Date(Date.now() - periodMs);
-
-		// Get basic stats
-		const [totalPlaylists, totalPlaylistTracks, recentHistory] =
-			await Promise.all([
-				prisma.musicPlaylist.count({ where: { guildId } }),
-				prisma.musicPlaylistTrack.count({
-					where: {
-						playlist: { guildId },
-					},
-				}),
-				prisma.musicTrackHistory.count({
-					where: {
-						guildId,
-						playedAt: { gte: startDate },
-					},
-				}),
-			]);
-
-		// Get most played tracks
-		const topTracks = await prisma.musicTrackHistory.groupBy({
-			by: ['title', 'artist'],
-			where: {
-				guildId,
-				playedAt: { gte: startDate },
-			},
-			_count: { title: true },
-			orderBy: { _count: { title: 'desc' } },
-			take: 10,
-		});
-
-		// Get most active users (requesters)
-		const topUsers = await prisma.musicTrackHistory.groupBy({
-			by: ['requestedBy'],
-			where: {
-				guildId,
-				playedAt: { gte: startDate },
-			},
-			_count: { requestedBy: true },
-			orderBy: { _count: { requestedBy: 'desc' } },
-			take: 10,
-		});
-
-		// Get daily activity
-		const dailyActivity = await prisma.musicTrackHistory.groupBy({
-			by: ['playedAt'],
-			where: {
-				guildId,
-				playedAt: { gte: startDate },
-			},
-			_count: { playedAt: true },
-		});
-
-		// Process daily activity
-		const dailyMap = new Map<string, number>();
-		dailyActivity.forEach((day: any) => {
-			const dateKey = day.playedAt.toISOString().split('T')[0];
-			dailyMap.set(dateKey, (dailyMap.get(dateKey) || 0) + day._count.playedAt);
-		});
-
-		// Get average session duration (simplified)
-		const avgSessionLength =
-			recentHistory > 0
-				? Math.round(
-						recentHistory / Math.max(1, periodMs / (24 * 60 * 60 * 1000))
-				  )
-				: 0;
-
-		const statistics = {
-			period: period as string,
-			overview: {
-				totalPlaylists,
-				totalPlaylistTracks,
-				tracksPlayedRecently: recentHistory,
-				averageTracksPerDay: avgSessionLength,
-			},
-			topTracks: topTracks.map((track: any) => ({
-				title: track.title,
-				artist: track.artist,
-				playCount: track._count.title,
-			})),
-			topUsers: topUsers.map((user: any) => ({
-				userId: user.requestedBy,
-				requestCount: user._count.requestedBy,
-			})),
-			dailyActivity: Array.from(dailyMap.entries()).map(([date, count]) => ({
-				date,
-				count,
-			})),
-		};
-
-		res.json({
-			success: true,
-			data: statistics,
-		} as ApiResponse);
-	} catch (error) {
-		logger.error('Error fetching music statistics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch music statistics',
-		} as ApiResponse);
-	}
-};
-
-// Helper function
-function parsePeriod(period: string): number {
-	const match = period.match(/^(\d+)([dwmy])$/);
-	if (!match) return 7 * 24 * 60 * 60 * 1000;
-
-	const [, amount, unit] = match;
-	const num = parseInt(amount);
-
-	switch (unit) {
-		case 'd':
-			return num * 24 * 60 * 60 * 1000;
-		case 'w':
-			return num * 7 * 24 * 60 * 60 * 1000;
-		case 'm':
-			return num * 30 * 24 * 60 * 60 * 1000;
-		case 'y':
-			return num * 365 * 24 * 60 * 60 * 1000;
-		default:
-			return 7 * 24 * 60 * 60 * 1000;
-	}
-}

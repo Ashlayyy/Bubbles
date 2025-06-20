@@ -1,4 +1,5 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import type { ProcessorFactoryStats } from "../../queue/processors/ProcessorFactory.js";
 import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
@@ -14,7 +15,7 @@ export default new Command(
       const { ProcessorFactory } = await import("../../queue/processors/ProcessorFactory.js");
       const processorFactory = new ProcessorFactory(client);
 
-      const stats = processorFactory.getProcessorStats();
+      const stats: ProcessorFactoryStats = processorFactory.getProcessorStats();
       const availableJobTypes = processorFactory.getAvailableJobTypes();
 
       const embed = new EmbedBuilder()
@@ -40,7 +41,7 @@ export default new Command(
         );
 
       // Add processor details
-      if (stats.processors && stats.processors.length > 0) {
+      if (stats.processors.length > 0) {
         for (const processor of stats.processors.slice(0, 5)) {
           // Limit to 5 to avoid embed limits
           embed.addFields({

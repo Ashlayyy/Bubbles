@@ -162,9 +162,9 @@ export class DiscordApiService {
 	private baseURL = 'https://discord.com/api/v10';
 
 	constructor() {
-		this.botToken = process.env.DISCORD_BOT_TOKEN || '';
+		this.botToken = process.env.DISCORD_CLIENT_SECRET || '';
 		if (!this.botToken) {
-			throw new Error('DISCORD_BOT_TOKEN environment variable is required');
+			throw new Error('DISCORD_CLIENT_SECRET environment variable is required');
 		}
 		logger.info('Discord API service initialized');
 	}

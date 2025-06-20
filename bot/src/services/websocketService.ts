@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { sign } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import { WebSocket } from "ws";
 import logger from "../logger.js";
 import type Client from "../structures/Client.js";
@@ -56,6 +56,7 @@ export class WebSocketService extends EventEmitter {
     logger.info(`Connecting to API WebSocket: ${wsUrl}`);
 
     this.ws = new WebSocket(wsUrl);
+    logger.debug(`Created WebSocket instance. Ready state: ${this.ws.readyState}`);
 
     this.ws.on("open", () => {
       logger.info("WebSocket connection opened");
@@ -65,6 +66,7 @@ export class WebSocketService extends EventEmitter {
     });
 
     this.ws.on("message", (data: Buffer | string) => {
+      logger.debug(`WS message received: ${data.toString().slice(0, 200)}`);
       try {
         const messageStr = data.toString();
         const message = JSON.parse(messageStr) as WebSocketMessage;
@@ -86,6 +88,7 @@ export class WebSocketService extends EventEmitter {
     });
 
     this.ws.on("pong", () => {
+      logger.debug("Received PONG from API WebSocket");
       // Connection is alive
     });
   }
@@ -123,7 +126,7 @@ export class WebSocketService extends EventEmitter {
     let secret = process.env.BOT_JWT_SECRET;
     secret ??= process.env.DISCORD_TOKEN;
     secret ??= "fallback-secret";
-    return sign(payload, secret, { expiresIn: "24h" });
+    return jwt.sign(payload, secret, { expiresIn: "24h" });
   }
 
   private handleMessage(message: WebSocketMessage): void {
@@ -442,16 +445,16 @@ export class WebSocketService extends EventEmitter {
       }
 
       // Send response back
-      this.sendMessage({
+      this.internalSendMessage({
         type: "DEAD_LETTER_RESPONSE",
-        event: event,
-        messageId: messageId,
-        guildId: guildId,
+        event,
+        messageId,
+        guildId,
         data: response,
       });
     } catch (error) {
       logger.error("Error handling dead letter query:", error);
-      this.sendMessage({
+      this.internalSendMessage({
         type: "DEAD_LETTER_RESPONSE",
         event: message.event,
         messageId: message.messageId,
@@ -474,24 +477,22 @@ export class WebSocketService extends EventEmitter {
               response = { success: false, error: "Missing jobId" };
               break;
             }
-
             const released = this.client.queueService.releaseFromQuarantine(jobId);
             response = {
               success: released,
-              message: released ? "Job released from quarantine" : "Job not found in quarantine",
+              message: released ? "Job released" : "Job not found",
             };
           } else {
-            response = { success: false, error: "Queue service not available or missing jobId" };
+            response = { success: false, error: "Queue service not available" };
           }
           break;
 
         case "CLEAR_DEAD_LETTER_QUEUE":
           if (this.client.queueService) {
-            const clearedCount = this.client.queueService.clearDeadLetterQueue();
+            const cleared = this.client.queueService.clearDeadLetterQueue();
             response = {
               success: true,
-              message: `Cleared ${clearedCount} entries from dead letter queue`,
-              clearedCount,
+              clearedCount: cleared,
             };
           } else {
             response = { success: false, error: "Queue service not available" };
@@ -502,17 +503,16 @@ export class WebSocketService extends EventEmitter {
           response = { success: false, error: `Unknown management event: ${event}` };
       }
 
-      // Send response back
-      this.sendMessage({
+      this.internalSendMessage({
         type: "DEAD_LETTER_RESPONSE",
-        event: event,
-        messageId: messageId,
-        guildId: guildId,
+        event,
+        messageId,
+        guildId,
         data: response,
       });
     } catch (error) {
       logger.error("Error handling dead letter management:", error);
-      this.sendMessage({
+      this.internalSendMessage({
         type: "DEAD_LETTER_RESPONSE",
         event: message.event,
         messageId: message.messageId,
@@ -523,32 +523,33 @@ export class WebSocketService extends EventEmitter {
   }
 
   /**
-   * Helper to send a message to the API websocket.
-   * Safely checks that the connection is open and authenticated before sending.
+   * Internal helper to send messages after verifying connection and auth
    */
-  private sendMessage(
-    partialMessage: Omit<Partial<WebSocketMessage>, "messageId" | "timestamp"> & {
-      messageId?: string;
+  private internalSendMessage(
+    partial: Omit<Partial<WebSocketMessage>, "timestamp" | "messageId"> & {
       timestamp?: number;
+      messageId?: string;
     }
   ): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      logger.warn("WebSocket not connected. Cannot send message.");
+      logger.warn("WebSocket not connected. Cannot send response.");
+      return;
+    }
+    if (!this.authenticated && partial.type !== "DEAD_LETTER_RESPONSE") {
+      logger.warn("WebSocket not authenticated. Cannot send response.");
       return;
     }
 
-    if (!this.authenticated) {
-      logger.warn("WebSocket not authenticated. Cannot send message.");
-      return;
-    }
-
-    const fullMessage = {
+    const full: WebSocketMessage = {
+      type: partial.type ?? "SYSTEM",
+      event: partial.event ?? "UNKNOWN",
+      data: partial.data,
+      guildId: partial.guildId,
       shardId: this.client.shard?.ids[0] ?? 0,
-      ...partialMessage,
-      messageId: partialMessage.messageId ?? this.generateMessageId(),
-      timestamp: partialMessage.timestamp ?? Date.now(),
-    };
+      timestamp: partial.timestamp ?? Date.now(),
+      messageId: partial.messageId ?? this.generateMessageId(),
+    } as WebSocketMessage;
 
-    this.ws.send(JSON.stringify(fullMessage));
+    this.ws.send(JSON.stringify(full));
   }
 }

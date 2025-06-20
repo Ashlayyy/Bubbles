@@ -49,8 +49,14 @@ export const checkDatabaseHealth = async (): Promise<boolean> => {
 			return false;
 		}
 
-		// Simple query to test connection
-		await prisma.$queryRaw`SELECT 1`;
+		// Use Mongo-specific ping command if available, otherwise fall back to a simple SQL query
+		if (typeof prisma.$runCommandRaw === 'function') {
+			// MongoDB provider
+			await prisma.$runCommandRaw({ ping: 1 });
+		} else if (typeof prisma.$queryRaw === 'function') {
+			// SQL providers
+			await prisma.$queryRaw`SELECT 1`;
+		}
 		return true;
 	} catch (error) {
 		logger.error('Database health check failed:', error);

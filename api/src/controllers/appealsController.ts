@@ -559,3 +559,6 @@ function parsePeriod(period: string): number {
 			return 30 * 24 * 60 * 60 * 1000;
 	}
 }
+
+export { createAppeal as submitAppeal };
+export { updateAppealStatus as reviewAppeal };

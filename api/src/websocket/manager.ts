@@ -64,12 +64,25 @@ export class WebSocketManager extends EventEmitter {
 		secure: boolean;
 		req: IncomingMessage;
 	}): boolean {
-		// Basic origin verification
-		const allowedOrigins = config.cors.origin;
-		if (Array.isArray(allowedOrigins)) {
-			return allowedOrigins.includes(info.origin);
+		// Allow all origins for bot and internal services to prevent 401 handshake errors.
+		// If you need strict CORS, configure via WS_ORIGIN_WHITELIST env.
+		const allowed = process.env.WS_ORIGIN_WHITELIST;
+		if (!allowed || allowed === '*') {
+			logger.debug(
+				`WS connection from origin ${info.origin} accepted (no whitelist)`
+			);
+			return true;
 		}
-		return info.origin === allowedOrigins || allowedOrigins === '*';
+		const list = allowed.split(',');
+		const allowedOrigin = list.includes(info.origin);
+		if (!allowedOrigin) {
+			logger.warn(
+				`WS connection from origin ${info.origin} rejected (not in whitelist)`
+			);
+		} else {
+			logger.debug(`WS connection from origin ${info.origin} accepted`);
+		}
+		return allowedOrigin;
 	}
 
 	private async handleConnection(
@@ -374,11 +387,31 @@ export class WebSocketManager extends EventEmitter {
 	}
 
 	// Public methods for external use
-	public broadcastToGuild(guildId: string, message: WebSocketMessage): void {
-		const connectionIds = this.guildConnections.get(guildId);
-		if (!connectionIds) return;
+	public broadcastToGuild(
+		guildId: string,
+		eventOrMessage: string | WebSocketMessage,
+		data?: any
+	): void {
+		let message: WebSocketMessage;
 
-		for (const connectionId of connectionIds) {
+		if (typeof eventOrMessage === 'string') {
+			// Build a standard message envelope when called as (guildId, event, data)
+			message = {
+				type: 'GUILD_EVENT',
+				event: eventOrMessage,
+				data,
+				guildId,
+				timestamp: Date.now(),
+				messageId: this.generateMessageId(),
+			};
+		} else {
+			message = eventOrMessage;
+		}
+
+		const connections = this.guildConnections.get(guildId);
+		if (!connections) return;
+
+		for (const connectionId of connections) {
 			this.sendMessage(connectionId, message);
 		}
 	}

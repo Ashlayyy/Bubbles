@@ -568,3 +568,11 @@ function parsePeriod(period: string): number {
 			return 7 * 24 * 60 * 60 * 1000;
 	}
 }
+
+// -----------------------------------------------------------------------------
+// Aliases for route compatibility
+// -----------------------------------------------------------------------------
+export { getServerOverview as getAnalyticsOverview };
+export { getUserActivity as getMemberAnalytics };
+export { getCommandUsage as getMessageAnalytics };
+export { getFeatureUsage as getActivityAnalytics };

@@ -8,10 +8,17 @@ import { MessageProcessor } from "./MessageProcessor.js";
 import { ModerationProcessor } from "./ModerationProcessor.js";
 import { MusicProcessor } from "./MusicProcessor.js";
 
-interface ProcessorStats {
+export interface ProcessorStats {
   processorName: string;
   jobTypes: string[];
   totalJobTypes: number;
+}
+
+export interface ProcessorFactoryStats {
+  totalProcessors: number;
+  totalJobTypes: number;
+  processors: ProcessorStats[];
+  processorMap: Record<string, BaseProcessor<any>>;
 }
 
 export class ProcessorFactory {
@@ -99,7 +106,7 @@ export class ProcessorFactory {
     return this.processors.has(jobType);
   }
 
-  getProcessorStats(): Record<string, unknown> {
+  getProcessorStats(): ProcessorFactoryStats {
     const stats: Record<string, ProcessorStats> = {};
     const processorNames = new Set<string>();
 

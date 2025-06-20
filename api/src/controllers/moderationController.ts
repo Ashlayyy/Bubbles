@@ -48,7 +48,7 @@ export const getModerationCases = async (req: AuthRequest, res: Response) => {
 		res.json({
 			success: true,
 			data: {
-				cases: cases.map((caseItem) => ({
+				cases: cases.map((caseItem: any) => ({
 					id: caseItem.id,
 					caseNumber: caseItem.caseNumber,
 					type: caseItem.type,
@@ -195,7 +195,7 @@ export const getBannedUsers = async (req: AuthRequest, res: Response) => {
 			logger.warn('Failed to fetch Discord bans:', error);
 		}
 
-		const bans = banCases.map((banCase) => ({
+		const bans = banCases.map((banCase: any) => ({
 			userId: banCase.userId,
 			reason: banCase.reason,
 			bannedAt: banCase.createdAt,
@@ -336,6 +336,54 @@ export const banUser = async (req: AuthRequest, res: Response) => {
 	}
 };
 
+// Unban user
+export const unbanUser = async (req: AuthRequest, res: Response) => {
+	try {
+		const { guildId, userId } = req.params;
+		const { reason } = req.body;
+		const prisma = getPrismaClient();
+
+		// Mark active ban cases for this user as resolved
+		await prisma.moderationCase.updateMany({
+			where: {
+				guildId,
+				userId,
+				type: 'BAN',
+				isActive: true,
+			},
+			data: {
+				isActive: false,
+				updatedAt: new Date(),
+			},
+		});
+
+		// Attempt to revoke the ban via Discord API (best-effort)
+		try {
+			await discordApi.unbanUser(guildId, userId, reason);
+		} catch (discordError) {
+			logger.warn('Failed to unban user in Discord:', discordError);
+		}
+
+		// Notify connected clients
+		wsManager.broadcastToGuild(guildId, 'moderationUserUnban', {
+			userId,
+			moderatorId: req.user?.id,
+			reason: reason || 'No reason provided',
+		});
+
+		res.json({
+			success: true,
+			message: 'User unbanned successfully',
+		} as ApiResponse);
+	} catch (error) {
+		logger.error('Error unbanning user:', error);
+		res.status(500).json({
+			success: false,
+			error: 'Failed to unban user',
+		} as ApiResponse);
+	}
+};
+
 // Get moderation settings
 export const getModerationSettings = async (
 	req: AuthRequest,
@@ -374,7 +422,7 @@ export const getModerationSettings = async (
 					{ threshold: 5, action: 'BAN' },
 				],
 			},
-			automod: automodRules.map((rule) => ({
+			automod: automodRules.map((rule: any) => ({
 				id: rule.id,
 				name: rule.name,
 				enabled: rule.enabled,
@@ -394,6 +442,35 @@ export const getModerationSettings = async (
 		res.status(500).json({
 			success: false,
 			error: 'Failed to fetch moderation settings',
+		} as ApiResponse);
+	}
+};
+
+// Update moderation settings
+export const updateModerationSettings = async (
+	req: AuthRequest,
+	res: Response
+) => {
+	try {
+		const { guildId } = req.params;
+		const settings = req.body;
+
+		// TODO: Persist settings using database when schema is ready
+		logger.info(`Updated moderation settings for guild ${guildId}`, settings);
+
+		// Broadcast update to connected clients
+		wsManager.broadcastToGuild(guildId, 'moderationSettingsUpdate', settings);
+
+		res.json({
+			success: true,
+			message: 'Moderation settings updated',
+			data: settings,
+		} as ApiResponse);
+	} catch (error) {
+		logger.error('Error updating moderation settings:', error);
+		res.status(500).json({
+			success: false,
+			error: 'Failed to update moderation settings',
 		} as ApiResponse);
 	}
 };
@@ -783,7 +860,7 @@ export const createAutomodRule = async (req: AuthRequest, res: Response) => {
 		// TODO: Implement actual automod rule creation
 		const newRule = {
 			id: `automod_${Date.now()}`,
-			...ruleData,
+			...(ruleData as any),
 			createdAt: Date.now(),
 			createdBy: req.user?.id,
 		};

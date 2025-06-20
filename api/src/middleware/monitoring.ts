@@ -35,7 +35,7 @@ export const monitoringMiddleware = (
 		route: req.route?.path || req.path,
 		method: req.method,
 		userId: (req as any).user?.id,
-		guildId: req.params.guildId || req.body.guildId,
+		guildId: req.params.guildId || req.body?.guildId || req.query?.guildId,
 	};
 
 	// Log request start
