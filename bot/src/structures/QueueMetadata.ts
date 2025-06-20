@@ -11,6 +11,9 @@ export default class QueueMetadata {
   readonly initialInteraction: ChatInputCommandInteraction;
   readonly musicTextChannel: TextBasedChannel;
 
+  /** Tracks consecutive stream loading failures so we can stop after a threshold */
+  streamFailCount = 0;
+
   constructor(client: Client, initialInteraction: ChatInputCommandInteraction) {
     logger.verbose("Initializing queue data");
     this.client = client;

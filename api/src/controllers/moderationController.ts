@@ -405,7 +405,7 @@ export const getModerationSettings = async (
 
 		const settings = {
 			general: {
-				moderatorRoles: [], // TODO: Add to schema
+				moderatorRoles: guildConfig?.moderatorRoleIds || [],
 				mutedRole: guildConfig?.ticketAccessRoleId || null,
 				logChannel: guildConfig?.ticketLogChannelId || null,
 				publicModLog: true,
@@ -455,7 +455,24 @@ export const updateModerationSettings = async (
 		const { guildId } = req.params;
 		const settings = req.body;
 
-		// TODO: Persist settings using database when schema is ready
+		const prisma = getPrismaClient();
+
+		// Persist relevant fields to GuildConfig
+		await prisma.guildConfig.upsert({
+			where: { guildId },
+			update: {
+				moderatorRoleIds: settings.general?.moderatorRoles ?? [],
+				ticketAccessRoleId: settings.general?.mutedRole ?? undefined,
+				ticketLogChannelId: settings.general?.logChannel ?? undefined,
+			},
+			create: {
+				guildId,
+				moderatorRoleIds: settings.general?.moderatorRoles ?? [],
+				ticketAccessRoleId: settings.general?.mutedRole ?? undefined,
+				ticketLogChannelId: settings.general?.logChannel ?? undefined,
+			},
+		});
+
 		logger.info(`Updated moderation settings for guild ${guildId}`, settings);
 
 		// Broadcast update to connected clients
@@ -528,27 +545,34 @@ async function executeDiscordAction(
 export const getModerationCase = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, caseId } = req.params;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual case fetching
-		const mockCase = {
-			id: caseId,
-			type: 'BAN',
-			userId: '123456789',
-			moderatorId: '987654321',
-			reason: 'Spam and harassment',
-			timestamp: Date.now(),
-			status: 'ACTIVE',
-			evidence: ['message_link_1', 'screenshot_1'],
-			notes: ['User was warned previously', 'Multiple reports received'],
-		};
+		const moderationCase = await prisma.moderationCase.findFirst({
+			where: { id: caseId, guildId },
+			include: {
+				notes: {
+					orderBy: { createdAt: 'desc' },
+				},
+				appeals: {
+					orderBy: { createdAt: 'desc' },
+				},
+			},
+		});
 
-		res.json({
+		if (!moderationCase) {
+			return res.status(404).json({
+				success: false,
+				error: 'Moderation case not found',
+			} as ApiResponse);
+		}
+
+		return res.json({
 			success: true,
-			data: mockCase,
+			data: moderationCase,
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error fetching moderation case:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to fetch moderation case',
 		} as ApiResponse);
@@ -560,25 +584,61 @@ export const updateModerationCase = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, caseId } = req.params;
 		const { reason, status, notes } = req.body;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual case updating
-		const updatedCase = {
-			id: caseId,
-			reason,
-			status,
-			notes,
-			updatedAt: Date.now(),
-			updatedBy: req.user?.id,
-		};
+		// Ensure case exists & belongs to guild
+		const existing = await prisma.moderationCase.findFirst({
+			where: { id: caseId, guildId },
+		});
 
-		res.json({
+		if (!existing) {
+			return res.status(404).json({
+				success: false,
+				error: 'Moderation case not found',
+			} as ApiResponse);
+		}
+
+		const updateData: any = {};
+		if (reason !== undefined) updateData.reason = reason;
+		if (status !== undefined) {
+			// Map arbitrary status strings to isActive flag where possible
+			if (typeof status === 'string') {
+				updateData.isActive = status.toUpperCase() === 'ACTIVE';
+			}
+		}
+
+		const updatedCase = await prisma.moderationCase.update({
+			where: { id: caseId },
+			data: updateData,
+			include: {
+				notes: true,
+				appeals: true,
+			},
+		});
+
+		// If new note(s) provided append them
+		if (Array.isArray(notes) && notes.length > 0) {
+			await prisma.$transaction(
+				notes.map((content: string) =>
+					prisma.caseNote.create({
+						data: {
+							caseId: caseId,
+							content,
+							authorId: req.user?.id || 'unknown',
+						},
+					})
+				)
+			);
+		}
+
+		return res.json({
 			success: true,
 			data: updatedCase,
 			message: 'Moderation case updated successfully',
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error updating moderation case:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to update moderation case',
 		} as ApiResponse);
@@ -589,15 +649,33 @@ export const updateModerationCase = async (req: AuthRequest, res: Response) => {
 export const deleteModerationCase = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, caseId } = req.params;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual case deletion
-		res.json({
+		// Verify exists & belongs to guild
+		const existing = await prisma.moderationCase.findFirst({
+			where: { id: caseId, guildId },
+			select: { id: true },
+		});
+
+		if (!existing) {
+			return res.status(404).json({
+				success: false,
+				error: 'Moderation case not found',
+			} as ApiResponse);
+		}
+
+		await prisma.moderationCase.delete({ where: { id: caseId } });
+
+		// Broadcast deletion to clients
+		wsManager.broadcastToGuild(guildId, 'moderationCaseDelete', { id: caseId });
+
+		return res.json({
 			success: true,
 			message: 'Moderation case deleted successfully',
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error deleting moderation case:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to delete moderation case',
 		} as ApiResponse);
@@ -609,35 +687,54 @@ export const getMutedUsers = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
 		const { page = 1, limit = 50 } = req.query;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual muted users fetching
-		const mockMutes = [
-			{
-				userId: '456789123',
-				username: 'MutedUser',
-				reason: 'Inappropriate language',
-				mutedAt: Date.now() - 1800000,
-				mutedBy: '987654321',
-				expiresAt: Date.now() + 1800000,
-				caseId: 'case_002',
-			},
-		];
+		const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+		const take = parseInt(limit as string);
 
-		res.json({
+		const [muteCases, total] = await Promise.all([
+			prisma.moderationCase.findMany({
+				where: {
+					guildId,
+					type: 'TIMEOUT',
+					isActive: true,
+				},
+				orderBy: { createdAt: 'desc' },
+				skip,
+				take,
+			}),
+			prisma.moderationCase.count({
+				where: {
+					guildId,
+					type: 'TIMEOUT',
+					isActive: true,
+				},
+			}),
+		]);
+
+		return res.json({
 			success: true,
 			data: {
-				mutes: mockMutes,
+				mutes: muteCases.map((mc: any) => ({
+					userId: mc.userId,
+					reason: mc.reason,
+					mutedAt: mc.createdAt,
+					mutedBy: mc.moderatorId,
+					expiresAt: mc.expiresAt,
+					caseId: mc.id,
+					caseNumber: mc.caseNumber,
+				})),
 				pagination: {
 					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total: 1,
-					pages: 1,
+					limit: take,
+					total,
+					pages: Math.ceil(total / take),
 				},
 			},
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error fetching muted users:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to fetch muted users',
 		} as ApiResponse);
@@ -705,15 +802,38 @@ export const unmuteUser = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, userId } = req.params;
 		const { reason } = req.body;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual user unmuting
-		res.json({
+		// Mark TIMEOUT cases as inactive
+		await prisma.moderationCase.updateMany({
+			where: {
+				guildId,
+				userId,
+				type: 'TIMEOUT',
+				isActive: true,
+			},
+			data: { isActive: false, updatedAt: new Date() },
+		});
+
+		// Remove timeout on Discord
+		try {
+			await discordApi.removeTimeout(guildId, userId, reason);
+		} catch (err) {
+			logger.warn('Failed to remove Discord timeout:', err);
+		}
+
+		wsManager.broadcastToGuild(guildId, 'userUnmuted', {
+			userId,
+			moderatorId: req.user?.id,
+		});
+
+		return res.json({
 			success: true,
 			message: 'User unmuted successfully',
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error unmuting user:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to unmute user',
 		} as ApiResponse);
@@ -725,34 +845,39 @@ export const getUserWarnings = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
 		const { userId, page = 1, limit = 50 } = req.query;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual warnings fetching
-		const mockWarnings = [
-			{
-				id: 'warn_001',
-				userId: userId || '789123456',
-				moderatorId: '987654321',
-				reason: 'Mild inappropriate language',
-				timestamp: Date.now() - 604800000,
-				active: true,
-			},
-		];
+		const where: any = { guildId, type: 'WARN' };
+		if (userId) where.userId = userId;
 
-		res.json({
+		const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+		const take = parseInt(limit as string);
+
+		const [warnCases, total] = await Promise.all([
+			prisma.moderationCase.findMany({
+				where,
+				orderBy: { createdAt: 'desc' },
+				skip,
+				take,
+			}),
+			prisma.moderationCase.count({ where }),
+		]);
+
+		return res.json({
 			success: true,
 			data: {
-				warnings: mockWarnings,
+				warnings: warnCases,
 				pagination: {
 					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total: 1,
-					pages: 1,
+					limit: take,
+					total,
+					pages: Math.ceil(total / take),
 				},
 			},
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error fetching user warnings:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to fetch user warnings',
 		} as ApiResponse);
@@ -764,26 +889,32 @@ export const addWarning = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
 		const { userId, reason, severity } = req.body;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual warning creation
-		const warning = {
-			id: `warn_${Date.now()}`,
-			userId,
-			moderatorId: req.user?.id,
-			reason,
-			severity: severity || 'LOW',
-			timestamp: Date.now(),
-			active: true,
-		};
+		const caseNumber = await getNextCaseNumber(guildId);
+		const warnCase = await prisma.moderationCase.create({
+			data: {
+				caseNumber,
+				guildId,
+				type: 'WARN',
+				userId,
+				moderatorId: req.user?.id || 'unknown',
+				reason: reason || 'No reason provided',
+				severity: severity || 'LOW',
+				points: getPointsForType('WARN'),
+			},
+		});
 
-		res.status(201).json({
+		wsManager.broadcastToGuild(guildId, 'moderationWarningAdd', warnCase);
+
+		return res.status(201).json({
 			success: true,
-			data: warning,
+			data: warnCase,
 			message: 'Warning added successfully',
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error adding warning:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to add warning',
 		} as ApiResponse);
@@ -794,16 +925,31 @@ export const addWarning = async (req: AuthRequest, res: Response) => {
 export const removeWarning = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, warningId } = req.params;
-		const { reason } = req.body;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual warning removal
-		res.json({
+		// Verify belongs to guild
+		const existing = await prisma.moderationCase.findFirst({
+			where: { id: warningId, guildId, type: 'WARN' },
+		});
+		if (!existing) {
+			return res
+				.status(404)
+				.json({ success: false, error: 'Warning not found' } as ApiResponse);
+		}
+
+		await prisma.moderationCase.delete({ where: { id: warningId } });
+
+		wsManager.broadcastToGuild(guildId, 'moderationWarningRemove', {
+			id: warningId,
+		});
+
+		return res.json({
 			success: true,
 			message: 'Warning removed successfully',
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error removing warning:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to remove warning',
 		} as ApiResponse);
@@ -814,37 +960,13 @@ export const removeWarning = async (req: AuthRequest, res: Response) => {
 export const getAutomodRules = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual automod rules fetching
-		const mockRules = [
-			{
-				id: 'automod_001',
-				name: 'Spam Protection',
-				enabled: true,
-				triggerType: 'KEYWORD',
-				keywords: ['spam', 'scam'],
-				action: 'DELETE_MESSAGE',
-				punishment: 'TIMEOUT',
-				duration: 600000,
-			},
-			{
-				id: 'automod_002',
-				name: 'Link Filter',
-				enabled: true,
-				triggerType: 'LINK',
-				allowedDomains: ['discord.com', 'github.com'],
-				action: 'DELETE_MESSAGE',
-				punishment: 'WARN',
-			},
-		];
-
-		res.json({
-			success: true,
-			data: mockRules,
-		} as ApiResponse);
+		const rules = await prisma.autoModRule.findMany({ where: { guildId } });
+		return res.json({ success: true, data: rules } as ApiResponse);
 	} catch (error) {
 		logger.error('Error fetching automod rules:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to fetch automod rules',
 		} as ApiResponse);
@@ -855,24 +977,20 @@ export const getAutomodRules = async (req: AuthRequest, res: Response) => {
 export const createAutomodRule = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
-		const ruleData = req.body;
+		const prisma = getPrismaClient();
+		const data = req.body;
 
-		// TODO: Implement actual automod rule creation
-		const newRule = {
-			id: `automod_${Date.now()}`,
-			...(ruleData as any),
-			createdAt: Date.now(),
-			createdBy: req.user?.id,
-		};
-
-		res.status(201).json({
+		const newRule = await prisma.autoModRule.create({
+			data: { guildId, ...data, createdBy: req.user?.id || 'unknown' },
+		});
+		return res.status(201).json({
 			success: true,
 			data: newRule,
 			message: 'Automod rule created successfully',
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error creating automod rule:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to create automod rule',
 		} as ApiResponse);
@@ -883,24 +1001,35 @@ export const createAutomodRule = async (req: AuthRequest, res: Response) => {
 export const updateAutomodRule = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, ruleId } = req.params;
-		const ruleData = req.body;
+		const prisma = getPrismaClient();
+		const data = req.body;
 
-		// TODO: Implement actual automod rule updating
-		const updatedRule = {
-			id: ruleId,
-			...ruleData,
-			updatedAt: Date.now(),
-			updatedBy: req.user?.id,
-		};
+		const existing = await prisma.autoModRule.findFirst({
+			where: { id: ruleId, guildId },
+		});
+		if (!existing) {
+			return res.status(404).json({
+				success: false,
+				error: 'Automod rule not found',
+			} as ApiResponse);
+		}
 
-		res.json({
+		const updatedRule = await prisma.autoModRule.update({
+			where: { id: ruleId },
+			data: {
+				...data,
+				updatedAt: new Date(),
+				updatedBy: req.user?.id || 'unknown',
+			},
+		});
+		return res.json({
 			success: true,
 			data: updatedRule,
 			message: 'Automod rule updated successfully',
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error updating automod rule:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to update automod rule',
 		} as ApiResponse);
@@ -911,15 +1040,26 @@ export const updateAutomodRule = async (req: AuthRequest, res: Response) => {
 export const deleteAutomodRule = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, ruleId } = req.params;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual automod rule deletion
-		res.json({
+		const existing = await prisma.autoModRule.findFirst({
+			where: { id: ruleId, guildId },
+		});
+		if (!existing) {
+			return res.status(404).json({
+				success: false,
+				error: 'Automod rule not found',
+			} as ApiResponse);
+		}
+
+		await prisma.autoModRule.delete({ where: { id: ruleId } });
+		return res.json({
 			success: true,
 			message: 'Automod rule deleted successfully',
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error deleting automod rule:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to delete automod rule',
 		} as ApiResponse);
@@ -931,34 +1071,42 @@ export const getModeratorNotes = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
 		const { userId, page = 1, limit = 50 } = req.query;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual notes fetching
-		const mockNotes = [
-			{
-				id: 'note_001',
-				userId: userId || '789123456',
-				moderatorId: '987654321',
-				content: 'User has been cooperative after warning',
-				timestamp: Date.now() - 86400000,
-				private: false,
-			},
-		];
+		const where: any = { case: { guildId } };
+		if (userId) {
+			// join through moderationCase
+			where.case = { guildId, userId: userId as string };
+		}
 
-		res.json({
+		const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+		const take = parseInt(limit as string);
+
+		const [notes, total] = await Promise.all([
+			prisma.caseNote.findMany({
+				where,
+				orderBy: { createdAt: 'desc' },
+				skip,
+				take,
+			}),
+			prisma.caseNote.count({ where }),
+		]);
+
+		return res.json({
 			success: true,
 			data: {
-				notes: mockNotes,
+				notes,
 				pagination: {
 					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total: 1,
-					pages: 1,
+					limit: take,
+					total,
+					pages: Math.ceil(total / take),
 				},
 			},
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error fetching moderator notes:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to fetch moderator notes',
 		} as ApiResponse);
@@ -969,26 +1117,35 @@ export const getModeratorNotes = async (req: AuthRequest, res: Response) => {
 export const addModeratorNote = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
-		const { userId, content, private: isPrivate } = req.body;
+		const { caseId, content, isInternal } = req.body;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual note creation
-		const note = {
-			id: `note_${Date.now()}`,
-			userId,
-			moderatorId: req.user?.id,
-			content,
-			private: isPrivate || false,
-			timestamp: Date.now(),
-		};
+		const modCase = await prisma.moderationCase.findFirst({
+			where: { id: caseId, guildId },
+		});
+		if (!modCase) {
+			return res.status(404).json({
+				success: false,
+				error: 'Moderation case not found',
+			} as ApiResponse);
+		}
 
-		res.status(201).json({
+		const note = await prisma.caseNote.create({
+			data: {
+				caseId,
+				content,
+				isInternal: isInternal || false,
+				authorId: req.user?.id || 'unknown',
+			},
+		});
+		return res.status(201).json({
 			success: true,
 			data: note,
 			message: 'Moderator note added successfully',
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error adding moderator note:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to add moderator note',
 		} as ApiResponse);
@@ -999,25 +1156,31 @@ export const addModeratorNote = async (req: AuthRequest, res: Response) => {
 export const updateModeratorNote = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, noteId } = req.params;
-		const { content, private: isPrivate } = req.body;
+		const { content, isInternal } = req.body;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual note updating
-		const updatedNote = {
-			id: noteId,
-			content,
-			private: isPrivate,
-			updatedAt: Date.now(),
-			updatedBy: req.user?.id,
-		};
+		// Verify
+		const existing = await prisma.caseNote.findFirst({
+			where: { id: noteId, case: { guildId } },
+		});
+		if (!existing) {
+			return res
+				.status(404)
+				.json({ success: false, error: 'Note not found' } as ApiResponse);
+		}
 
-		res.json({
+		const updated = await prisma.caseNote.update({
+			where: { id: noteId },
+			data: { content, isInternal },
+		});
+		return res.json({
 			success: true,
-			data: updatedNote,
+			data: updated,
 			message: 'Moderator note updated successfully',
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error updating moderator note:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to update moderator note',
 		} as ApiResponse);
@@ -1028,15 +1191,25 @@ export const updateModeratorNote = async (req: AuthRequest, res: Response) => {
 export const deleteModeratorNote = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, noteId } = req.params;
+		const prisma = getPrismaClient();
 
-		// TODO: Implement actual note deletion
-		res.json({
+		const existing = await prisma.caseNote.findFirst({
+			where: { id: noteId, case: { guildId } },
+		});
+		if (!existing) {
+			return res
+				.status(404)
+				.json({ success: false, error: 'Note not found' } as ApiResponse);
+		}
+
+		await prisma.caseNote.delete({ where: { id: noteId } });
+		return res.json({
 			success: true,
 			message: 'Moderator note deleted successfully',
 		} as ApiResponse);
 	} catch (error) {
 		logger.error('Error deleting moderator note:', error);
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: 'Failed to delete moderator note',
 		} as ApiResponse);

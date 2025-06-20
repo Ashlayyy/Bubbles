@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Response } from 'express';
 import { createLogger, type ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
@@ -121,7 +122,7 @@ export const getLeaderboard = async (req: AuthRequest, res: Response) => {
 		});
 
 		// Simulate user level data
-		const leaderboard = messageActivity.map((activity, index) => {
+		const leaderboard = messageActivity.map((activity: any, index: number) => {
 			const messageCount = activity._count.userId;
 			const xp = messageCount * 15; // 15 XP per message
 			const level = Math.floor(Math.sqrt(xp / 100)); // Simple level calculation
@@ -166,14 +167,19 @@ export const getLeaderboard = async (req: AuthRequest, res: Response) => {
 					totalUsers: totalUsers.length,
 					averageLevel:
 						leaderboard.length > 0
-							? leaderboard.reduce((sum, user) => sum + user.level, 0) /
-							  leaderboard.length
+							? leaderboard.reduce(
+									(sum: number, user: any) => sum + user.level,
+									0
+							  ) / leaderboard.length
 							: 0,
 					highestLevel:
 						leaderboard.length > 0
-							? Math.max(...leaderboard.map((u) => u.level))
+							? Math.max(...leaderboard.map((u: any) => u.level))
 							: 0,
-					totalXP: leaderboard.reduce((sum, user) => sum + user.xp, 0),
+					totalXP: leaderboard.reduce(
+						(sum: number, user: any) => sum + user.xp,
+						0
+					),
 				},
 			},
 		} as ApiResponse);
@@ -218,7 +224,7 @@ export const getUserLevel = async (req: AuthRequest, res: Response) => {
 			orderBy: { _count: { userId: 'desc' } },
 		});
 
-		const rank = allUsers.findIndex((user) => user.userId === userId) + 1;
+		const rank = allUsers.findIndex((user: any) => user.userId === userId) + 1;
 
 		// Get recent XP history (last 7 days)
 		const recentActivity = await prisma.moderationLog.groupBy({
@@ -240,7 +246,7 @@ export const getUserLevel = async (req: AuthRequest, res: Response) => {
 			const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
 			const dateKey = date.toISOString().split('T')[0];
 			const dayActivity = recentActivity.find(
-				(a) => a.timestamp.toISOString().split('T')[0] === dateKey
+				(a: any) => a.timestamp.toISOString().split('T')[0] === dateKey
 			);
 			xpHistory.push({
 				date: dateKey,
@@ -248,9 +254,15 @@ export const getUserLevel = async (req: AuthRequest, res: Response) => {
 			});
 		}
 
+		// Fetch full level history from DB
+		const levelHistoryRecords = await prisma.levelHistory.findMany({
+			where: { guildId, userId },
+			orderBy: { reachedAt: 'asc' },
+		});
+
 		const userLevel = {
 			userId,
-			username: `User${userId.slice(-4)}`, // Placeholder
+			username: `User${userId.slice(-4)}`, // Placeholder until cached user info is available
 			avatar: null,
 			level,
 			xp,
@@ -259,7 +271,10 @@ export const getUserLevel = async (req: AuthRequest, res: Response) => {
 			rank: rank || 0,
 			messagesCount: messageCount,
 			joinedAt: Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000, // Placeholder
-			levelHistory: [], // TODO: Track level achievements
+			levelHistory: levelHistoryRecords.map((lh: any) => ({
+				level: lh.level,
+				reachedAt: lh.reachedAt.getTime(),
+			})),
 			xpHistory,
 		};
 

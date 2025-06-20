@@ -39,10 +39,11 @@ export const getWelcomeSettings = async (req: AuthRequest, res: Response) => {
 		});
 
 		const totalWelcomes =
-			welcomeStats.find((s) => s.logType === 'memberJoin')?._count.logType || 0;
+			welcomeStats.find((s: any) => s.logType === 'memberJoin')?._count
+				.logType || 0;
 		const totalGoodbyes =
-			welcomeStats.find((s) => s.logType === 'memberLeave')?._count.logType ||
-			0;
+			welcomeStats.find((s: any) => s.logType === 'memberLeave')?._count
+				.logType || 0;
 
 		// Get last welcome time
 		const lastWelcome = await prisma.moderationLog.findFirst({
@@ -54,6 +55,9 @@ export const getWelcomeSettings = async (req: AuthRequest, res: Response) => {
 			select: { timestamp: true },
 		});
 
+		// Extract custom welcome stats (roles assigned, dms sent) if stored
+		const customStats: any = guildConfig.welcomeStats || {};
+
 		const settings = {
 			welcomeEnabled: guildConfig.welcomeEnabled,
 			goodbyeEnabled: guildConfig.goodbyeEnabled,
@@ -64,7 +68,7 @@ export const getWelcomeSettings = async (req: AuthRequest, res: Response) => {
 			goodbyeMessage: 'Goodbye {user}! Thanks for being part of {server}.', // Default message
 			embedEnabled: true,
 			embedColor: '#5865F2',
-			assignRoles: [], // TODO: Add to schema if needed
+			assignRoles: guildConfig.moderatorRoleIds ?? [],
 			dmWelcome: false,
 			dmMessage: 'Welcome to our server! Feel free to ask questions.',
 			welcomeImage: {
@@ -92,8 +96,8 @@ export const getWelcomeSettings = async (req: AuthRequest, res: Response) => {
 			stats: {
 				totalWelcomes,
 				totalGoodbyes,
-				rolesAssigned: 0, // TODO: Track this
-				dmsSent: 0, // TODO: Track this
+				rolesAssigned: customStats.rolesAssigned ?? 0,
+				dmsSent: customStats.dmsSent ?? 0,
 				lastWelcome: lastWelcome?.timestamp.getTime() || null,
 			},
 		};
@@ -232,7 +236,7 @@ export const getWelcomeLogs = async (req: AuthRequest, res: Response) => {
 			prisma.moderationLog.count({ where }),
 		]);
 
-		const formattedLogs = logs.map((log) => ({
+		const formattedLogs = logs.map((log: any) => ({
 			id: log.id,
 			type:
 				log.logType === 'memberJoin'
@@ -309,7 +313,7 @@ export const getWelcomeStatistics = async (req: AuthRequest, res: Response) => {
 
 		// Process daily stats
 		const dailyMap = new Map();
-		dailyStats.forEach((day) => {
+		dailyStats.forEach((day: any) => {
 			const dateKey = day.timestamp.toISOString().split('T')[0];
 			dailyMap.set(
 				dateKey,
@@ -318,9 +322,9 @@ export const getWelcomeStatistics = async (req: AuthRequest, res: Response) => {
 		});
 
 		const welcomeCount =
-			stats.find((s) => s.logType === 'memberJoin')?._count.logType || 0;
+			stats.find((s: any) => s.logType === 'memberJoin')?._count.logType || 0;
 		const goodbyeCount =
-			stats.find((s) => s.logType === 'memberLeave')?._count.logType || 0;
+			stats.find((s: any) => s.logType === 'memberLeave')?._count.logType || 0;
 
 		const statistics = {
 			period: period as string,

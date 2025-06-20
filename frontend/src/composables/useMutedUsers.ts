@@ -1,39 +1,35 @@
-
 import { ref } from 'vue';
 import { useToastStore } from '@/stores/toast';
 import type { MutedUser } from '@/types/moderation';
-import type { AuditLogUser } from '@/types/audit-log';
-import { subDays } from 'date-fns';
-
-const mod1: AuditLogUser = { id: 'mod1', name: 'Moderator1', joinDate: subDays(new Date(), 365), roles: ['Moderator'] };
-const mod2: AuditLogUser = { id: 'mod2', name: 'AdminBot', joinDate: subDays(new Date(), 1000), roles: ['Bot'] };
+import { moderationApi } from '@/lib/endpoints';
+import { useGuildsStore } from '@/stores/guilds';
 
 export function useMutedUsers() {
-  const toastStore = useToastStore();
-  
-  const mutedUsers = ref<MutedUser[]>([
-    { 
-      user: { id: 'user2', name: 'Spammer', joinDate: subDays(new Date(), 5), roles: ['Member'] }, 
-      mutedUntil: new Date(Date.now() + 1000 * 60 * 60 * 24), 
-      reason: 'Auto-detected spam.',
-      moderator: mod2
-    },
-    { 
-      user: { id: 'user5', name: 'NoisyPerson', joinDate: subDays(new Date(), 200), roles: ['Member', 'Booster'] }, 
-      mutedUntil: new Date(Date.now() + 1000 * 60 * 30), 
-      reason: 'Excessive caps.',
-      moderator: mod1
-    }
-  ]);
+	const toastStore = useToastStore();
+	const guildStore = useGuildsStore();
 
-  const unmuteUser = (userId: string) => {
-    const index = mutedUsers.value.findIndex(u => u.user.id === userId);
-    if (index !== -1) {
-      const userName = mutedUsers.value[index].user.name;
-      mutedUsers.value.splice(index, 1);
-      toastStore.addToast(`User @${userName} has been unmuted.`, 'success');
-    }
-  };
+	const mutedUsers = ref<MutedUser[]>([]);
 
-  return { mutedUsers, unmuteUser };
+	const fetchMutes = async () => {
+		if (!guildStore.currentGuild) return;
+		try {
+			const { data } = await moderationApi.getMutes(guildStore.currentGuild.id);
+			mutedUsers.value = data as MutedUser[];
+		} catch (e) {
+			console.error('Failed to fetch mutes', e);
+		}
+	};
+
+	const unmuteUser = async (userId: string) => {
+		if (!guildStore.currentGuild) return;
+		try {
+			await moderationApi.unmuteUser(guildStore.currentGuild.id, userId);
+			mutedUsers.value = mutedUsers.value.filter((m) => m.user.id !== userId);
+			toastStore.addToast('User unmuted', 'success');
+		} catch (e) {
+			toastStore.addToast('Failed to unmute user', 'error');
+		}
+	};
+
+	return { mutedUsers, fetchMutes, unmuteUser };
 }

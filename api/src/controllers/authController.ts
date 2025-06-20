@@ -3,6 +3,7 @@ import { createLogger, type ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { config } from '../config/index.js';
 import jwt from 'jsonwebtoken';
+import { blacklistToken } from '../services/tokenBlacklistService.js';
 
 const logger = createLogger('auth-controller');
 
@@ -147,7 +148,13 @@ export const discordCallback = async (req: AuthRequest, res: Response) => {
 // Logout user
 export const logout = async (req: AuthRequest, res: Response) => {
 	try {
-		// TODO: Invalidate token in Redis or database if needed
+		// Extract raw token from Authorization header
+		const authHeader = req.headers['authorization'];
+		const token = authHeader && authHeader.split(' ')[1];
+
+		if (token && req.user) {
+			await blacklistToken(token, req.user.id);
+		}
 
 		logger.info(`User logged out: ${req.user?.username || 'Unknown'}`);
 

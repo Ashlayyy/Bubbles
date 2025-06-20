@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import type { ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from './auth.js';
+import { discordApi } from '../services/discordApiService.js';
 
 // Discord permission flags
 export const DiscordPermissions = {
@@ -117,6 +118,39 @@ const hasPermission = (
 	});
 };
 
+// Helper to get effective permission bitfield for a user in a guild
+async function getUserGuildPermissions(
+	guildId: string,
+	userId: string
+): Promise<string> {
+	try {
+		const [member, roles] = await Promise.all([
+			discordApi.getGuildMember(guildId, userId),
+			discordApi.getGuildRoles(guildId),
+		]);
+
+		const roleMap = new Map<string, string>();
+		roles.forEach((r: any) => roleMap.set(r.id, r.permissions));
+
+		let permissions = BigInt(0);
+
+		// @everyone role – id == guildId in Discord
+		const everyoneRole = roles.find((r: any) => r.id === guildId);
+		if (everyoneRole) permissions |= BigInt(everyoneRole.permissions);
+
+		// Aggregate role permissions
+		(member.roles || []).forEach((roleId: string) => {
+			const perms = roleMap.get(roleId);
+			if (perms) permissions |= BigInt(perms);
+		});
+
+		return permissions.toString();
+	} catch (err) {
+		// fallback – no permissions
+		return '0';
+	}
+}
+
 // Middleware factory for permission checking
 export const requirePermissions = (permissions: string[]) => {
 	return async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -131,18 +165,11 @@ export const requirePermissions = (permissions: string[]) => {
 				} as ApiResponse);
 			}
 
-			// TODO: Fetch user's permissions in the guild from Discord API
-			// This is a placeholder - you'll need to implement actual permission checking
-			// against Discord's API or your cached guild data
-
-			// For now, we'll assume the user has permissions
-			// In a real implementation, you would:
-			// 1. Check if user is in the guild
-			// 2. Get their roles and permissions
-			// 3. Calculate effective permissions
-			// 4. Check against required permissions
-
-			const userGuildPermissions = '8'; // Placeholder - Administrator permission
+			// Fetch user's permissions in the guild
+			const userGuildPermissions = await getUserGuildPermissions(
+				guildId,
+				user.id
+			);
 
 			if (!hasPermission(userGuildPermissions, permissions)) {
 				return res.status(403).json({
@@ -227,9 +254,13 @@ export const requireGuildOwner = async (
 			} as ApiResponse);
 		}
 
-		// TODO: Check if user is the guild owner
-		// This would query Discord API or your cached data
-		// For now, we'll pass through
+		const guild = await discordApi.getGuild(guildId);
+		if (guild?.owner_id !== user.id) {
+			return res.status(403).json({
+				success: false,
+				error: 'Only the guild owner can perform this action',
+			} as ApiResponse);
+		}
 
 		next();
 	} catch (error) {

@@ -34,6 +34,7 @@ interface PlayerInterface {
   ): Promise<{
     tracks?: TrackInterface[];
   }>;
+  play(channel: unknown, query: string, options?: unknown): Promise<{ track?: TrackInterface | null }>;
 }
 
 interface MusicResult {
@@ -129,26 +130,35 @@ export class MusicProcessor extends BaseProcessor<MusicActionJob> {
       throw new Error("Query is required for playing music");
     }
 
-    let queue = player.queues.get(guild.id);
-    queue ??= player.queues.create(guild.id);
-
-    const searchResult = await player.search(query, {
-      requestedBy: userId ?? "Unknown",
-    });
-
-    if (!searchResult.tracks?.length) {
-      throw new Error("No tracks found for the given query");
+    if (!userId) {
+      throw new Error("User ID is required to resolve voice channel");
     }
 
-    queue.addTrack(searchResult.tracks[0]);
+    // Fetch member and ensure they are in a voice channel
+    const member = await this.client.guilds.fetch(guild.id).then((g) => g.members.fetch(userId));
 
-    if (!queue.isPlaying()) {
-      await queue.node.play();
+    const voiceChannel = member.voice.channel;
+    if (!voiceChannel) {
+      throw new Error("You need to join a voice channel first");
     }
+
+    // Use the high-level play helper – this automatically creates/uses the queue and starts playback
+    const { track } = (await player.play(voiceChannel as unknown, query, {
+      requestedBy: member.user,
+      nodeOptions: {
+        // Provide minimal metadata so event handlers can safely short-circuit
+        metadata: {
+          requestedBy: member.user,
+        },
+      },
+    })) as { track: TrackInterface | null };
+
+    // Access the active queue to gather stats
+    const queue = player.queues.get(guild.id);
 
     return {
-      track: searchResult.tracks[0].title,
-      queued: queue.tracks.size,
+      track: track?.title ?? "Unknown",
+      queued: queue ? queue.tracks.size : 1,
     };
   }
 

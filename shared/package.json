@@ -14,12 +14,12 @@
 		"setup": "npm install && npm run db:generate && npm run build"
 	},
 	"dependencies": {
-		"@prisma/client": "^6.9.0",
+		"@prisma/client": "^6.10.1",
 		"bull": "^4.12.9"
 	},
 	"devDependencies": {
 		"@types/bull": "^4.10.0",
-		"prisma": "^6.9.0",
+		"prisma": "^6.10.1",
 		"typescript": "^5.3.3"
 	},
 	"exports": {

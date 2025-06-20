@@ -7,7 +7,11 @@ export default new MusicPlayerGuildQueueEvent("error", async (queue, error) => {
 
   logger.error(new Error(`${error}!`));
 
-  await queue.metadata.latestInteraction.followUp({
+  const latestInteraction = (queue.metadata as { latestInteraction?: import("discord.js").ChatInputCommandInteraction })
+    .latestInteraction;
+  if (!latestInteraction) return;
+
+  await latestInteraction.followUp({
     content: `Discord music player errored! Error message: "${error}"`,
   });
 });

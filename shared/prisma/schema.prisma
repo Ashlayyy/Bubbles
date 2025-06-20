@@ -39,6 +39,9 @@ model GuildConfig {
   appealSettings         AppealSettings? @relation(fields: [appealSettingsId], references: [id])
   logSettingsId          String?         @db.ObjectId
   appealSettingsId       String?         @db.ObjectId
+  // New fields
+  moderatorRoleIds       String[]        @default([])
+  welcomeStats           Json?
 }
 
 model LogSettings {
@@ -771,4 +774,75 @@ model GameSession {
   @@index([guildId, gameType])
   @@index([status, startedAt])
   @@index([hostId])
+}
+
+// --------------------------------------------------
+// Level history (tracks each time a user reaches a level)
+model LevelHistory {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  level     Int
+  reachedAt DateTime @default(now())
+
+  @@index([guildId, userId])
+}
+
+// --------------------------------------------------
+// Token blacklist for logout / revocation
+model TokenBlacklist {
+  jti       String   @id @map("_id")
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+// --------------------------------------------------
+// Game settings (entertainment / economy)
+model GameSettings {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String   @unique
+  enabled         Boolean  @default(true)
+  allowedChannels String[] @default([])
+  triviaEnabled   Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// --------------------------------------------------
+// Music feature settings
+model MusicSettings {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId          String   @unique
+  enabled          Boolean  @default(true)
+  djRoleId         String?
+  maxQueueSize     Int      @default(100)
+  maxTrackDuration Int      @default(600000)
+  allowNSFW        Boolean  @default(false)
+  defaultVolume    Int      @default(50)
+  autoLeave        Boolean  @default(true)
+  autoLeaveDelay   Int      @default(300000)
+  allowedChannels  String[] @default([])
+  blockedChannels  String[] @default([])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// --------------------------------------------------
+// Level reward model
+model LevelReward {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  level       Int
+  type        String // ROLE, ITEM, etc
+  roleId      String?
+  description String?
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, level, type])
+  @@index([guildId, level])
 }
