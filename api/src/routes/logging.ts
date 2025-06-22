@@ -8,7 +8,6 @@ import {
 } from '../controllers/loggingController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import {
-	validateGuildId,
 	validateGuildAccess,
 	validatePagination,
 	validateLoggingSettings,
@@ -20,54 +19,27 @@ import {
 } from '../middleware/rateLimiting.js';
 import { requireAdminPermissions } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
-// All logging routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/logging',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+// All logging routes require authentication and admin permissions
+router.use(authenticateToken, validateGuildAccess, requireAdminPermissions);
 
 // Logging settings
-router.get(
-	'/guilds/:guildId/logging/settings',
-	generalRateLimit,
-	requireAdminPermissions,
-	getLoggingSettings
-);
+router.get('/settings', generalRateLimit, getLoggingSettings);
 
 router.put(
-	'/guilds/:guildId/logging/settings',
+	'/settings',
 	validateLoggingSettings,
 	configRateLimit,
-	requireAdminPermissions,
 	updateLoggingSettings
 );
 
 // Audit logs
-router.get(
-	'/guilds/:guildId/logging/audit',
-	validatePagination,
-	analyticsRateLimit,
-	requireAdminPermissions,
-	getAuditLogs
-);
+router.get('/audit', validatePagination, analyticsRateLimit, getAuditLogs);
 
-router.post(
-	'/guilds/:guildId/logging/audit/export',
-	analyticsRateLimit,
-	requireAdminPermissions,
-	exportAuditLogs
-);
+router.post('/audit/export', analyticsRateLimit, exportAuditLogs);
 
 // Statistics
-router.get(
-	'/guilds/:guildId/logging/statistics',
-	analyticsRateLimit,
-	requireAdminPermissions,
-	getLogStatistics
-);
+router.get('/statistics', analyticsRateLimit, getLogStatistics);
 
 export default router;

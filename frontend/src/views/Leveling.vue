@@ -1,133 +1,106 @@
 <template>
-  <div>
-    <h1 class="text-3xl font-bold text-foreground mb-8">Leveling System</h1>
+	<div>
+		<div class="flex items-center justify-between mb-8">
+			<h1 class="text-3xl font-bold text-foreground">Leveling System</h1>
+			<button
+				@click="saveSettings"
+				class="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 py-2 rounded-lg transition-colors flex items-center space-x-2"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path
+						d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
+					></path>
+					<polyline points="17 21 17 13 7 13 7 21"></polyline>
+					<polyline points="7 3 7 8 15 8"></polyline>
+				</svg>
+				<span>Save Changes</span>
+			</button>
+		</div>
 
-    <div class="space-y-8 max-w-4xl">
-      <LevelingGeneral
-        v-model:leveling-enabled="levelingEnabled"
-        v-model:xp-per-message="xpPerMessage"
-        v-model:xp-cooldown="xpCooldown"
-      />
+		<div class="space-y-8 max-w-4xl">
+			<LevelingGeneral
+				v-model:leveling-enabled="levelingEnabled"
+				v-model:xp-per-message="xpPerMessage"
+				v-model:xp-cooldown="xpCooldown"
+			/>
 
-      <LevelingMessage
-        :leveling-enabled="levelingEnabled"
-        v-model:level-up-message-enabled="levelUpMessageEnabled"
-        v-model:level-up-message-destination="levelUpMessageDestination"
-        v-model:level-up-channel-id="levelUpChannelId"
-        v-model:level-up-message="levelUpMessage"
-      />
-      
-      <LevelingIgnoredItems
-        :leveling-enabled="levelingEnabled"
-        v-model:ignored-roles="ignoredRoles"
-        v-model:ignored-channels="ignoredChannels"
-        :all-roles="allRoles"
-        :all-channels="allChannels"
-      />
+			<LevelingMessage
+				:leveling-enabled="levelingEnabled"
+				v-model:level-up-message-enabled="levelUpMessageEnabled"
+				v-model:level-up-message-destination="levelUpMessageDestination"
+				v-model:level-up-channel-id="levelUpChannelId"
+				v-model:level-up-message="levelUpMessage"
+				:all-channels="allChannels"
+			/>
 
-      <LevelingMultipliers
-        :leveling-enabled="levelingEnabled"
-        v-model:xp-multipliers="xpMultipliers"
-        :all-roles="allRoles"
-        :all-channels="allChannels"
-      />
+			<LevelingIgnoredItems
+				:leveling-enabled="levelingEnabled"
+				v-model:ignored-roles="ignoredRoles"
+				v-model:ignored-channels="ignoredChannels"
+				:all-roles="allRoles"
+				:all-channels="allChannels"
+			/>
 
-      <LevelingRoleRewards
-        :leveling-enabled="levelingEnabled"
-        v-model:role-rewards="roleRewards"
-        :all-roles="allRoles"
-      />
+			<LevelingMultipliers
+				:leveling-enabled="levelingEnabled"
+				v-model:xp-multipliers="xpMultipliers"
+				:all-roles="allRoles"
+				:all-channels="allChannels"
+			/>
 
-      <LevelingPrestige
-        :leveling-enabled="levelingEnabled"
-        v-model:prestige-enabled="prestigeEnabled"
-        v-model:prestige-level="prestigeLevel"
-        v-model:prestige-reward-role-id="prestigeRewardRoleId"
-        :all-roles="allRoles"
-      />
-    </div>
-  </div>
+			<LevelingRoleRewards
+				:leveling-enabled="levelingEnabled"
+				v-model:role-rewards="roleRewards"
+				:all-roles="allRoles"
+			/>
+
+			<LevelingPrestige
+				:leveling-enabled="levelingEnabled"
+				v-model:prestige-enabled="prestigeEnabled"
+				v-model:prestige-level="prestigeLevel"
+				v-model:prestige-reward-role-id="prestigeRewardRoleId"
+				:all-roles="allRoles"
+			/>
+		</div>
+	</div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import type { DiscordItem } from '@/types/discord';
 import LevelingGeneral from '@/components/leveling/LevelingGeneral.vue';
 import LevelingMessage from '@/components/leveling/LevelingMessage.vue';
 import LevelingMultipliers from '@/components/leveling/LevelingMultipliers.vue';
 import LevelingRoleRewards from '@/components/leveling/LevelingRoleRewards.vue';
 import LevelingPrestige from '@/components/leveling/LevelingPrestige.vue';
 import LevelingIgnoredItems from '@/components/leveling/LevelingIgnoredItems.vue';
-import { useToastStore } from '@/stores/toast';
+import { useLeveling } from '@/composables/useLeveling';
 
-const toastStore = useToastStore();
-
-const levelingEnabled = ref(true);
-const xpPerMessage = ref(15);
-const xpCooldown = ref(60);
-
-const levelUpMessageEnabled = ref(true);
-const levelUpMessageDestination = ref('current');
-const levelUpChannelId = ref('');
-const levelUpMessage = ref('GG {user}, you reached level {level}!');
-
-interface RoleReward {
-  level: number;
-  roleId: string;
-  roleName: string; // For display purposes
-}
-
-const roleRewards = ref<RoleReward[]>([
-  { level: 5, roleId: '123', roleName: 'Active Member' },
-  { level: 10, roleId: '456', roleName: 'Regular' },
-  { level: 25, roleId: '789', roleName: 'Enthusiast' },
-]);
-
-interface XPMultiplier {
-  uid: string;
-  type: 'role' | 'channel';
-  id: string;
-  name: string; // for display
-  multiplier: number;
-}
-
-const xpMultipliers = ref<XPMultiplier[]>([
-  { uid: 'mult-1', type: 'role', id: 'role-booster', name: 'Server Booster', multiplier: 2 },
-  { uid: 'mult-2', type: 'channel', id: 'channel-events', name: 'events', multiplier: 1.5 },
-]);
-
-const ignoredRoles = ref<string[]>(['role-admin', 'role-bot']);
-const ignoredChannels = ref<string[]>(['channel-staff-chat']);
-
-const prestigeEnabled = ref(false);
-const prestigeLevel = ref(100);
-const prestigeRewardRoleId = ref('');
-
-// --- Mock Data for Selectors ---
-const allRoles = ref<DiscordItem[]>([
-  { id: 'role-admin', name: 'Admin' },
-  { id: 'role-moderator', name: 'Moderator' },
-  { id: 'role-bot', name: 'Bot' },
-  { id: 'role-member', name: 'Member' },
-  { id: 'role-nitro-booster', name: 'Nitro Booster' },
-  { id: 'role-level-5', name: 'Level 5+' },
-  { id: 'role-level-10', name: 'Level 10+' },
-  { id: 'role-level-25', name: 'Level 25+' },
-]);
-
-const allChannels = ref<DiscordItem[]>([
-  { id: 'channel-general', name: 'general' },
-  { id: 'channel-announcements', name: 'announcements' },
-  { id: 'channel-off-topic', name: 'off-topic' },
-  { id: 'channel-bot-commands', name: 'bot-commands' },
-  { id: 'channel-staff-chat', name: 'staff-chat' },
-  { id: 'channel-memes', name: 'memes' },
-  { id: 'channel-art', name: 'art' },
-]);
-
-// Watch for changes and show save confirmations
-const saveAllSettings = () => {
-  // In a real app, this would save all settings to the backend
-  toastStore.addToast('All leveling settings saved successfully!', 'success');
-};
+const {
+	levelingEnabled,
+	xpPerMessage,
+	xpCooldown,
+	levelUpMessageEnabled,
+	levelUpMessageDestination,
+	levelUpChannelId,
+	levelUpMessage,
+	roleRewards,
+	xpMultipliers,
+	ignoredRoles,
+	ignoredChannels,
+	prestigeEnabled,
+	prestigeLevel,
+	prestigeRewardRoleId,
+	allRoles,
+	allChannels,
+	saveSettings,
+} = useLeveling();
 </script>

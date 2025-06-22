@@ -8,7 +8,6 @@ import {
 } from '../controllers/welcomeController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import {
-	validateGuildId,
 	validateGuildAccess,
 	validateWelcomeSettings,
 	validatePagination,
@@ -16,55 +15,27 @@ import {
 import { generalRateLimit } from '../middleware/rateLimiting.js';
 import { requireAdminPermissions } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
-// All welcome routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/welcome',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+// All welcome routes require authentication and admin permissions
+router.use(authenticateToken, validateGuildAccess, requireAdminPermissions);
 
 // Settings
-router.get(
-	'/guilds/:guildId/welcome/settings',
-	generalRateLimit,
-	requireAdminPermissions,
-	getWelcomeSettings
-);
-
+router.get('/settings', generalRateLimit, getWelcomeSettings);
 router.put(
-	'/guilds/:guildId/welcome/settings',
+	'/settings',
 	validateWelcomeSettings,
 	generalRateLimit,
-	requireAdminPermissions,
 	updateWelcomeSettings
 );
 
 // Test message
-router.post(
-	'/guilds/:guildId/welcome/test',
-	generalRateLimit,
-	requireAdminPermissions,
-	testWelcomeMessage
-);
+router.post('/test', generalRateLimit, testWelcomeMessage);
 
 // Logs
-router.get(
-	'/guilds/:guildId/welcome/logs',
-	validatePagination,
-	generalRateLimit,
-	requireAdminPermissions,
-	getWelcomeLogs
-);
+router.get('/logs', validatePagination, generalRateLimit, getWelcomeLogs);
 
 // Statistics
-router.get(
-	'/guilds/:guildId/welcome/statistics',
-	generalRateLimit,
-	requireAdminPermissions,
-	getWelcomeStatistics
-);
+router.get('/statistics', generalRateLimit, getWelcomeStatistics);
 
 export default router;

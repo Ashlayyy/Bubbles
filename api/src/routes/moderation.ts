@@ -27,7 +27,6 @@ import {
 } from '../controllers/moderationController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import {
-	validateGuildId,
 	validateGuildAccess,
 	validateModerationCase,
 	validatePagination,
@@ -39,197 +38,103 @@ import {
 } from '../middleware/rateLimiting.js';
 import { requireModerationPermissions } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // All moderation routes require authentication and guild access
 router.use(
-	'/guilds/:guildId/moderation',
-	validateGuildId,
 	authenticateToken,
-	validateGuildAccess
+	validateGuildAccess,
+	requireModerationPermissions
 );
 
 // Moderation cases
 router.get(
-	'/guilds/:guildId/moderation/cases',
+	'/cases',
 	validatePagination,
 	guildModerationRateLimit,
-	requireModerationPermissions,
 	getModerationCases
 );
 
 router.post(
-	'/guilds/:guildId/moderation/cases',
+	'/cases',
 	validateModerationCase,
 	moderationRateLimit,
-	requireModerationPermissions,
 	createModerationCase
 );
 
-router.get(
-	'/guilds/:guildId/moderation/cases/:caseId',
-	guildModerationRateLimit,
-	requireModerationPermissions,
-	getModerationCase
-);
+router.get('/cases/:caseId', guildModerationRateLimit, getModerationCase);
 
-router.put(
-	'/guilds/:guildId/moderation/cases/:caseId',
-	moderationRateLimit,
-	requireModerationPermissions,
-	updateModerationCase
-);
+router.put('/cases/:caseId', moderationRateLimit, updateModerationCase);
 
-router.delete(
-	'/guilds/:guildId/moderation/cases/:caseId',
-	moderationRateLimit,
-	requireModerationPermissions,
-	deleteModerationCase
-);
+router.delete('/cases/:caseId', moderationRateLimit, deleteModerationCase);
 
 // Bans
 router.get(
-	'/guilds/:guildId/moderation/bans',
+	'/bans',
 	validatePagination,
 	guildModerationRateLimit,
-	requireModerationPermissions,
 	getBannedUsers
 );
 
-router.post(
-	'/guilds/:guildId/moderation/bans',
-	moderationRateLimit,
-	requireModerationPermissions,
-	banUser
-);
+router.post('/bans', moderationRateLimit, banUser);
 
-router.delete(
-	'/guilds/:guildId/moderation/bans/:userId',
-	validateUserId,
-	moderationRateLimit,
-	requireModerationPermissions,
-	unbanUser
-);
+router.delete('/bans/:userId', validateUserId, moderationRateLimit, unbanUser);
 
 // Mutes/Timeouts
 router.get(
-	'/guilds/:guildId/moderation/mutes',
+	'/mutes',
 	validatePagination,
 	guildModerationRateLimit,
-	requireModerationPermissions,
 	getMutedUsers
 );
 
-router.post(
-	'/guilds/:guildId/moderation/mutes',
-	moderationRateLimit,
-	requireModerationPermissions,
-	muteUser
-);
+router.post('/mutes', moderationRateLimit, muteUser);
 
 router.delete(
-	'/guilds/:guildId/moderation/mutes/:userId',
+	'/mutes/:userId',
 	validateUserId,
 	moderationRateLimit,
-	requireModerationPermissions,
 	unmuteUser
 );
 
 // Warnings
 router.get(
-	'/guilds/:guildId/moderation/warnings',
+	'/warnings',
 	validatePagination,
 	guildModerationRateLimit,
-	requireModerationPermissions,
 	getUserWarnings
 );
 
-router.post(
-	'/guilds/:guildId/moderation/warnings',
-	moderationRateLimit,
-	requireModerationPermissions,
-	addWarning
-);
+router.post('/warnings', moderationRateLimit, addWarning);
 
-router.delete(
-	'/guilds/:guildId/moderation/warnings/:warningId',
-	moderationRateLimit,
-	requireModerationPermissions,
-	removeWarning
-);
+router.delete('/warnings/:warningId', moderationRateLimit, removeWarning);
 
 // Settings
-router.get(
-	'/guilds/:guildId/moderation/settings',
-	guildModerationRateLimit,
-	requireModerationPermissions,
-	getModerationSettings
-);
+router.get('/settings', guildModerationRateLimit, getModerationSettings);
 
-router.put(
-	'/guilds/:guildId/moderation/settings',
-	moderationRateLimit,
-	requireModerationPermissions,
-	updateModerationSettings
-);
+router.put('/settings', moderationRateLimit, updateModerationSettings);
 
 // Automod rules
-router.get(
-	'/guilds/:guildId/moderation/automod',
-	guildModerationRateLimit,
-	requireModerationPermissions,
-	getAutomodRules
-);
+router.get('/automod', guildModerationRateLimit, getAutomodRules);
 
-router.post(
-	'/guilds/:guildId/moderation/automod',
-	moderationRateLimit,
-	requireModerationPermissions,
-	createAutomodRule
-);
+router.post('/automod', moderationRateLimit, createAutomodRule);
 
-router.put(
-	'/guilds/:guildId/moderation/automod/:ruleId',
-	moderationRateLimit,
-	requireModerationPermissions,
-	updateAutomodRule
-);
+router.put('/automod/:ruleId', moderationRateLimit, updateAutomodRule);
 
-router.delete(
-	'/guilds/:guildId/moderation/automod/:ruleId',
-	moderationRateLimit,
-	requireModerationPermissions,
-	deleteAutomodRule
-);
+router.delete('/automod/:ruleId', moderationRateLimit, deleteAutomodRule);
 
 // Moderator notes
 router.get(
-	'/guilds/:guildId/moderation/notes',
+	'/notes',
 	validatePagination,
 	guildModerationRateLimit,
-	requireModerationPermissions,
 	getModeratorNotes
 );
 
-router.post(
-	'/guilds/:guildId/moderation/notes',
-	moderationRateLimit,
-	requireModerationPermissions,
-	addModeratorNote
-);
+router.post('/notes', moderationRateLimit, addModeratorNote);
 
-router.put(
-	'/guilds/:guildId/moderation/notes/:noteId',
-	moderationRateLimit,
-	requireModerationPermissions,
-	updateModeratorNote
-);
+router.put('/notes/:noteId', moderationRateLimit, updateModeratorNote);
 
-router.delete(
-	'/guilds/:guildId/moderation/notes/:noteId',
-	moderationRateLimit,
-	requireModerationPermissions,
-	deleteModeratorNote
-);
+router.delete('/notes/:noteId', moderationRateLimit, deleteModeratorNote);
 
 export default router;

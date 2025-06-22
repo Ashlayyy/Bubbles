@@ -171,15 +171,21 @@ export class DiscordApiService {
 
 	private async makeRequest(
 		endpoint: string,
-		options: RequestInit = {}
+		options: RequestInit = {},
+		accessToken?: string
 	): Promise<any> {
 		const url = `${this.baseURL}${endpoint}`;
 
-		const headers = {
-			Authorization: `Bot ${this.botToken}`,
+		const headers: Record<string, string> = {
 			'Content-Type': 'application/json',
-			...options.headers,
+			...((options.headers as Record<string, string>) || {}),
 		};
+
+		if (accessToken) {
+			headers['Authorization'] = `Bearer ${accessToken}`;
+		} else {
+			headers['Authorization'] = `Bot ${this.botToken}`;
+		}
 
 		const response = await fetch(url, {
 			...options,
@@ -201,7 +207,7 @@ export class DiscordApiService {
 			return null; // No content
 		}
 
-		return response.json();
+		return await response.json();
 	}
 
 	// Guild operations
@@ -641,14 +647,8 @@ export class DiscordApiService {
 		}
 	}
 
-	async getGuilds(): Promise<any[]> {
-		try {
-			const guilds = await this.makeRequest('/users/@me/guilds');
-			return guilds || [];
-		} catch (error) {
-			logger.error('Failed to fetch guilds:', error);
-			throw error;
-		}
+	async getGuilds(accessToken?: string): Promise<any[]> {
+		return this.makeRequest('/users/@me/guilds', {}, accessToken);
 	}
 
 	// ============================================================================

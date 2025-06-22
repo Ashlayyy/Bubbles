@@ -53,13 +53,16 @@ export const monitoringMiddleware = (
 		const duration = endTime - startTime;
 		const success = res.statusCode < 400;
 
+		// Re-check for user ID, as auth middleware may have run
+		const userId = req.monitoring?.userId || (req as any).user?.id;
+
 		// Log request completion
 		logger.info(`Request completed: ${req.method} ${req.path}`, {
 			requestId,
 			statusCode: res.statusCode,
 			duration,
 			success,
-			userId: req.monitoring?.userId,
+			userId: userId,
 			guildId: req.monitoring?.guildId,
 		});
 

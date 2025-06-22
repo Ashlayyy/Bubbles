@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { useToastStore } from '@/stores/toast';
 import type { BannedUser } from '@/types/moderation';
-import { moderationApi } from '@/lib/endpoints';
+import { moderationEndpoints } from '@/lib/endpoints/moderation';
 import { useGuildsStore } from '@/stores/guilds';
 
 export function useBannedUsers() {
@@ -13,7 +13,9 @@ export function useBannedUsers() {
 	const fetchBans = async () => {
 		if (!guildStore.currentGuild) return;
 		try {
-			const { data } = await moderationApi.getBans(guildStore.currentGuild.id);
+			const { data } = await moderationEndpoints.getBans(
+				guildStore.currentGuild.id
+			);
 			bannedUsers.value = data as BannedUser[];
 		} catch (e) {
 			console.error('Failed to fetch bans', e);
@@ -23,7 +25,7 @@ export function useBannedUsers() {
 	const unbanUser = async (userId: string) => {
 		if (!guildStore.currentGuild) return;
 		try {
-			await moderationApi.unbanUser(guildStore.currentGuild.id, userId);
+			await moderationEndpoints.unbanUser(guildStore.currentGuild.id, userId);
 			bannedUsers.value = bannedUsers.value.filter((b) => b.user.id !== userId);
 			toastStore.addToast('User unbanned', 'success');
 		} catch (e) {

@@ -833,16 +833,24 @@ model MusicSettings {
 // --------------------------------------------------
 // Level reward model
 model LevelReward {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  guildId     String
-  level       Int
-  type        String // ROLE, ITEM, etc
-  roleId      String?
-  description String?
-  createdBy   String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String  @id @default(auto()) @map("_id") @db.ObjectId
+  guildId          String
+  level            Int
+  roleId           String
+  removeOnDemotion Boolean @default(false)
+}
 
-  @@unique([guildId, level, type])
-  @@index([guildId, level])
+model User {
+  id             String   @id @map("_id") @db.ObjectId
+  discordId      String   @unique
+  username       String
+  discriminator  String
+  avatar         String?
+  email          String?  @unique
+  accessToken    String
+  refreshToken   String
+  tokenExpiresAt DateTime
+  lastLogin      DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }

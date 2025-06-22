@@ -3,6 +3,7 @@ import { discordApi } from '../services/discordApiService.js';
 import { wsManager } from '../websocket/manager.js';
 import { getPrismaClient } from '../services/databaseService.js';
 import { createLogger } from '../types/shared.js';
+import { Session, SessionData } from 'express-session';
 
 interface AuthenticatedRequest extends Request {
 	user?: {
@@ -10,14 +11,22 @@ interface AuthenticatedRequest extends Request {
 		username: string;
 		guilds: string[];
 	};
+	session: Session & Partial<SessionData> & { accessToken?: string };
 }
 
 const logger = createLogger('guild-controller');
 
 export const getGuilds = async (req: AuthenticatedRequest, res: Response) => {
 	try {
+		const accessToken = req.session.accessToken;
+		if (!accessToken) {
+			return res
+				.status(401)
+				.json({ success: false, error: 'Not authenticated' });
+		}
+
 		// Fetch guilds from Discord API
-		const guilds = await discordApi.getGuilds();
+		const guilds = await discordApi.getGuilds(accessToken);
 
 		// Filter guilds the user has access to based on their permissions
 		const userGuilds = guilds.filter(

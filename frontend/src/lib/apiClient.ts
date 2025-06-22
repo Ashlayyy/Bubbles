@@ -14,7 +14,7 @@ let api: AxiosInstance | null = null;
 
 function createApiClient(): AxiosInstance {
 	const instance = axios.create({
-		baseURL: `${import.meta.env.VITE_API_URL || '/api'}/api`,
+		baseURL: import.meta.env.VITE_API_URL || '/api',
 		headers: {
 			'Content-Type': 'application/json',
 		},
@@ -42,15 +42,21 @@ function createApiClient(): AxiosInstance {
 			const originalRequest = error.config as AxiosRequestConfig & {
 				_retry?: boolean;
 			};
-			if (error.response?.status === 401 && !originalRequest._retry) {
-				originalRequest._retry = true;
-				try {
-					await auth.refreshToken();
-					return instance(originalRequest);
-				} catch (e) {
-					// Refresh failed ⇒ logout
-					await auth.logout();
-					toast.addToast('Session expired, please login again', 'error');
+
+			if (
+				error.response?.status === 401 &&
+				originalRequest.url !== '/auth/me'
+			) {
+				if (!originalRequest._retry) {
+					originalRequest._retry = true;
+					try {
+						await auth.refreshToken();
+						return instance(originalRequest);
+					} catch (e) {
+						// Refresh failed ⇒ logout
+						await auth.logout();
+						toast.addToast('Session expired, please login again', 'error');
+					}
 				}
 			} else if (error.response) {
 				const apiError =

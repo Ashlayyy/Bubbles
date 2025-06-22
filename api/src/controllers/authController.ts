@@ -4,8 +4,13 @@ import type { AuthRequest } from '../middleware/auth.js';
 import { config } from '../config/index.js';
 import jwt from 'jsonwebtoken';
 import { blacklistToken } from '../services/tokenBlacklistService.js';
+import { Session, SessionData } from 'express-session';
 
 const logger = createLogger('auth-controller');
+
+type AuthenticatedRequest = AuthRequest & {
+	session: Session & Partial<SessionData> & { accessToken?: string };
+};
 
 // Discord OAuth login
 export const discordLogin = async (req: AuthRequest, res: Response) => {
@@ -21,13 +26,7 @@ export const discordLogin = async (req: AuthRequest, res: Response) => {
 
 		logger.info('Discord OAuth login initiated');
 
-		res.json({
-			success: true,
-			data: {
-				redirectUrl: discordAuthUrl,
-				state,
-			},
-		} as ApiResponse);
+		res.redirect(discordAuthUrl);
 	} catch (error) {
 		logger.error('Error in Discord login:', error);
 		res.status(500).json({
@@ -38,9 +37,12 @@ export const discordLogin = async (req: AuthRequest, res: Response) => {
 };
 
 // Discord OAuth callback
-export const discordCallback = async (req: AuthRequest, res: Response) => {
+export const discordCallback = async (
+	req: AuthenticatedRequest,
+	res: Response
+) => {
 	try {
-		const { code, state } = req.body;
+		const { code, state } = req.query as { code: string; state: string };
 
 		if (!code) {
 			return res.status(400).json({
@@ -73,6 +75,7 @@ export const discordCallback = async (req: AuthRequest, res: Response) => {
 
 		const tokenData = (await tokenResponse.json()) as any;
 		const accessToken = tokenData.access_token;
+		const refreshToken = tokenData.refresh_token;
 
 		// Fetch user information from Discord
 		const userResponse = await fetch('https://discord.com/api/v10/users/@me', {
@@ -119,23 +122,17 @@ export const discordCallback = async (req: AuthRequest, res: Response) => {
 			})),
 		};
 
-		// Generate JWT token
-		const token = jwt.sign({ user: userData }, config.jwt.secret, {
-			expiresIn: config.jwt.expiresIn,
-		} as jwt.SignOptions);
+		// Store access token in session
+		req.session.accessToken = accessToken;
 
 		logger.info(
 			`User authenticated: ${userData.username}#${userData.discriminator}`
 		);
 
-		res.json({
-			success: true,
-			data: {
-				user: userData,
-				token,
-				expiresIn: 86400, // 24 hours in seconds
-			},
-		} as ApiResponse);
+		const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
+		const redirectUrl = `${frontendUrl}/login/callback`;
+
+		res.redirect(redirectUrl);
 	} catch (error) {
 		logger.error('Error in Discord callback:', error);
 		res.status(500).json({

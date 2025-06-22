@@ -1,8 +1,9 @@
 import { apiClient } from '@/lib/apiClient';
 import type { Guild } from '@shared/types/api';
+import type { DiscordItem } from '@/types/discord';
 
 export const getUserGuilds = async () => {
-	const { data } = await apiClient().get('/users/@me/guilds');
+	const { data } = await apiClient().get('/guilds');
 	return data as Guild[];
 };
 
@@ -11,10 +12,16 @@ export const getGuild = async (guildId: string) => {
 	return data as Guild;
 };
 
-export const getGuildChannels = (guildId: string) =>
-	apiClient().get(`/guilds/${guildId}/channels`);
-export const getGuildRoles = (guildId: string) =>
-	apiClient().get(`/guilds/${guildId}/roles`);
+export const getGuildChannels = async (guildId: string) => {
+	const { data } = await apiClient().get(`/guilds/${guildId}/channels`);
+	return data as DiscordItem[];
+};
+
+export const getGuildRoles = async (guildId: string) => {
+	const { data } = await apiClient().get(`/guilds/${guildId}/roles`);
+	return data as DiscordItem[];
+};
+
 export const getGuildMembers = (
 	guildId: string,
 	params?: { limit?: number; offset?: number }

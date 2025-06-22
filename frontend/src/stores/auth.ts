@@ -33,19 +33,8 @@ export const useAuthStore = defineStore('auth', () => {
 		return `https://cdn.discordapp.com/avatars/${user.value.id}/${user.value.avatar}.png?size=128`;
 	});
 
-	const login = async () => {
-		loading.value = true;
-		try {
-			const { data } = await apiClient().post<{
-				redirectUrl: string;
-				state: string;
-			}>('/discord/login');
-			window.location.href = data.redirectUrl;
-		} catch (e) {
-			console.error(e);
-		} finally {
-			loading.value = false;
-		}
+	const login = () => {
+		window.location.href = `${apiClient().defaults.baseURL}/auth/discord`;
 	};
 
 	const loginAsDemoUser = () => {
@@ -65,7 +54,7 @@ export const useAuthStore = defineStore('auth', () => {
 		try {
 			// Only try to call logout API if not a demo user
 			if (!isDemoUser.value) {
-				await apiClient().post('/logout');
+				await apiClient().post('/auth/logout');
 			}
 		} catch (error) {
 			console.error('Logout failed, logging out locally:', error);
@@ -87,7 +76,7 @@ export const useAuthStore = defineStore('auth', () => {
 
 	const refreshToken = async () => {
 		if (!token.value) throw new Error('No token');
-		const { data } = await apiClient().get('/refresh');
+		const { data } = await apiClient().get('/auth/refresh');
 		const res = data as AuthResponse;
 		token.value = res.token;
 		expiresAt.value = Math.floor(Date.now() / 1000) + res.expiresIn;
@@ -101,7 +90,7 @@ export const useAuthStore = defineStore('auth', () => {
 
 		loading.value = true;
 		try {
-			const { data } = await apiClient().get('/me');
+			const { data } = await apiClient().get('/auth/me');
 			const payload = data as { user: User };
 			user.value = payload.user;
 			isAuthenticated.value = true;
@@ -130,5 +119,6 @@ export const useAuthStore = defineStore('auth', () => {
 		logout,
 		refreshToken,
 		checkAuth,
+		setSession,
 	};
 });

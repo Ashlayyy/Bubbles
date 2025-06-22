@@ -27,6 +27,9 @@ export interface Config {
 		windowMs: number;
 		max: number;
 	};
+	session: {
+		secret: string;
+	};
 }
 
 const getConfig = (): Config => {
@@ -56,7 +59,7 @@ const getConfig = (): Config => {
 				process.env.DISCORD_CLIENT_SECRET || 'default-client-secret',
 			redirectUri:
 				process.env.DISCORD_REDIRECT_URI ||
-				'http://localhost:3000/auth/callback',
+				'http://localhost:3001/api/auth/discord/callback',
 		},
 		jwt: {
 			secret: process.env.JWT_SECRET || 'default-jwt-secret-for-development',
@@ -68,6 +71,11 @@ const getConfig = (): Config => {
 		rateLimit: {
 			windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
 			max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
+		},
+		session: {
+			secret:
+				process.env.SESSION_SECRET ||
+				'a-secure-default-session-secret-for-development',
 		},
 	};
 };

@@ -1,17 +1,10 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { guildsApi } from '@/lib/endpoints';
-import { apiClient } from '@/lib/apiClient';
+import type { Guild as ApiGuild } from '@shared/types/api';
 
-export interface Guild {
-	id: string;
-	name: string;
-	icon: string | null;
-	owner: boolean;
-	permissions: string;
-	hasBubbles: boolean;
-	memberCount?: number;
-	onlineCount?: number;
+export interface Guild extends ApiGuild {
+	hasBubbles?: boolean;
 }
 
 export interface GuildStats {
@@ -31,11 +24,11 @@ export const useGuildsStore = defineStore('guilds', () => {
 	const fetchGuilds = async () => {
 		loading.value = true;
 		try {
-			const fetched = await guildsApi.getUserGuilds();
+			const fetched: ApiGuild[] = await guildsApi.getUserGuilds();
 			guilds.value = fetched.map((g) => ({
 				...g,
 				icon: g.icon ?? null,
-				hasBubbles: true, // placeholder until API provides flag
+				hasBubbles: true,
 			}));
 		} catch (error) {
 			console.error('Failed to fetch guilds:', error);
@@ -46,29 +39,23 @@ export const useGuildsStore = defineStore('guilds', () => {
 
 	const fetchGuildStats = async (guildId: string) => {
 		try {
-			const { data } = await apiClient().get(`/guilds/${guildId}`);
-			if (data && data.memberCount) {
-				currentGuildStats.value = {
-					memberCount: data.memberCount,
-					onlineMembers: data.onlineCount ?? 0,
-					channelCount: 0,
-					roleCount: 0,
-					activeModules: [],
-				};
-				return;
-			}
+			const data: ApiGuild = await guildsApi.getGuild(guildId);
+			currentGuild.value = {
+				...data,
+				icon: data.icon ?? null,
+				hasBubbles: true,
+			};
+			currentGuildStats.value = {
+				memberCount: data.memberCount ?? 0,
+				onlineMembers: data.onlineCount ?? 0,
+				channelCount: 0,
+				roleCount: 0,
+				activeModules: [],
+			};
 		} catch (error) {
 			console.error('Failed to fetch guild stats:', error);
+			currentGuildStats.value = null;
 		}
-
-		// Fallback for non-demo guilds if API fails, to ensure UI is populated for the demo.
-		currentGuildStats.value = {
-			memberCount: 12346,
-			onlineMembers: 3421,
-			channelCount: 42,
-			roleCount: 28,
-			activeModules: ['Moderation', 'Tickets', 'Leveling'],
-		};
 	};
 
 	const setCurrentGuild = (guild: Guild) => {

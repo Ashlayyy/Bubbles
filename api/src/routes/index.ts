@@ -29,35 +29,35 @@ import healthRoutes from './health.js';
 const router = Router();
 
 // API Routes
-router.use('/api', authRoutes);
-router.use('/api', guildRoutes);
-router.use('/api', moderationRoutes);
-router.use('/api', musicRoutes);
-router.use('/api', loggingRoutes);
-router.use('/api', analyticsRoutes);
-router.use('/api', starboardRoutes);
-router.use('/api', customCommandsRoutes);
-router.use('/api', levelingRoutes);
-router.use('/api', reactionRolesRoutes);
-router.use('/api', ticketsRoutes);
-router.use('/api', welcomeRoutes);
-router.use('/api', appealsRoutes);
-router.use('/api', remindersRoutes);
-router.use('/api', applicationsRoutes);
-router.use('/api', automationRoutes);
-router.use('/api', entertainmentRoutes);
-router.use('/api', webhooksRoutes);
-router.use('/api/messages', messagesRoutes);
-router.use('/api/channels', channelsRoutes);
-router.use('/api/roles', rolesRoutes);
-router.use('/api/invites', invitesRoutes);
-router.use('/api/audit', auditRoutes);
-router.use('/api/hybrid', hybridRoutes);
-router.use('/api/health', healthRoutes);
+router.use('/auth', authRoutes);
+router.use('/guilds', guildRoutes);
+router.use('/:guildId/moderation', moderationRoutes);
+router.use('/:guildId/logging', loggingRoutes);
+router.use('/:guildId/reaction-roles', reactionRolesRoutes);
+router.use('/:guildId/custom-commands', customCommandsRoutes);
+router.use('/:guildId/leveling', levelingRoutes);
+router.use('/:guildId/tickets', ticketsRoutes);
+router.use('/:guildId/welcome', welcomeRoutes);
+router.use('/music', musicRoutes);
+router.use('/analytics', analyticsRoutes);
+router.use('/starboard', starboardRoutes);
+router.use('/appeals', appealsRoutes);
+router.use('/reminders', remindersRoutes);
+router.use('/applications', applicationsRoutes);
+router.use('/automation', automationRoutes);
+router.use('/entertainment', entertainmentRoutes);
+router.use('/webhooks', webhooksRoutes);
+router.use('/messages', messagesRoutes);
+router.use('/channels', channelsRoutes);
+router.use('/roles', rolesRoutes);
+router.use('/invites', invitesRoutes);
+router.use('/audit', auditRoutes);
+router.use('/hybrid', hybridRoutes);
+router.use('/health', healthRoutes);
 
 // Development routes (only in development)
 if (process.env.NODE_ENV === 'development') {
-	router.use('/api/dev', devRoutes);
+	router.use('/dev', devRoutes);
 }
 
 export default router;

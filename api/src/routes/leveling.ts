@@ -12,7 +12,6 @@ import {
 } from '../controllers/levelingController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import {
-	validateGuildId,
 	validateGuildAccess,
 	validateLevelingSettings,
 	validatePagination,
@@ -24,19 +23,14 @@ import {
 } from '../middleware/rateLimiting.js';
 import { requireAdminPermissions } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // All leveling routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/leveling',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+router.use(authenticateToken, validateGuildAccess);
 
 // Get leveling settings
 router.get(
-	'/guilds/:guildId/leveling/settings',
+	'/settings',
 	guildLevelingRateLimit,
 	requireAdminPermissions,
 	getLevelingSettings
@@ -44,7 +38,7 @@ router.get(
 
 // Update leveling settings
 router.put(
-	'/guilds/:guildId/leveling/settings',
+	'/settings',
 	validateLevelingSettings,
 	levelingRateLimit,
 	requireAdminPermissions,
@@ -53,7 +47,7 @@ router.put(
 
 // Get leaderboard
 router.get(
-	'/guilds/:guildId/leveling/leaderboard',
+	'/leaderboard',
 	validatePagination,
 	guildLevelingRateLimit,
 	getLeaderboard
@@ -61,51 +55,25 @@ router.get(
 
 // Get leveling statistics
 router.get(
-	'/guilds/:guildId/leveling/statistics',
+	'/statistics',
 	guildLevelingRateLimit,
 	requireAdminPermissions,
 	getLevelingStatistics
 );
 
-// Get user level info
-router.get(
-	'/guilds/:guildId/leveling/users/:userId',
-	validateUserId,
-	guildLevelingRateLimit,
-	getUserLevel
-);
+// User-specific routes
+const userRouter = Router({ mergeParams: true });
+router.use('/users/:userId', validateUserId, userRouter);
 
-// Set user level/XP (admin only)
-router.put(
-	'/guilds/:guildId/leveling/users/:userId',
-	validateUserId,
-	levelingRateLimit,
-	requireAdminPermissions,
-	setUserLevel
-);
+userRouter.get('/', guildLevelingRateLimit, getUserLevel);
+userRouter.put('/', levelingRateLimit, requireAdminPermissions, setUserLevel);
 
-// Get level rewards
-router.get(
-	'/guilds/:guildId/leveling/rewards',
-	guildLevelingRateLimit,
-	requireAdminPermissions,
-	getLevelRewards
-);
+// Level rewards
+const rewardsRouter = Router({ mergeParams: true });
+router.use('/rewards', requireAdminPermissions, rewardsRouter);
 
-// Add level reward
-router.post(
-	'/guilds/:guildId/leveling/rewards',
-	levelingRateLimit,
-	requireAdminPermissions,
-	addLevelReward
-);
-
-// Remove level reward
-router.delete(
-	'/guilds/:guildId/leveling/rewards/:rewardId',
-	levelingRateLimit,
-	requireAdminPermissions,
-	removeLevelReward
-);
+rewardsRouter.get('/', guildLevelingRateLimit, getLevelRewards);
+rewardsRouter.post('/', levelingRateLimit, addLevelReward);
+rewardsRouter.delete('/:rewardId', levelingRateLimit, removeLevelReward);
 
 export default router;

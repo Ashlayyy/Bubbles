@@ -22,46 +22,32 @@ import { requireAdminPermissions } from '../middleware/permissions.js';
 
 const router = Router();
 
-// User guilds
-router.get(
-	'/users/@me/guilds',
-	authenticateToken,
-	generalRateLimit,
-	getUserGuilds
-);
+// Base /guilds route
+router.get('/', authenticateToken, generalRateLimit, getUserGuilds);
 
 // Guild-specific routes (all require guild access validation)
-router.use('/guilds/:guildId', validateGuildId, validateGuildAccess);
+const guildRouter = Router({ mergeParams: true });
+router.use('/:guildId', validateGuildId, validateGuildAccess, guildRouter);
 
-router.get(
-	'/guilds/:guildId',
-	authenticateToken,
-	generalRateLimit,
-	getGuildInfo
-);
+guildRouter.get('/', authenticateToken, generalRateLimit, getGuildInfo);
 
 // TODO: Implement getDashboardStats function
 // router.get(
-// 	'/guilds/:guildId/dashboard',
+// 	'/dashboard',
 // 	authenticateToken,
 // 	guildAnalyticsRateLimit,
 // 	getDashboardStats
 // );
 
-router.get(
-	'/guilds/:guildId/channels',
+guildRouter.get(
+	'/channels',
 	authenticateToken,
 	generalRateLimit,
 	getGuildChannels
 );
-router.get(
-	'/guilds/:guildId/roles',
-	authenticateToken,
-	generalRateLimit,
-	getGuildRoles
-);
-router.get(
-	'/guilds/:guildId/members',
+guildRouter.get('/roles', authenticateToken, generalRateLimit, getGuildRoles);
+guildRouter.get(
+	'/members',
 	authenticateToken,
 	validatePagination,
 	generalRateLimit,
@@ -70,50 +56,38 @@ router.get(
 
 // TODO: Implement getGuildEmojis function
 // router.get(
-// 	'/guilds/:guildId/emojis',
+// 	'/emojis',
 // 	authenticateToken,
 // 	generalRateLimit,
 // 	getGuildEmojis
 // );
 
 // Server settings
-router.get(
-	'/guilds/:guildId/settings',
-	validateGuildId,
+guildRouter.get(
+	'/settings',
 	authenticateToken,
-	validateGuildAccess,
-	generalRateLimit,
 	requireAdminPermissions,
 	getServerSettings
 );
 
-router.put(
-	'/guilds/:guildId/settings',
-	validateGuildId,
+guildRouter.put(
+	'/settings',
 	authenticateToken,
-	validateGuildAccess,
-	generalRateLimit,
 	requireAdminPermissions,
 	updateServerSettings
 );
 
 // TODO: Implement backup/restore functions
 // router.get(
-// 	'/guilds/:guildId/settings/backup',
-// 	validateGuildId,
+// 	'/settings/backup',
 // 	authenticateToken,
-// 	validateGuildAccess,
-// 	generalRateLimit,
 // 	requireAdminPermissions,
 // 	createSettingsBackup
 // );
 
 // router.post(
-// 	'/guilds/:guildId/settings/restore',
-// 	validateGuildId,
+// 	'/settings/restore',
 // 	authenticateToken,
-// 	validateGuildAccess,
-// 	generalRateLimit,
 // 	requireAdminPermissions,
 // 	restoreFromBackup
 // );

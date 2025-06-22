@@ -1,6 +1,7 @@
-import express from 'express';
+import express, { RequestHandler } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import session from 'express-session';
 import { createServer } from 'http';
 import { createLogger } from './types/shared.js';
 import { config } from './config/index.js';
@@ -33,6 +34,19 @@ app.use(
 );
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Session middleware
+app.use(
+	session({
+		secret: config.session.secret,
+		resave: false,
+		saveUninitialized: false,
+		cookie: {
+			secure: config.nodeEnv === 'production',
+			maxAge: 8 * 60 * 60 * 1000, // 8 hours
+		},
+	}) as unknown as RequestHandler
+);
 
 // Add monitoring middleware for integration tracking
 const { monitoringMiddleware } = await import('./middleware/monitoring.js');

@@ -1,18 +1,19 @@
 import { ref } from 'vue';
 import type { AuditLogEntry } from '@/types/audit-log';
-import { moderationApi } from '@/lib/endpoints';
+import { moderationEndpoints } from '@/lib/endpoints/moderation';
 import { useGuildsStore } from '@/stores/guilds';
 
 export function useModerationCases() {
 	const moderationCases = ref<AuditLogEntry[]>([]);
 	const selectedCase = ref<AuditLogEntry | null>(null);
+	const guildStore = useGuildsStore();
 
 	const fetchCases = async () => {
-		// eslint-disable-next-line react-hooks/rules-of-hooks
-		const guildStore = useGuildsStore();
 		if (!guildStore.currentGuild) return;
 		try {
-			const { data } = await moderationApi.getCases(guildStore.currentGuild.id);
+			const { data } = await moderationEndpoints.getCases(
+				guildStore.currentGuild.id
+			);
 			// Assume API returns array of AuditLogEntry compatible objects
 			moderationCases.value = data as AuditLogEntry[];
 		} catch (e) {

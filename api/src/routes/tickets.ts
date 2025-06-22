@@ -12,7 +12,6 @@ import {
 } from '../controllers/ticketsController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import {
-	validateGuildId,
 	validateGuildAccess,
 	validateTicketSettings,
 	validatePagination,
@@ -26,77 +25,54 @@ import {
 	requireModerationPermissions,
 } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // All ticket routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/tickets',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+router.use(authenticateToken, validateGuildAccess);
 
-// Settings
+// Settings (Admin)
 router.get(
-	'/guilds/:guildId/tickets/settings',
+	'/settings',
 	guildTicketsRateLimit,
 	requireAdminPermissions,
 	getTicketSettings
 );
 
 router.put(
-	'/guilds/:guildId/tickets/settings',
+	'/settings',
 	validateTicketSettings,
 	ticketsRateLimit,
 	requireAdminPermissions,
 	updateTicketSettings
 );
 
-// Tickets
+// Statistics (Admin)
 router.get(
-	'/guilds/:guildId/tickets',
+	'/statistics',
+	guildTicketsRateLimit,
+	requireAdminPermissions,
+	getTicketStatistics
+);
+
+// All tickets (Moderator)
+router.get(
+	'/',
 	validatePagination,
 	guildTicketsRateLimit,
 	requireModerationPermissions,
 	getTickets
 );
 
-router.get(
-	'/guilds/:guildId/tickets/:ticketId',
-	guildTicketsRateLimit,
-	requireModerationPermissions,
-	getTicket
-);
+// Create a ticket (Any authenticated user)
+router.post('/', ticketsRateLimit, createTicket);
 
-router.post('/guilds/:guildId/tickets', ticketsRateLimit, createTicket);
+// Individual ticket routes (Moderator)
+const ticketRouter = Router({ mergeParams: true });
+router.use('/:ticketId', requireModerationPermissions, ticketRouter);
 
-router.put(
-	'/guilds/:guildId/tickets/:ticketId',
-	ticketsRateLimit,
-	requireModerationPermissions,
-	updateTicket
-);
-
-router.post(
-	'/guilds/:guildId/tickets/:ticketId/close',
-	ticketsRateLimit,
-	requireModerationPermissions,
-	closeTicket
-);
-
-router.post(
-	'/guilds/:guildId/tickets/:ticketId/claim',
-	ticketsRateLimit,
-	requireModerationPermissions,
-	claimTicket
-);
-
-// Statistics
-router.get(
-	'/guilds/:guildId/tickets/statistics',
-	guildTicketsRateLimit,
-	requireAdminPermissions,
-	getTicketStatistics
-);
+ticketRouter.get('/', guildTicketsRateLimit, getTicket);
+ticketRouter.put('/', ticketsRateLimit, updateTicket);
+ticketRouter.post('/close', ticketsRateLimit, closeTicket);
+ticketRouter.post('/claim', ticketsRateLimit, claimTicket);
 
 export default router;

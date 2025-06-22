@@ -1,82 +1,98 @@
-
-import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { defineStore } from 'pinia';
+import { ref, watch } from 'vue';
+import { welcomeEndpoints } from '@/lib/endpoints/welcome';
+import { useGuildsStore } from './guilds';
 
 export interface WelcomeSettings {
-  enabled: boolean
-  channelId: string
-  channelName: string
-  messages: string[]
-  embedEnabled: boolean
-  embedTitle: string
-  embedDescription: string
-  embedColor: string
-  embedThumbnail: string
-  embedImage: string
-  embedFooter: string
-  pingUser: boolean
-  deleteAfter: number
-  dmUser: boolean
-  dmMessage: string
-  autoRole: string[]
+	enabled: boolean;
+	channelId: string;
+	channelName: string;
+	messages: string[];
+	embedEnabled: boolean;
+	embedTitle: string;
+	embedDescription: string;
+	embedColor: string;
+	embedThumbnail: string;
+	embedImage: string;
+	embedFooter: string;
+	pingUser: boolean;
+	deleteAfter: number;
+	dmUser: boolean;
+	dmMessage: string;
+	autoRole: string[];
 }
 
 export interface LeaveSettings {
-  enabled: boolean
-  channelId: string
-  channelName: string
-  messages: string[]
-  embedEnabled: boolean
-  embedTitle: string
-  embedDescription: string
-  embedColor: string
-  embedFooter: string
+	enabled: boolean;
+	channelId: string;
+	channelName: string;
+	messages: string[];
+	embedEnabled: boolean;
+	embedTitle: string;
+	embedDescription: string;
+	embedColor: string;
+	embedFooter: string;
 }
 
 export const useWelcomeStore = defineStore('welcome', () => {
-  const welcomeSettings = ref<WelcomeSettings>({
-    enabled: true,
-    channelId: '123456789',
-    channelName: 'welcome',
-    messages: ['Welcome to [[.SERVER.NAME]], [[.USER]]! 🎉'],
-    embedEnabled: true,
-    embedTitle: 'Welcome!',
-    embedDescription: 'Welcome to [[.SERVER.NAME]], [[.USER]]! Please read the rules and enjoy your stay!',
-    embedColor: '#5865F2',
-    embedThumbnail: '',
-    embedImage: '',
-    embedFooter: 'Member #[[.MEMBER.COUNT]]',
-    pingUser: true,
-    deleteAfter: 0,
-    dmUser: false,
-    dmMessage: 'Welcome to [[.SERVER.NAME]]! Please read the rules.',
-    autoRole: []
-  })
+	const welcomeSettings = ref<WelcomeSettings | null>(null);
+	const leaveSettings = ref<LeaveSettings | null>(null);
+	const guildsStore = useGuildsStore();
 
-  const leaveSettings = ref<LeaveSettings>({
-    enabled: true,
-    channelId: '123456789',
-    channelName: 'welcome',
-    messages: ['[[.USER]] has left the server.'],
-    embedEnabled: true,
-    embedTitle: 'Goodbye!',
-    embedDescription: '[[.USER]] has left [[.SERVER.NAME]].',
-    embedColor: '#FF5733',
-    embedFooter: 'We now have [[.MEMBER.COUNT]] members'
-  })
+	const fetchSettings = async (guildId: string) => {
+		if (!guildId) return;
+		try {
+			const { data } = await welcomeEndpoints.getSettings(guildId);
+			welcomeSettings.value = data.welcome;
+			leaveSettings.value = data.leave;
+		} catch (error) {
+			console.error('Failed to fetch welcome settings:', error);
+			welcomeSettings.value = null;
+			leaveSettings.value = null;
+		}
+	};
 
-  const updateWelcomeSettings = (settings: Partial<WelcomeSettings>) => {
-    welcomeSettings.value = { ...welcomeSettings.value, ...settings }
-  }
+	const saveSettings = async () => {
+		const guildId = guildsStore.selectedGuild?.id;
+		if (!guildId) throw new Error('No guild selected');
 
-  const updateLeaveSettings = (settings: Partial<LeaveSettings>) => {
-    leaveSettings.value = { ...leaveSettings.value, ...settings }
-  }
+		const payload = {
+			welcome: welcomeSettings.value,
+			leave: leaveSettings.value,
+		};
 
-  return {
-    welcomeSettings,
-    leaveSettings,
-    updateWelcomeSettings,
-    updateLeaveSettings
-  }
-})
+		await welcomeEndpoints.updateSettings(guildId, payload);
+	};
+
+	watch(
+		() => guildsStore.selectedGuild,
+		(newGuild) => {
+			if (newGuild) {
+				fetchSettings(newGuild.id);
+			} else {
+				welcomeSettings.value = null;
+				leaveSettings.value = null;
+			}
+		},
+		{ immediate: true }
+	);
+
+	const updateWelcomeSettings = (settings: Partial<WelcomeSettings>) => {
+		if (!welcomeSettings.value) return;
+		welcomeSettings.value = { ...welcomeSettings.value, ...settings };
+	};
+
+	const updateLeaveSettings = (settings: Partial<LeaveSettings>) => {
+		if (!leaveSettings.value) return;
+		leaveSettings.value = { ...leaveSettings.value, ...settings };
+	};
+
+	return {
+		welcomeSettings,
+		leaveSettings,
+		fetchSettings,
+		saveSettings,
+		updateWelcomeSettings,
+		updateLeaveSettings,
+	};
+});
