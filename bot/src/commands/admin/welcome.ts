@@ -142,7 +142,7 @@ async function handleSetup(client: Client, interaction: GuildChatInputCommandInt
 
     const embed = new EmbedBuilder().setColor(0x2ecc71).setTitle("✅ Welcome System Configured").setTimestamp();
 
-    const fields = [];
+    const fields: { name: string; value: string; inline: boolean }[] = [];
 
     if (welcomeChannel) {
       fields.push({
@@ -222,7 +222,7 @@ async function handleStatus(client: Client, interaction: GuildChatInputCommandIn
 
     const embed = new EmbedBuilder().setColor(0x3498db).setTitle("📊 Welcome System Status").setTimestamp();
 
-    const fields = [];
+    const fields: { name: string; value: string; inline: boolean }[] = [];
 
     // Show channel configuration from database
     fields.push({

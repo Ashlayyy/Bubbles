@@ -281,10 +281,11 @@ async function handleRerollGiveaway(client: Client, interaction: ChatInputComman
     }
 
     // Select new winners
-    const newWinners = selectRandomWinners(
-      eligibleEntries.map((e: any) => e.userId),
-      winnersToSelect
-    );
+    interface GiveawayEntry {
+      userId: string;
+    }
+    const entryUserIds = (eligibleEntries as GiveawayEntry[]).map((e) => e.userId);
+    const newWinners = selectRandomWinners(entryUserIds, winnersToSelect);
 
     // Update database
     await prisma.giveaway.update({
@@ -342,7 +343,7 @@ async function handleListGiveaways(client: Client, interaction: ChatInputCommand
   if (!interaction.guild) return;
 
   try {
-    const giveaways = await prisma.giveaway.findMany({
+    const giveaways: Giveaway[] = await prisma.giveaway.findMany({
       where: {
         guildId: interaction.guild.id,
         isActive: true,
@@ -359,7 +360,7 @@ async function handleListGiveaways(client: Client, interaction: ChatInputCommand
       embed.setDescription("No active giveaways in this server.");
     } else {
       const giveawayList = giveaways
-        .map((g: any) => {
+        .map((g) => {
           const endsTimestamp = Math.floor(g.endsAt.getTime() / 1000);
           return `**${g.prize}** (ID: \`${g.giveawayId}\`)\n🏆 ${g.winnersCount} winner(s) • 👥 ${g.totalEntries} entries\n⏰ Ends <t:${endsTimestamp}:R>`;
         })
@@ -404,7 +405,7 @@ function createGiveawayEmbed(giveaway: Giveaway, hostAvatarURL: string): EmbedBu
   }
 
   // Add requirements
-  const requirements = [];
+  const requirements: string[] = [];
   if (giveaway.requiredRoles.length > 0) {
     requirements.push(`🎭 Required role: <@&${giveaway.requiredRoles[0]}>`);
   }

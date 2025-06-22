@@ -14,6 +14,8 @@ export const defaults: Omit<GuildConfig, "guildId" | "id"> = {
   goodbyeChannelId: null,
   welcomeEnabled: true,
   goodbyeEnabled: true,
+  moderatorRoleIds: [],
+  welcomeStats: {},
   ticketChannelId: null,
   ticketCategoryId: null,
   useTicketThreads: true,
@@ -165,4 +167,20 @@ export async function setGoodbyeChannel(guildId: string, channelId: string): Pro
   return await updateGuildConfig(guildId, { goodbyeChannelId: channelId });
 }
 
-export default { defaults, descriptions, getGuildConfig, updateGuildConfig, deleteGuildConfig };
+interface GuildConfigModule {
+  defaults: typeof defaults;
+  descriptions: typeof descriptions;
+  getGuildConfig: typeof getGuildConfig;
+  updateGuildConfig: typeof updateGuildConfig;
+  deleteGuildConfig: typeof deleteGuildConfig;
+}
+
+const GuildConfigModule: GuildConfigModule = {
+  defaults,
+  descriptions,
+  getGuildConfig,
+  updateGuildConfig,
+  deleteGuildConfig,
+};
+
+export default GuildConfigModule;

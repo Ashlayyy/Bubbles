@@ -1,8 +1,13 @@
 // Database client and types for shared use
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+
+// Derive the accepted options type from the PrismaClient constructor so that the
+// code stays compatible across Prisma major versions (the public name of this
+// type has changed between versions).
+export type PrismaClientOptions = ConstructorParameters<typeof PrismaClient>[0];
 
 // Create and export a configured Prisma client instance
-export const createPrismaClient = (options?: Prisma.PrismaClientOptions) => {
+export const createPrismaClient = (options?: PrismaClientOptions) => {
 	return new PrismaClient(options);
 };
 

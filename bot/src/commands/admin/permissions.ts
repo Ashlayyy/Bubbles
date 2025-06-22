@@ -30,6 +30,13 @@ interface AuditLogEntry {
   reason?: string;
 }
 
+interface AccessResult {
+  command: string;
+  category: string;
+  access: boolean;
+  reason?: string;
+}
+
 export default new Command(
   new SlashCommandBuilder()
     .setName("permissions")
@@ -256,7 +263,7 @@ export default new Command(
 
           // Check access to different command categories
           const testCommands = ["ping", "help", "clear", "embed", "reaction-roles"];
-          const accessResults = [];
+          const accessResults: AccessResult[] = [];
 
           for (const commandName of testCommands) {
             const command = client.commands.get(commandName);

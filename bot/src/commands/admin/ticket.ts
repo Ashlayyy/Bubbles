@@ -1,5 +1,6 @@
 import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
@@ -13,6 +14,7 @@ import {
   type TextChannel,
 } from "discord.js";
 
+import type { Ticket as DbTicket } from "@shared/database";
 import { getGuildConfig } from "../../database/GuildConfig.js";
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
@@ -127,18 +129,16 @@ async function createTicket(client: Client, interaction: ChatInputCommandInterac
       (channel) => channel.type === ChannelType.GuildCategory && channel.name.toLowerCase().includes("ticket")
     ) as CategoryChannel | undefined;
 
-    if (!ticketsCategory) {
-      ticketsCategory = await interaction.guild.channels.create({
-        name: "🎫│Support Tickets",
-        type: ChannelType.GuildCategory,
-        permissionOverwrites: [
-          {
-            id: interaction.guild.roles.everyone.id,
-            deny: [PermissionFlagsBits.ViewChannel],
-          },
-        ],
-      });
-    }
+    ticketsCategory ??= await interaction.guild.channels.create({
+      name: "🎫│Support Tickets",
+      type: ChannelType.GuildCategory,
+      permissionOverwrites: [
+        {
+          id: interaction.guild.roles.everyone.id,
+          deny: [PermissionFlagsBits.ViewChannel],
+        },
+      ],
+    });
 
     // Create ticket channel with enhanced naming
     const sanitizedUsername = sanitizeUsername(interaction.user.username);
@@ -408,7 +408,7 @@ async function claimTicket(client: Client, interaction: ChatInputCommandInteract
       return;
     }
 
-    let ticket;
+    let ticket: DbTicket | null;
 
     // If ticket number provided, find by number
     if (ticketNumber) {
@@ -702,7 +702,7 @@ async function getTicketInfo(client: Client, interaction: ChatInputCommandIntera
   if (!interaction.guild) return;
 
   const ticketId = interaction.options.getString("ticket-id");
-  let ticket;
+  let ticket: DbTicket | null;
 
   if (ticketId) {
     // Look up by ID or number
@@ -787,7 +787,7 @@ async function generateTranscript(client: Client, interaction: ChatInputCommandI
   const format = interaction.options.getString("format") as "html" | "txt" | "both" | null;
   const theme = interaction.options.getString("theme") as "light" | "dark" | null;
 
-  let ticket;
+  let ticket: DbTicket | null;
 
   if (ticketId) {
     // Look up by ID or number
@@ -831,7 +831,7 @@ async function generateTranscript(client: Client, interaction: ChatInputCommandI
       includeEmbeds: true,
     });
 
-    const files = [];
+    const files: AttachmentBuilder[] = [];
     if (result.html) files.push(result.html);
     if (result.txt) files.push(result.txt);
 

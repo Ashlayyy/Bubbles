@@ -593,7 +593,7 @@ function createPollEmbed(poll: PollData, ended = false): EmbedBuilder {
   embed.setDescription(optionsText || "No options available");
 
   // Add poll info
-  const infoFields = [];
+  const infoFields: { name: string; value: string; inline: boolean }[] = [];
 
   infoFields.push({
     name: "📊 Total Votes",

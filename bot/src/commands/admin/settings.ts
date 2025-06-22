@@ -202,10 +202,13 @@ export default new Command(
   }
 );
 
+/** Basic JSON object type (shallow) */
+type JsonObject = Record<string, unknown>;
+
 interface SettingData {
   /** Name of setting in camel-case */
   name: string;
-  value: number | string | boolean | null;
+  value: number | string | boolean | JsonObject | null;
 }
 
 interface SettingDisplay {
@@ -220,23 +223,13 @@ async function displayCurrentSettings(client: Client, interaction: GuildChatInpu
   const currentGuildConfig = await getGuildConfig(interaction.guildId);
 
   const settingsFieldArr: EmbedField[] = guildConfigSettings.map((setting) => {
-    let currentValue: number | string | boolean | null;
+    let currentValue: number | string | boolean | JsonObject | null;
     const value = currentGuildConfig[setting as keyof typeof guildConfigDefaults];
 
     if (Array.isArray(value)) {
-      const array = value;
-      currentValue = "[ ";
-
-      for (let i = 0; i < array.length; i++) {
-        currentValue = currentValue + array[i];
-        if (i !== array.length - 1) {
-          currentValue = currentValue + ", ";
-        }
-      }
-
-      currentValue = currentValue + " ]";
+      currentValue = `[ ${value.map((v) => String(v)).join(", ")} ]`;
     } else {
-      currentValue = value;
+      currentValue = value as number | string | boolean | JsonObject | null;
     }
 
     const settingData: SettingData = {
@@ -477,7 +470,10 @@ function getSettingDisplayValue(settingData: SettingData): string {
     }
 
     default: {
-      return `\`${settingData.value.toString()}\``;
+      if (typeof settingData.value === "object") {
+        return `\`${JSON.stringify(settingData.value)}\``;
+      }
+      return `\`${String(settingData.value)}\``;
     }
   }
 }

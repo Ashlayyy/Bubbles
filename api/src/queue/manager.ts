@@ -40,7 +40,10 @@ export class EnhancedQueueManager {
 	private redisConnection: any;
 	private isRedisConnected = false;
 	private connectionAttempts = 0;
-	private maxConnectionAttempts = 5;
+	private readonly maxConnectionAttempts = 5;
+	// Base delay for the first reconnect attempt (ms) – doubles each retry until capped
+	private static readonly BASE_RETRY_DELAY_MS = 1_000; // 1 second
+	private static readonly MAX_RETRY_DELAY_MS = 30_000; // 30 seconds
 
 	// Queue priority levels
 	static readonly PRIORITY_LEVELS = {
@@ -79,6 +82,29 @@ export class EnhancedQueueManager {
 				enableReadyCheck: true,
 				connectTimeout: 5000,
 				commandTimeout: 5000,
+				/*
+				 * Custom retry strategy – exponential back-off capped at 5 attempts.
+				 * Returning `null` tells ioredis to stop trying and emit an error.
+				 */
+				retryStrategy: (attempt: number) => {
+					// track attempts for health reporting
+					this.connectionAttempts = attempt;
+
+					if (attempt > this.maxConnectionAttempts) {
+						logger.error(
+							`Redis: exceeded ${this.maxConnectionAttempts} reconnection attempts – giving up.`
+						);
+						return null; // stop reconnecting
+					}
+
+					const delay = Math.min(
+						EnhancedQueueManager.BASE_RETRY_DELAY_MS * 2 ** (attempt - 1),
+						EnhancedQueueManager.MAX_RETRY_DELAY_MS
+					);
+
+					logger.warn(`Redis reconnect attempt #${attempt} in ${delay} ms`);
+					return delay;
+				},
 			});
 
 			this.redisConnection.on('connect', () => {
@@ -90,7 +116,6 @@ export class EnhancedQueueManager {
 			this.redisConnection.on('error', (error: Error) => {
 				logger.warn('Redis connection error:', error.message);
 				this.isRedisConnected = false;
-				this.connectionAttempts++;
 			});
 
 			this.redisConnection.on('close', () => {

@@ -209,7 +209,7 @@ export default new Command(
       });
 
       // Add filter information
-      const filters = [];
+      const filters: string[] = [];
       if (targetUser) filters.push(`User: ${targetUser.tag}`);
       if (contains) filters.push(`Contains: "${contains}"`);
       if (botsOnly) filters.push("Bots only");

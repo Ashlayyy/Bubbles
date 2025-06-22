@@ -21,7 +21,8 @@
 			"@shared/utils": ["shared/src/utils/*"],
 			"@bot/*": ["bot/src/*"],
 			"@api/*": ["api/src/*"]
-		}
+		},
+		"noImplicitAny": false
 	},
 	"include": [],
 	"exclude": ["node_modules", "**/node_modules", "**/dist", "**/build"],

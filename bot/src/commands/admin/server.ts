@@ -186,7 +186,7 @@ export default new Command(
             }
           }
 
-          const fields = [];
+          const fields: { name: string; value: string; inline: boolean }[] = [];
           for (const [cat, cmds] of commandsByCategory) {
             const commandList = cmds
               .sort((a, b) => a.builder.name.localeCompare(b.builder.name))

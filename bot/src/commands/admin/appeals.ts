@@ -154,7 +154,7 @@ export default new Command(
             "appealReceived" in settings &&
             (settings.appealReceived ?? settings.appealApproved ?? settings.appealDenied)
           ) {
-            const messages = [];
+            const messages: string[] = [];
             if (settings.appealReceived) messages.push(`**Received:** ${settings.appealReceived}`);
             if (settings.appealApproved) messages.push(`**Approved:** ${settings.appealApproved}`);
             if (settings.appealDenied) messages.push(`**Denied:** ${settings.appealDenied}`);
