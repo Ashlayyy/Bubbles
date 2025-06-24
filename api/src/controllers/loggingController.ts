@@ -106,7 +106,7 @@ export const updateLoggingSettings = async (
 		const prisma = getPrismaClient();
 
 		// Convert events back to enabledLogTypes array
-		const enabledLogTypes = [];
+		const enabledLogTypes: string[] = [];
 		if (settings.events) {
 			Object.entries(settings.events).forEach(([event, enabled]) => {
 				if (enabled) enabledLogTypes.push(event);
@@ -186,7 +186,7 @@ export const getAuditLogs = async (req: AuthRequest, res: Response) => {
 			prisma.moderationLog.count({ where }),
 		]);
 
-		const formattedLogs = logs.map((log) => ({
+		const formattedLogs = logs.map((log: any) => ({
 			id: log.id,
 			type: log.logType,
 			timestamp: log.timestamp.getTime(),
@@ -312,7 +312,7 @@ export const getLogStatistics = async (req: AuthRequest, res: Response) => {
 
 		// Process daily activity into proper format
 		const dailyActivityMap = new Map();
-		dailyActivity.forEach((day) => {
+		dailyActivity.forEach((day: any) => {
 			const dateKey = day.timestamp.toISOString().split('T')[0];
 			dailyActivityMap.set(
 				dateKey,
@@ -334,7 +334,7 @@ export const getLogStatistics = async (req: AuthRequest, res: Response) => {
 
 		const eventBreakdown: any = {};
 		let totalEvents = 0;
-		logCounts.forEach((count) => {
+		logCounts.forEach((count: any) => {
 			eventBreakdown[count.logType] = count._count.logType;
 			totalEvents += count._count.logType;
 		});

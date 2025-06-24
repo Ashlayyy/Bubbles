@@ -26,97 +26,53 @@ import {
 } from '../middleware/rateLimiting.js';
 import { requireMusicPermissions } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // All music routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/music',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
 // Music player status
-router.get('/guilds/:guildId/music/status', generalRateLimit, getMusicStatus);
+router.get('/status', generalRateLimit, getMusicStatus);
 
 // Music playback controls
 router.post(
-	'/guilds/:guildId/music/play',
+	'/play',
 	validateMusicAction,
 	generalRateLimit,
 	requireMusicPermissions,
 	playMusic
 );
 
-router.post(
-	'/guilds/:guildId/music/pause',
-	generalRateLimit,
-	requireMusicPermissions,
-	pauseMusic
-);
+router.post('/pause', generalRateLimit, requireMusicPermissions, pauseMusic);
 
-router.post(
-	'/guilds/:guildId/music/resume',
-	generalRateLimit,
-	requireMusicPermissions,
-	resumeMusic
-);
+router.post('/resume', generalRateLimit, requireMusicPermissions, resumeMusic);
 
-router.post(
-	'/guilds/:guildId/music/skip',
-	generalRateLimit,
-	requireMusicPermissions,
-	skipTrack
-);
+router.post('/skip', generalRateLimit, requireMusicPermissions, skipTrack);
 
-router.post(
-	'/guilds/:guildId/music/stop',
-	generalRateLimit,
-	requireMusicPermissions,
-	stopMusic
-);
+router.post('/stop', generalRateLimit, requireMusicPermissions, stopMusic);
 
 // Queue management
-router.get('/guilds/:guildId/music/queue', generalRateLimit, getQueue);
+router.get('/queue', generalRateLimit, getQueue);
 
-router.delete(
-	'/guilds/:guildId/music/queue',
-	generalRateLimit,
-	requireMusicPermissions,
-	clearQueue
-);
+router.delete('/queue', generalRateLimit, requireMusicPermissions, clearQueue);
 
 router.post(
-	'/guilds/:guildId/music/queue/shuffle',
+	'/queue/shuffle',
 	generalRateLimit,
 	requireMusicPermissions,
 	shuffleQueue
 );
 
 // Player controls
-router.put(
-	'/guilds/:guildId/music/volume',
-	generalRateLimit,
-	requireMusicPermissions,
-	setVolume
-);
+router.put('/volume', generalRateLimit, requireMusicPermissions, setVolume);
 
-router.put(
-	'/guilds/:guildId/music/repeat',
-	generalRateLimit,
-	requireMusicPermissions,
-	setRepeatMode
-);
+router.put('/repeat', generalRateLimit, requireMusicPermissions, setRepeatMode);
 
 // Settings
-router.get(
-	'/guilds/:guildId/music/settings',
-	generalRateLimit,
-	getMusicSettings
-);
+router.get('/settings', generalRateLimit, getMusicSettings);
 
 router.put(
-	'/guilds/:guildId/music/settings',
+	'/settings',
 	configRateLimit,
 	requireMusicPermissions,
 	updateMusicSettings

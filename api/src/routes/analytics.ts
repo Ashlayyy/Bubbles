@@ -18,19 +18,14 @@ import {
 } from '../middleware/rateLimiting.js';
 import { requireAdminPermissions } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // All analytics routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/analytics',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
 // Overview analytics
 router.get(
-	'/guilds/:guildId/analytics/overview',
+	'/overview',
 	guildAnalyticsRateLimit,
 	requireAdminPermissions,
 	getAnalyticsOverview
@@ -38,7 +33,7 @@ router.get(
 
 // Member analytics
 router.get(
-	'/guilds/:guildId/analytics/members',
+	'/members',
 	guildAnalyticsRateLimit,
 	requireAdminPermissions,
 	getMemberAnalytics
@@ -46,7 +41,7 @@ router.get(
 
 // Message analytics
 router.get(
-	'/guilds/:guildId/analytics/messages',
+	'/messages',
 	guildAnalyticsRateLimit,
 	requireAdminPermissions,
 	getMessageAnalytics
@@ -54,7 +49,7 @@ router.get(
 
 // Moderation analytics
 router.get(
-	'/guilds/:guildId/analytics/moderation',
+	'/moderation',
 	guildAnalyticsRateLimit,
 	requireAdminPermissions,
 	getModerationAnalytics
@@ -62,7 +57,7 @@ router.get(
 
 // Activity analytics
 router.get(
-	'/guilds/:guildId/analytics/activity',
+	'/activity',
 	guildAnalyticsRateLimit,
 	requireAdminPermissions,
 	getActivityAnalytics

@@ -178,7 +178,7 @@ export const getTickets = async (req: AuthRequest, res: Response) => {
 			prisma.ticket.count({ where }),
 		]);
 
-		const formattedTickets = tickets.map((ticket) => ({
+		const formattedTickets = tickets.map((ticket: any) => ({
 			id: ticket.id,
 			ticketNumber: ticket.ticketNumber,
 			userId: ticket.userId,
@@ -274,7 +274,7 @@ export const getTicket = async (req: AuthRequest, res: Response) => {
 			isAnonymous: ticket.isAnonymous,
 			createdAt: ticket.createdAt,
 			updatedAt: ticket.updatedAt,
-			messages: ticket.messages.map((message) => ({
+			messages: ticket.messages.map((message: any) => ({
 				id: message.id,
 				content: message.content,
 				authorId: message.authorId,
@@ -640,7 +640,7 @@ export const getTicketStatistics = async (req: AuthRequest, res: Response) => {
 
 		// Process daily activity
 		const dailyMap = new Map();
-		dailyActivity.forEach((day) => {
+		dailyActivity.forEach((day: any) => {
 			const dateKey = day.createdAt.toISOString().split('T')[0];
 			dailyMap.set(
 				dateKey,
@@ -653,14 +653,17 @@ export const getTicketStatistics = async (req: AuthRequest, res: Response) => {
 			overview: {
 				total: totalTickets,
 				recent: recentTickets,
-				open: statusCounts.find((s) => s.status === 'OPEN')?._count.status || 0,
-				inProgress:
-					statusCounts.find((s) => s.status === 'IN_PROGRESS')?._count.status ||
+				open:
+					statusCounts.find((s: any) => s.status === 'OPEN')?._count.status ||
 					0,
+				inProgress:
+					statusCounts.find((s: any) => s.status === 'IN_PROGRESS')?._count
+						.status || 0,
 				closed:
-					statusCounts.find((s) => s.status === 'CLOSED')?._count.status || 0,
+					statusCounts.find((s: any) => s.status === 'CLOSED')?._count.status ||
+					0,
 			},
-			categories: categoryBreakdown.reduce((acc, cat) => {
+			categories: categoryBreakdown.reduce((acc: any, cat: any) => {
 				acc[cat.category] = cat._count.category;
 				return acc;
 			}, {} as Record<string, number>),

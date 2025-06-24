@@ -1,9 +1,9 @@
 {
 	"compilerOptions": {
 		"target": "ES2022",
-		"module": "ES2022",
+		"module": "NodeNext",
 		"lib": ["ES2022"],
-		"moduleResolution": "bundler",
+		"moduleResolution": "NodeNext",
 		"allowSyntheticDefaultImports": true,
 		"esModuleInterop": true,
 		"allowJs": true,
@@ -14,11 +14,11 @@
 		"types": ["node"],
 		"baseUrl": ".",
 		"paths": {
-			"@shared/*": ["shared/src/*"],
-			"@shared/database": ["shared/src/database"],
-			"@shared/types": ["shared/src/types/index"],
-			"@shared/queue": ["shared/src/queue/index"],
-			"@shared/utils": ["shared/src/utils/*"],
+			"@shared/*": ["shared/dist/*"],
+			"@shared/database": ["shared/dist/database"],
+			"@shared/types": ["shared/dist/types/index"],
+			"@shared/queue": ["shared/dist/queue/index"],
+			"@shared/utils": ["shared/dist/utils/*"],
 			"@bot/*": ["bot/src/*"],
 			"@api/*": ["api/src/*"]
 		},

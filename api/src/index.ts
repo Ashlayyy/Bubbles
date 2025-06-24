@@ -69,7 +69,7 @@ app.get('/', async (req, res) => {
 });
 
 // Mount API routes
-app.use('/api', apiRoutes);
+app.use('/api/v1', apiRoutes);
 
 // Development routes
 if (config.nodeEnv === 'development') {

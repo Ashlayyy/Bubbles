@@ -21,40 +21,31 @@ import {
 	requireModerationPermissions,
 } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // All application routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/applications',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
 // Applications
 router.get(
-	'/guilds/:guildId/applications',
+	'/',
 	validatePagination,
 	generalRateLimit,
 	requireModerationPermissions,
 	getApplications
 );
 
-router.post(
-	'/guilds/:guildId/applications',
-	generalRateLimit,
-	submitApplication
-);
+router.post('/', generalRateLimit, submitApplication);
 
 router.get(
-	'/guilds/:guildId/applications/:applicationId',
+	'/:applicationId',
 	generalRateLimit,
 	requireModerationPermissions,
 	getApplication
 );
 
 router.put(
-	'/guilds/:guildId/applications/:applicationId',
+	'/:applicationId',
 	generalRateLimit,
 	requireModerationPermissions,
 	updateApplicationStatus
@@ -62,28 +53,28 @@ router.put(
 
 // Application forms
 router.get(
-	'/guilds/:guildId/applications/forms',
+	'/forms',
 	generalRateLimit,
 	requireAdminPermissions,
 	getApplicationForms
 );
 
 router.post(
-	'/guilds/:guildId/applications/forms',
+	'/forms',
 	generalRateLimit,
 	requireAdminPermissions,
 	createApplicationForm
 );
 
 router.put(
-	'/guilds/:guildId/applications/forms/:formId',
+	'/forms/:formId',
 	generalRateLimit,
 	requireAdminPermissions,
 	updateApplicationForm
 );
 
 router.delete(
-	'/guilds/:guildId/applications/forms/:formId',
+	'/forms/:formId',
 	generalRateLimit,
 	requireAdminPermissions,
 	deleteApplicationForm

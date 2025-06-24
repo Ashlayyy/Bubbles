@@ -3,7 +3,7 @@
 		"target": "ES2022",
 		"module": "ES2022",
 		"lib": ["ES2022"],
-		"moduleResolution": "bundler",
+		"moduleResolution": "nodenext",
 		"allowSyntheticDefaultImports": true,
 		"esModuleInterop": true,
 		"allowJs": true,
@@ -17,8 +17,8 @@
 		"types": ["node"],
 		"baseUrl": ".",
 		"paths": {
-			"@shared/*": ["../shared/src/*"],
-			"@shared/database": ["../shared/src/database"]
+			"@shared/*": ["../shared/dist/*"],
+			"@shared/database": ["../shared/dist/database"]
 		}
 	},
 	"include": ["src/**/*"],

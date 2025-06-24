@@ -235,8 +235,8 @@ export const getWebhooks = async (req: AuthRequest, res: Response) => {
 
 		const statsObj = {
 			total,
-			enabled: stats.find((s) => s.isActive)?._count || 0,
-			disabled: stats.find((s) => !s.isActive)?._count || 0,
+			enabled: stats.find((s: any) => s.isActive)?._count || 0,
+			disabled: stats.find((s: any) => !s.isActive)?._count || 0,
 		};
 
 		const formattedWebhooks = webhooks.map((webhook: any) => ({
@@ -744,13 +744,13 @@ export const getWebhookStatistics = async (req: AuthRequest, res: Response) => {
 		});
 
 		// Get webhook names for top webhooks
-		const webhookIds = topWebhooks.map((w) => w.webhookId);
+		const webhookIds = topWebhooks.map((w: any) => w.webhookId);
 		const webhookNames = await prisma.webhook.findMany({
 			where: { id: { in: webhookIds } },
 			select: { id: true, name: true },
 		});
 
-		const nameMap = new Map(webhookNames.map((w) => [w.id, w.name]));
+		const nameMap = new Map(webhookNames.map((w: any) => [w.id, w.name]));
 
 		// Get event distribution
 		const eventDistribution = await prisma.webhookLog.groupBy({

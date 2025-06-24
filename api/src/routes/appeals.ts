@@ -21,26 +21,21 @@ import {
 	requireModerationPermissions,
 } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // All appeal routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/appeals',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
 // Settings
 router.get(
-	'/guilds/:guildId/appeals/settings',
+	'/settings',
 	generalRateLimit,
 	requireAdminPermissions,
 	getAppealSettings
 );
 
 router.put(
-	'/guilds/:guildId/appeals/settings',
+	'/settings',
 	generalRateLimit,
 	requireAdminPermissions,
 	updateAppealSettings
@@ -48,7 +43,7 @@ router.put(
 
 // Appeals
 router.get(
-	'/guilds/:guildId/appeals',
+	'/',
 	validatePagination,
 	generalRateLimit,
 	requireModerationPermissions,
@@ -56,21 +51,16 @@ router.get(
 );
 
 router.get(
-	'/guilds/:guildId/appeals/:appealId',
+	'/:appealId',
 	generalRateLimit,
 	requireModerationPermissions,
 	getAppeal
 );
 
-router.post(
-	'/guilds/:guildId/appeals',
-	validateAppeal,
-	generalRateLimit,
-	submitAppeal
-);
+router.post('/', validateAppeal, generalRateLimit, submitAppeal);
 
 router.post(
-	'/guilds/:guildId/appeals/:appealId/review',
+	'/:appealId/review',
 	generalRateLimit,
 	requireModerationPermissions,
 	reviewAppeal
@@ -78,7 +68,7 @@ router.post(
 
 // Statistics
 router.get(
-	'/guilds/:guildId/appeals/statistics',
+	'/statistics',
 	generalRateLimit,
 	requireAdminPermissions,
 	getAppealStatistics

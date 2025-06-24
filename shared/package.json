@@ -15,7 +15,8 @@
 	},
 	"dependencies": {
 		"@prisma/client": "^6.10.1",
-		"bull": "^4.12.9"
+		"bull": "^4.12.9",
+		"rm": "^0.1.8"
 	},
 	"devDependencies": {
 		"@types/bull": "^4.10.0",

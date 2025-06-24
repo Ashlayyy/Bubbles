@@ -19,19 +19,14 @@ import {
 import { generalRateLimit } from '../middleware/rateLimiting.js';
 import { requireAdminPermissions } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // All reminder routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/reminders',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
 // Reminders
 router.get(
-	'/guilds/:guildId/reminders',
+	'/',
 	validatePagination,
 	generalRateLimit,
 	requireAdminPermissions,
@@ -39,14 +34,14 @@ router.get(
 );
 
 router.get(
-	'/guilds/:guildId/reminders/:reminderId',
+	'/:reminderId',
 	generalRateLimit,
 	requireAdminPermissions,
 	getReminder
 );
 
 router.post(
-	'/guilds/:guildId/reminders',
+	'/',
 	validateReminder,
 	generalRateLimit,
 	requireAdminPermissions,
@@ -54,7 +49,7 @@ router.post(
 );
 
 router.put(
-	'/guilds/:guildId/reminders/:reminderId',
+	'/:reminderId',
 	validateReminder,
 	generalRateLimit,
 	requireAdminPermissions,
@@ -62,21 +57,21 @@ router.put(
 );
 
 router.delete(
-	'/guilds/:guildId/reminders/:reminderId',
+	'/:reminderId',
 	generalRateLimit,
 	requireAdminPermissions,
 	deleteReminder
 );
 
 router.post(
-	'/guilds/:guildId/reminders/:reminderId/cancel',
+	'/:reminderId/cancel',
 	generalRateLimit,
 	requireAdminPermissions,
 	cancelReminder
 );
 
 router.post(
-	'/guilds/:guildId/reminders/:reminderId/test',
+	'/:reminderId/test',
 	generalRateLimit,
 	requireAdminPermissions,
 	testReminder
@@ -84,7 +79,7 @@ router.post(
 
 // Statistics
 router.get(
-	'/guilds/:guildId/reminders/statistics',
+	'/statistics',
 	generalRateLimit,
 	requireAdminPermissions,
 	getReminderStatistics

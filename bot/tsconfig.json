@@ -2,6 +2,7 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "outDir": "./build",
+    "module": "NodeNext",
     "rootDir": ".",
     "composite": true,
     "declaration": true,
@@ -9,11 +10,11 @@
     "sourceMap": true,
     "baseUrl": "..",
     "paths": {
-      "@shared/*": ["shared/src/*"],
-      "@shared/database": ["shared/src/database"],
-      "@shared/types": ["shared/src/types/index"],
-      "@shared/queue": ["shared/src/queue/index"],
-      "@shared/utils/*": ["shared/src/utils/*"]
+      "@shared/*": ["shared/dist/*"],
+      "@shared/database": ["shared/dist/database"],
+      "@shared/types": ["shared/dist/types/index"],
+      "@shared/queue": ["shared/dist/queue/index"],
+      "@shared/utils/*": ["shared/dist/utils/*"]
     }
   },
   "include": ["src/**/*", "shard.ts"],

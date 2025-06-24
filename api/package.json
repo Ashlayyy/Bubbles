@@ -5,7 +5,7 @@
 	"main": "dist/index.js",
 	"type": "module",
 	"scripts": {
-		"build": "tsc",
+		"build": "npm --prefix ../shared run build && tsc",
 		"dev": "nodemon",
 		"start": "node dist/index.js",
 		"setup": "npm install && npm run build",
@@ -22,10 +22,12 @@
 		"dotenv": "^16.4.7",
 		"express": "^5.1.0",
 		"express-rate-limit": "^7.5.0",
+		"express-session": "^1.18.1",
 		"helmet": "^7.2.0",
 		"ioredis": "^5.4.1",
 		"joi": "^17.13.3",
 		"jsonwebtoken": "^9.0.2",
+		"rm": "^0.1.8",
 		"socket.io": "^4.7.5",
 		"winston": "^3.17.0",
 		"ws": "^8.17.1"

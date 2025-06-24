@@ -37,7 +37,7 @@ export const getReactionRoles = async (req: AuthRequest, res: Response) => {
 		]);
 
 		// Format response
-		const formattedRoles = reactionRoles.map((reactionRole) => ({
+		const formattedRoles = reactionRoles.map((reactionRole: any) => ({
 			id: reactionRole.id,
 			messageId: reactionRole.messageId,
 			channelId: reactionRole.channelId,
@@ -128,7 +128,7 @@ export const getReactionRole = async (req: AuthRequest, res: Response) => {
 			createdAt: reactionRole.createdAt,
 			updatedAt: reactionRole.updatedAt,
 			message: reactionRole.message,
-			usageHistory: usageHistory.map((log) => ({
+			usageHistory: usageHistory.map((log: any) => ({
 				id: log.id,
 				userId: log.userId,
 				action: log.action,
@@ -362,7 +362,7 @@ export const getReactionRoleLogs = async (req: AuthRequest, res: Response) => {
 		res.json({
 			success: true,
 			data: {
-				logs: logs.map((log) => ({
+				logs: logs.map((log: any) => ({
 					id: log.id,
 					userId: log.userId,
 					action: log.action,
@@ -446,7 +446,7 @@ export const getReactionRoleStatistics = async (
 
 		// Process daily activity
 		const dailyMap = new Map();
-		dailyActivity.forEach((day) => {
+		dailyActivity.forEach((day: any) => {
 			const dateKey = day.timestamp.toISOString().split('T')[0];
 			dailyMap.set(
 				dateKey,
@@ -465,9 +465,11 @@ export const getReactionRoleStatistics = async (
 			},
 			actionBreakdown: {
 				added:
-					recentActivity.find((a) => a.action === 'ADD')?._count.action || 0,
+					recentActivity.find((a: any) => a.action === 'ADD')?._count.action ||
+					0,
 				removed:
-					recentActivity.find((a) => a.action === 'REMOVE')?._count.action || 0,
+					recentActivity.find((a: any) => a.action === 'REMOVE')?._count
+						.action || 0,
 			},
 			topReactionRoles: topRoles,
 			dailyActivity: Array.from(dailyMap.entries()).map(([date, count]) => ({

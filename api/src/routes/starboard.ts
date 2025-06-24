@@ -17,26 +17,21 @@ import {
 } from '../middleware/rateLimiting.js';
 import { requireAdminPermissions } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // All starboard routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/starboard',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
 // Settings
 router.get(
-	'/guilds/:guildId/starboard/settings',
+	'/settings',
 	guildStarboardRateLimit,
 	requireAdminPermissions,
 	getStarboardSettings
 );
 
 router.put(
-	'/guilds/:guildId/starboard/settings',
+	'/settings',
 	starboardRateLimit,
 	requireAdminPermissions,
 	updateStarboardSettings
@@ -44,7 +39,7 @@ router.put(
 
 // Messages
 router.get(
-	'/guilds/:guildId/starboard/messages',
+	'/messages',
 	validatePagination,
 	guildStarboardRateLimit,
 	requireAdminPermissions,
@@ -53,7 +48,7 @@ router.get(
 
 // Statistics
 router.get(
-	'/guilds/:guildId/starboard/statistics',
+	'/statistics',
 	guildStarboardRateLimit,
 	requireAdminPermissions,
 	getStarboardStats

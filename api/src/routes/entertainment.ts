@@ -16,26 +16,16 @@ import {
 import { generalRateLimit } from '../middleware/rateLimiting.js';
 import { requireAdminPermissions } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // All entertainment routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/entertainment',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
 // Game configurations
-router.get(
-	'/guilds/:guildId/entertainment/games',
-	generalRateLimit,
-	requireAdminPermissions,
-	getGameConfigs
-);
+router.get('/games', generalRateLimit, requireAdminPermissions, getGameConfigs);
 
 router.put(
-	'/guilds/:guildId/entertainment/games',
+	'/games',
 	generalRateLimit,
 	requireAdminPermissions,
 	updateGameSettings
@@ -43,14 +33,14 @@ router.put(
 
 // Economy settings
 router.get(
-	'/guilds/:guildId/entertainment/economy',
+	'/economy',
 	generalRateLimit,
 	requireAdminPermissions,
 	getEconomySettings
 );
 
 router.put(
-	'/guilds/:guildId/entertainment/economy',
+	'/economy',
 	generalRateLimit,
 	requireAdminPermissions,
 	updateEconomySettings
@@ -58,7 +48,7 @@ router.put(
 
 // Trivia questions
 router.get(
-	'/guilds/:guildId/entertainment/trivia',
+	'/trivia',
 	validatePagination,
 	generalRateLimit,
 	requireAdminPermissions,
@@ -66,7 +56,7 @@ router.get(
 );
 
 router.post(
-	'/guilds/:guildId/entertainment/trivia',
+	'/trivia',
 	generalRateLimit,
 	requireAdminPermissions,
 	addTriviaQuestion

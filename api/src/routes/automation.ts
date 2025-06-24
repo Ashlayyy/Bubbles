@@ -17,19 +17,14 @@ import {
 import { automationRateLimit } from '../middleware/rateLimiting.js';
 import { requireAdminPermissions } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // All automation routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/automation',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
 // Automation rules
 router.get(
-	'/guilds/:guildId/automation/rules',
+	'/rules',
 	validatePagination,
 	automationRateLimit,
 	requireAdminPermissions,
@@ -37,28 +32,28 @@ router.get(
 );
 
 router.post(
-	'/guilds/:guildId/automation/rules',
+	'/rules',
 	automationRateLimit,
 	requireAdminPermissions,
 	createAutomationRule
 );
 
 router.get(
-	'/guilds/:guildId/automation/rules/:ruleId',
+	'/rules/:ruleId',
 	automationRateLimit,
 	requireAdminPermissions,
 	getAutomationRule
 );
 
 router.put(
-	'/guilds/:guildId/automation/rules/:ruleId',
+	'/rules/:ruleId',
 	automationRateLimit,
 	requireAdminPermissions,
 	updateAutomationRule
 );
 
 router.delete(
-	'/guilds/:guildId/automation/rules/:ruleId',
+	'/rules/:ruleId',
 	automationRateLimit,
 	requireAdminPermissions,
 	deleteAutomationRule
@@ -66,14 +61,14 @@ router.delete(
 
 // Available triggers and actions
 router.get(
-	'/guilds/:guildId/automation/triggers',
+	'/triggers',
 	automationRateLimit,
 	requireAdminPermissions,
 	getAvailableTriggers
 );
 
 router.get(
-	'/guilds/:guildId/automation/actions',
+	'/actions',
 	automationRateLimit,
 	requireAdminPermissions,
 	getAvailableActions
