@@ -2,7 +2,7 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "outDir": "./build",
-    "module": "NodeNext",
+    "module": "ES2022",
     "rootDir": ".",
     "declaration": true,
     "declarationMap": true,
