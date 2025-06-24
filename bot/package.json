@@ -8,16 +8,17 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.prod.json",
-    "postbuild": "node build/bot/src/scripts/generateConfig.js",
+    "postbuild": "node build/src/scripts/generateConfig.js",
     "dev": "nodemon",
     "dev:shard": "tsx shard.ts",
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write .",
-    "commands:register": "node build/bot/src/scripts/discordAPI/registerCommands.js",
+    "commands:register": "node build/src/scripts/discordAPI/registerCommands.js",
     "commands:resetDev": "tsc && cross-env NODE_ENV=development tsx src/scripts/discordAPI/resetCommands.ts",
-    "commands:resetProd": "node build/bot/src/scripts/discordAPI/resetCommands.js",
+    "commands:resetProd": "node build/src/scripts/discordAPI/resetCommands.js",
     "start": "node .",
-    "start:shard": "node build/shard.js"
+    "start:shard": "node build/shard.js",
+    "clean": "rimraf dist"
   },
   "dependencies": {
     "@bubbles/shared": "file:../shared",
@@ -37,7 +38,7 @@
     "jsonwebtoken": "^9.0.2",
     "lodash": "^4.17.21",
     "mediaplex": "^1.0.0",
-    "rm": "^0.1.8",
+    "rimraf": "^6.0.1",
     "winston": "^3.17.0",
     "ws": "^8.18.0"
   },

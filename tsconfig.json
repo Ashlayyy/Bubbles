@@ -6,7 +6,7 @@
 		"moduleResolution": "NodeNext",
 		"allowSyntheticDefaultImports": true,
 		"esModuleInterop": true,
-		"allowJs": true,
+		"allowJs": false,
 		"strict": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
@@ -16,11 +16,12 @@
 		"paths": {
 			"@shared/*": ["shared/dist/*"],
 			"@shared/database": ["shared/dist/database"],
-			"@shared/types": ["shared/dist/types/index"],
+			"@shared/types/*": ["shared/dist/types/*"],
 			"@shared/queue": ["shared/dist/queue/index"],
-			"@shared/utils": ["shared/dist/utils/*"],
+			"@shared/utils/*": ["shared/dist/utils/*"],
 			"@bot/*": ["bot/src/*"],
-			"@api/*": ["api/src/*"]
+			"@api/*": ["api/src/*"],
+			"@shared/types": ["shared/dist/types/index"]
 		},
 		"noImplicitAny": false
 	},

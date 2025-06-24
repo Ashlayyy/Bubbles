@@ -15,10 +15,12 @@
 		"build:shared": "cd shared && npm run build",
 		"build:bot": "cd bot && npm run build",
 		"build:api": "cd api && npm run build",
-		"startDev": "concurrently \"npm run dev:frontend\" \"npm run dev:bot\" \"npm run dev:api\"",
-		"dev:frontend": "cd frontend && npm run dev",
+		"build:frontend": "cd frontend && npm run build",
+		"devStartup": "concurrently \"npm run dev:bot\" \"npm run dev:api\" \"npm run dev:frontend\"",
+		"dev:shared": "cd shared && npm run dev",
 		"dev:bot": "cd bot && npm run dev",
 		"dev:api": "cd api && npm run dev",
+		"dev:frontend": "cd frontend && npm run dev",
 		"db:generate": "cd shared && npm run db:generate",
 		"db:push": "cd shared && npm run db:push",
 		"db:studio": "cd shared && npm run db:studio",
@@ -26,10 +28,10 @@
 		"start:bot": "cd bot && npm start",
 		"start:api": "cd api && npm start",
 		"clean": "npm run clean:shared && npm run clean:bot && npm run clean:api && npm run clean:frontend",
-		"clean:shared": "cd shared && rm -rf dist",
-		"clean:bot": "cd bot && rm -rf dist",
-		"clean:api": "cd api && rm -rf dist",
-		"clean:frontend": "cd frontend && rm -rf dist",
+		"clean:shared": "cd shared && rimraf dist",
+		"clean:bot": "cd bot && rimraf dist",
+		"clean:api": "cd api && rimraf dist",
+		"clean:frontend": "cd frontend && rimraf dist",
 		"install:all": "npm install && npm run install:shared && npm run install:bot && npm run install:api && npm run install:frontend",
 		"install:shared": "cd shared && npm install",
 		"install:bot": "cd bot && npm install",
@@ -40,8 +42,7 @@
 		"typecheck:shared": "cd shared && npm run build",
 		"typecheck:bot": "cd bot && npx tsc --noEmit",
 		"typecheck:api": "cd api && npx tsc --noEmit",
-		"typecheck:frontend": "cd frontend && npx tsc --noEmit",
-		"postinstall": "prisma generate --schema ./shared/prisma/schema.prisma"
+		"typecheck:frontend": "cd frontend && npx tsc --noEmit"
 	},
 	"devDependencies": {
 		"@types/express-session": "^1.18.2",
@@ -61,6 +62,8 @@
 		"express-session": "^1.18.1",
 		"helmet": "^8.1.0",
 		"joi": "^17.13.3",
-		"jsonwebtoken": "^9.0.2"
+		"jsonwebtoken": "^9.0.2",
+		"rimraf": "^6.0.1",
+		"rm": "^0.1.8"
 	}
 }

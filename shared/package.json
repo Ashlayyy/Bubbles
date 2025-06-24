@@ -10,7 +10,7 @@
 		"db:generate": "prisma generate",
 		"db:push": "prisma db push",
 		"db:studio": "prisma studio",
-		"clean": "rm -rf dist",
+		"clean": "rimraf dist",
 		"setup": "npm install && npm run db:generate && npm run build"
 	},
 	"dependencies": {

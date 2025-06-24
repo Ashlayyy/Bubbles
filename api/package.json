@@ -10,7 +10,8 @@
 		"start": "node dist/index.js",
 		"setup": "npm install && npm run build",
 		"lint": "echo 'Linting not configured yet'",
-		"format": "echo 'Formatting not configured yet'"
+		"format": "echo 'Formatting not configured yet'",
+		"clean": "rimraf dist"
 	},
 	"dependencies": {
 		"@bubbles/shared": "file:../shared",
@@ -27,7 +28,7 @@
 		"ioredis": "^5.4.1",
 		"joi": "^17.13.3",
 		"jsonwebtoken": "^9.0.2",
-		"rm": "^0.1.8",
+		"rimraf": "^6.0.1",
 		"socket.io": "^4.7.5",
 		"winston": "^3.17.0",
 		"ws": "^8.17.1"

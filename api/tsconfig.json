@@ -6,7 +6,7 @@
 		"moduleResolution": "nodenext",
 		"allowSyntheticDefaultImports": true,
 		"esModuleInterop": true,
-		"allowJs": true,
+		"allowJs": false,
 		"strict": true,
 		"declaration": false,
 		"sourceMap": true,
@@ -18,7 +18,11 @@
 		"baseUrl": ".",
 		"paths": {
 			"@shared/*": ["../shared/dist/*"],
-			"@shared/database": ["../shared/dist/database"]
+			"@shared/database": ["../shared/dist/database"],
+			"@shared/types/*": ["../shared/dist/types/*"],
+			"@shared/types": ["../shared/dist/types/index"],
+			"@shared/queue": ["../shared/dist/queue/index"],
+			"@shared/utils/*": ["../shared/dist/utils/*"]
 		}
 	},
 	"include": ["src/**/*"],

@@ -1,3 +1,3 @@
-export * from './api.js';
-export * from './queue.js';
-export * from './automod.js'; 
+export * from './api';
+export * from './queue';
+export * from './automod';

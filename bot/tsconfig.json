@@ -4,7 +4,6 @@
     "outDir": "./build",
     "module": "NodeNext",
     "rootDir": ".",
-    "composite": true,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -12,10 +11,12 @@
     "paths": {
       "@shared/*": ["shared/dist/*"],
       "@shared/database": ["shared/dist/database"],
+      "@shared/types/*": ["shared/dist/types/*"],
       "@shared/types": ["shared/dist/types/index"],
       "@shared/queue": ["shared/dist/queue/index"],
       "@shared/utils/*": ["shared/dist/utils/*"]
-    }
+    },
+    "allowJs": false
   },
   "include": ["src/**/*", "shard.ts"],
   "exclude": ["node_modules", "build"],
