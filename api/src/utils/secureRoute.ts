@@ -45,7 +45,6 @@ export const addRoute = (
 		const perms = tokenRequired ? ['token', ...combinedPerms] : combinedPerms;
 
 		if (devAllowedOverride) {
-			// Insert dev-bypass middleware before permission check
 			const devBypass: RequestHandler = (req, _res, next) => {
 				const devIds = (process.env.DEVELOPER_USER_IDS || '')
 					.split(',')

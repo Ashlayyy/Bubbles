@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { authenticateToken } from '../middleware/auth.js';
 import {
 	getAppealSettings,
 	updateAppealSettings,
@@ -8,7 +9,6 @@ import {
 	reviewAppeal,
 	getAppealStatistics,
 } from '../controllers/appealsController.js';
-import { authenticateToken } from '../middleware/auth.js';
 import {
 	validateGuildId,
 	validateGuildAccess,
@@ -16,57 +16,90 @@ import {
 	validatePagination,
 } from '../middleware/validation.js';
 import { generalRateLimit } from '../middleware/rateLimiting.js';
-import {
-	requireAdminPermissions,
-	requireModerationPermissions,
-} from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
+// Common validation for all appeals routes
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-router.get(
+// Settings routes
+addRoute(
+	router,
+	'get',
 	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	getAppealSettings
 );
 
-router.put(
+addRoute(
+	router,
+	'put',
 	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	updateAppealSettings
 );
 
-router.get(
+// Fetch appeals
+addRoute(
+	router,
+	'get',
 	'/',
+	{
+		discordPermissions: ['BAN_MEMBERS', 'KICK_MEMBERS', 'MODERATE_MEMBERS'],
+		permissionsOverride: true,
+	},
 	validatePagination,
 	generalRateLimit,
-	requireModerationPermissions,
 	getAppeals
 );
 
-router.get(
+// Single appeal details
+addRoute(
+	router,
+	'get',
 	'/:appealId',
+	{
+		discordPermissions: ['BAN_MEMBERS', 'KICK_MEMBERS', 'MODERATE_MEMBERS'],
+		permissionsOverride: true,
+	},
 	generalRateLimit,
-	requireModerationPermissions,
 	getAppeal
 );
 
-router.post('/', validateAppeal, generalRateLimit, submitAppeal);
-
-router.post(
-	'/:appealId/review',
+// Submit an appeal (no special guild permissions, token required by default)
+addRoute(
+	router,
+	'post',
+	'/',
+	{},
+	validateAppeal,
 	generalRateLimit,
-	requireModerationPermissions,
+	submitAppeal
+);
+
+// Review appeal
+addRoute(
+	router,
+	'post',
+	'/:appealId/review',
+	{
+		discordPermissions: ['BAN_MEMBERS', 'KICK_MEMBERS', 'MODERATE_MEMBERS'],
+		permissionsOverride: true,
+	},
+	generalRateLimit,
 	reviewAppeal
 );
 
-router.get(
+// Appeal statistics
+addRoute(
+	router,
+	'get',
 	'/statistics',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	getAppealStatistics
 );
 

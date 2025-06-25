@@ -133,12 +133,12 @@ export default class Client extends DiscordClient {
       if (process.env.DISCORD_TOKEN === undefined)
         throw new ReferenceError("DISCORD_TOKEN environment variable was not set!");
       if (process.env.DB_URL === undefined) throw new ReferenceError("DB_URL environment variable was not set!");
-      if (process.env.CLIENT_ID === undefined) {
-        throw new ReferenceError("CLIENT_ID environment variable was not set!");
+      if (process.env.DISCORD_CLIENT_ID === undefined) {
+        throw new ReferenceError("DISCORD_CLIENT_ID environment variable was not set!");
       } else {
-        // Validate form of CLIENT_ID
-        if (!isOnlyDigits(process.env.CLIENT_ID)) {
-          throw new TypeError("CLIENT_ID environment variable must contain only digits!");
+        // Validate form of DISCORD_CLIENT_ID
+        if (!isOnlyDigits(process.env.DISCORD_CLIENT_ID)) {
+          throw new TypeError("DISCORD_CLIENT_ID environment variable must contain only digits!");
         }
       }
       /* eslint-enable @typescript-eslint/no-unnecessary-condition */
@@ -387,9 +387,11 @@ export default class Client extends DiscordClient {
       if (this.devMode) {
         logger.info(`\tDEVELOPMENT MODE. Only working in guild with "TEST_GUILD_ID" environment variable`);
 
-        // Can cast `TEST_GUILD_ID` to string since it is verified in constructor and this is a non-static method
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        const fullRoute = Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.TEST_GUILD_ID!);
+        // `TEST_GUILD_ID` is validated in the constructor; convert to string for type safety
+        const fullRoute = Routes.applicationGuildCommands(
+          `${process.env.DISCORD_CLIENT_ID}`,
+          `${process.env.TEST_GUILD_ID}`
+        );
 
         await rest.put(fullRoute, {
           body: commandDataArr,
@@ -399,7 +401,7 @@ export default class Client extends DiscordClient {
           "\tPRODUCTION MODE. Working on all server(s) this bot is in. Can take up to one hour to register changes"
         );
 
-        const fullRoute = Routes.applicationCommands(process.env.CLIENT_ID);
+        const fullRoute = Routes.applicationCommands(`${process.env.DISCORD_CLIENT_ID}`);
 
         await rest.put(fullRoute, {
           body: commandDataArr,

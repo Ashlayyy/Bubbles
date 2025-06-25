@@ -14,47 +14,67 @@ import {
 	validatePagination,
 } from '../middleware/validation.js';
 import { generalRateLimit } from '../middleware/rateLimiting.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-router.get('/games', generalRateLimit, requireAdminPermissions, getGameConfigs);
-
-router.put(
+// Game configs
+addRoute(
+	router,
+	'get',
 	'/games',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
+	getGameConfigs
+);
+
+addRoute(
+	router,
+	'put',
+	'/games',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	generalRateLimit,
 	updateGameSettings
 );
 
-router.get(
+// Economy settings
+addRoute(
+	router,
+	'get',
 	'/economy',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	getEconomySettings
 );
 
-router.put(
+addRoute(
+	router,
+	'put',
 	'/economy',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	updateEconomySettings
 );
 
-router.get(
+// Trivia questions
+addRoute(
+	router,
+	'get',
 	'/trivia',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validatePagination,
 	generalRateLimit,
-	requireAdminPermissions,
 	getTriviaQuestions
 );
 
-router.post(
+addRoute(
+	router,
+	'post',
 	'/trivia',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	addTriviaQuestion
 );
 

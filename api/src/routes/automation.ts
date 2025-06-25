@@ -15,59 +15,81 @@ import {
 	validatePagination,
 } from '../middleware/validation.js';
 import { automationRateLimit } from '../middleware/rateLimiting.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
+// Common validation for all automation routes
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-router.get(
+// List automation rules
+addRoute(
+	router,
+	'get',
 	'/rules',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validatePagination,
 	automationRateLimit,
-	requireAdminPermissions,
 	getAutomationRules
 );
 
-router.post(
+// Create rule
+addRoute(
+	router,
+	'post',
 	'/rules',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	automationRateLimit,
-	requireAdminPermissions,
 	createAutomationRule
 );
 
-router.get(
+// Get single rule
+addRoute(
+	router,
+	'get',
 	'/rules/:ruleId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	automationRateLimit,
-	requireAdminPermissions,
 	getAutomationRule
 );
 
-router.put(
+// Update rule
+addRoute(
+	router,
+	'put',
 	'/rules/:ruleId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	automationRateLimit,
-	requireAdminPermissions,
 	updateAutomationRule
 );
 
-router.delete(
+// Delete rule
+addRoute(
+	router,
+	'delete',
 	'/rules/:ruleId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	automationRateLimit,
-	requireAdminPermissions,
 	deleteAutomationRule
 );
 
-router.get(
+// Available triggers
+addRoute(
+	router,
+	'get',
 	'/triggers',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	automationRateLimit,
-	requireAdminPermissions,
 	getAvailableTriggers
 );
 
-router.get(
+// Available actions
+addRoute(
+	router,
+	'get',
 	'/actions',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	automationRateLimit,
-	requireAdminPermissions,
 	getAvailableActions
 );
 

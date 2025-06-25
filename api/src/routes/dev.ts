@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import queueManager from '../queue/manager.js';
 import { deadLetterQueryService } from '../services/deadLetterQueryService.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 export const QUEUE_NAMES = {
 	BOT_COMMANDS: 'bot-commands',
@@ -11,7 +12,13 @@ export const QUEUE_NAMES = {
 
 const router = Router();
 
-router.post('/test-queue', async (req, res) => {
+const open = {
+	authRequired: false,
+	tokenRequired: false,
+	permissionsOverride: true,
+};
+
+addRoute(router, 'post', '/test-queue', open, async (req, res) => {
 	try {
 		const testJob = {
 			type: 'SEND_MESSAGE' as const,
@@ -39,7 +46,7 @@ router.post('/test-queue', async (req, res) => {
 	}
 });
 
-router.get('/queue-stats', async (req, res) => {
+addRoute(router, 'get', '/queue-stats', open, async (req, res) => {
 	try {
 		const stats = await queueManager.getQueueStatus(QUEUE_NAMES.BOT_COMMANDS);
 		res.json({
@@ -56,7 +63,7 @@ router.get('/queue-stats', async (req, res) => {
 	}
 });
 
-router.get('/dead-letter-stats', async (req, res) => {
+addRoute(router, 'get', '/dead-letter-stats', open, async (req, res) => {
 	try {
 		const response = await deadLetterQueryService.getDeadLetterStats();
 
@@ -76,7 +83,7 @@ router.get('/dead-letter-stats', async (req, res) => {
 	}
 });
 
-router.get('/quarantined-jobs', async (req, res) => {
+addRoute(router, 'get', '/quarantined-jobs', open, async (req, res) => {
 	try {
 		const response = await deadLetterQueryService.getQuarantinedJobs();
 
@@ -96,35 +103,43 @@ router.get('/quarantined-jobs', async (req, res) => {
 	}
 });
 
-router.post('/release-quarantine/:jobId', async (req, res) => {
-	try {
-		const { jobId } = req.params;
-		const response = await deadLetterQueryService.releaseFromQuarantine(jobId);
+addRoute(
+	router,
+	'post',
+	'/release-quarantine/:jobId',
+	open,
+	async (req, res) => {
+		try {
+			const { jobId } = req.params;
+			const response = await deadLetterQueryService.releaseFromQuarantine(
+				jobId
+			);
 
-		if (response.success) {
-			res.json({
-				success: true,
-				message: response.message || `Job ${jobId} released from quarantine`,
-			});
-		} else {
-			res.status(404).json({
+			if (response.success) {
+				res.json({
+					success: true,
+					message: response.message || `Job ${jobId} released from quarantine`,
+				});
+			} else {
+				res.status(404).json({
+					success: false,
+					error: response.error || 'Job not found in quarantine',
+				});
+			}
+		} catch (error) {
+			console.error('Failed to release job from quarantine:', error);
+			res.status(500).json({
 				success: false,
-				error: response.error || 'Job not found in quarantine',
+				error:
+					error instanceof Error
+						? error.message
+						: 'Failed to release job from quarantine',
 			});
 		}
-	} catch (error) {
-		console.error('Failed to release job from quarantine:', error);
-		res.status(500).json({
-			success: false,
-			error:
-				error instanceof Error
-					? error.message
-					: 'Failed to release job from quarantine',
-		});
 	}
-});
+);
 
-router.delete('/dead-letter-queue', async (req, res) => {
+addRoute(router, 'delete', '/dead-letter-queue', open, async (req, res) => {
 	try {
 		const response = await deadLetterQueryService.clearDeadLetterQueue();
 

@@ -16,10 +16,8 @@ import {
 	validatePagination,
 } from '../middleware/validation.js';
 import { generalRateLimit } from '../middleware/rateLimiting.js';
-import {
-	requireAdminPermissions,
-	requireModerationPermissions,
-} from '../middleware/permissions.js';
+import { requireModerationPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
@@ -49,31 +47,39 @@ router.put(
 	updateApplicationStatus
 );
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/forms',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	getApplicationForms
 );
 
-router.post(
+addRoute(
+	router,
+	'post',
 	'/forms',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	createApplicationForm
 );
 
-router.put(
+addRoute(
+	router,
+	'put',
 	'/forms/:formId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	updateApplicationForm
 );
 
-router.delete(
+addRoute(
+	router,
+	'delete',
 	'/forms/:formId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	deleteApplicationForm
 );
 

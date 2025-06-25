@@ -26,47 +26,100 @@ import {
 	crosspostMessage,
 } from '../controllers/messageController.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
 router.use(authenticateToken);
 
-// Guild channels list
-router.get('/channels', getChannels);
+const writePerm = {
+	discordPermissions: ['MANAGE_MESSAGES'],
+	permissionsOverride: true,
+};
 
-// Send message to a channel (expects channelId in body)
-router.post('/send', sendMessage);
+addRoute(router, 'get', '/channels', {}, getChannels);
 
-// Channel message operations (require :channelId)
-router.get('/:channelId', getMessages);
-router.get('/:channelId/:messageId', getMessage);
-router.patch('/:channelId/:messageId', editMessage);
-router.delete('/:channelId/:messageId', deleteMessage);
-router.post('/:channelId/bulk-delete', bulkDeleteMessages);
+addRoute(router, 'post', '/send', writePerm, sendMessage);
 
-// Reactions
-router.put('/:channelId/:messageId/reactions', addReaction);
-router.delete('/:channelId/:messageId/reactions', removeReaction);
-router.get('/:channelId/:messageId/reactions/:emoji', getReactions);
-router.delete('/:channelId/:messageId/reactions/all', deleteAllReactions);
+addRoute(router, 'get', '/:channelId', {}, getMessages);
+addRoute(router, 'get', '/:channelId/:messageId', {}, getMessage);
+addRoute(router, 'patch', '/:channelId/:messageId', writePerm, editMessage);
+addRoute(router, 'delete', '/:channelId/:messageId', writePerm, deleteMessage);
+addRoute(
+	router,
+	'post',
+	'/:channelId/bulk-delete',
+	writePerm,
+	bulkDeleteMessages
+);
 
-// Pinning
-router.put('/:channelId/:messageId/pin', pinMessage);
-router.delete('/:channelId/:messageId/pin', unpinMessage);
-router.get('/:channelId/pins', getPinnedMessages);
+addRoute(router, 'put', '/:channelId/:messageId/reactions', {}, addReaction);
+addRoute(
+	router,
+	'delete',
+	'/:channelId/:messageId/reactions',
+	{},
+	removeReaction
+);
+addRoute(
+	router,
+	'get',
+	'/:channelId/:messageId/reactions/:emoji',
+	{},
+	getReactions
+);
+addRoute(
+	router,
+	'delete',
+	'/:channelId/:messageId/reactions/all',
+	writePerm,
+	deleteAllReactions
+);
 
-// Threads
-router.post('/:channelId/:messageId/threads', startThreadFromMessage);
-router.post('/:channelId/threads', startThread);
-router.put('/threads/:threadId/members/@me', joinThread);
-router.delete('/threads/:threadId/members/@me', leaveThread);
-router.put('/threads/:threadId/members/:userId', addThreadMember);
-router.delete('/threads/:threadId/members/:userId', removeThreadMember);
-router.get('/threads/:threadId/members', getThreadMembers);
-router.get('/threads/active', getActiveThreads);
-router.get('/:channelId/threads/archived', getArchivedThreads);
+addRoute(router, 'put', '/:channelId/:messageId/pin', writePerm, pinMessage);
+addRoute(
+	router,
+	'delete',
+	'/:channelId/:messageId/pin',
+	writePerm,
+	unpinMessage
+);
+addRoute(router, 'get', '/:channelId/pins', {}, getPinnedMessages);
 
-// Crosspost
-router.post('/:channelId/:messageId/crosspost', crosspostMessage);
+addRoute(
+	router,
+	'post',
+	'/:channelId/:messageId/threads',
+	writePerm,
+	startThreadFromMessage
+);
+addRoute(router, 'post', '/:channelId/threads', writePerm, startThread);
+addRoute(router, 'put', '/threads/:threadId/members/@me', {}, joinThread);
+addRoute(router, 'delete', '/threads/:threadId/members/@me', {}, leaveThread);
+addRoute(
+	router,
+	'put',
+	'/threads/:threadId/members/:userId',
+	writePerm,
+	addThreadMember
+);
+addRoute(
+	router,
+	'delete',
+	'/threads/:threadId/members/:userId',
+	writePerm,
+	removeThreadMember
+);
+addRoute(router, 'get', '/threads/:threadId/members', {}, getThreadMembers);
+addRoute(router, 'get', '/threads/active', {}, getActiveThreads);
+addRoute(router, 'get', '/:channelId/threads/archived', {}, getArchivedThreads);
+
+addRoute(
+	router,
+	'post',
+	'/:channelId/:messageId/crosspost',
+	writePerm,
+	crosspostMessage
+);
 
 export default router;

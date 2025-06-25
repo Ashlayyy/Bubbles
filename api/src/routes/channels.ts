@@ -10,34 +10,73 @@ import {
 	createChannelInvite,
 } from '../controllers/channelController.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
+const channelPerm = {
+	discordPermissions: ['MANAGE_CHANNELS'],
+	permissionsOverride: true,
+};
 
-router.get('/:channelId', authenticateToken, getChannel);
+addRoute(
+	router,
+	'get',
+	'/:channelId',
+	channelPerm,
+	authenticateToken,
+	getChannel
+);
+addRoute(router, 'post', '/', channelPerm, authenticateToken, createChannel);
+addRoute(
+	router,
+	'patch',
+	'/:channelId',
+	channelPerm,
+	authenticateToken,
+	modifyChannel
+);
+addRoute(
+	router,
+	'delete',
+	'/:channelId',
+	channelPerm,
+	authenticateToken,
+	deleteChannel
+);
 
-router.post('/', authenticateToken, createChannel);
-
-router.patch('/:channelId', authenticateToken, modifyChannel);
-
-router.delete('/:channelId', authenticateToken, deleteChannel);
-
-
-router.put(
+addRoute(
+	router,
+	'put',
 	'/:channelId/permissions/:overwriteId',
+	channelPerm,
 	authenticateToken,
 	editChannelPermissions
 );
-
-router.delete(
+addRoute(
+	router,
+	'delete',
 	'/:channelId/permissions/:overwriteId',
+	channelPerm,
 	authenticateToken,
 	deleteChannelPermission
 );
 
-
-router.get('/:channelId/invites', authenticateToken, getChannelInvites);
-
-router.post('/:channelId/invites', authenticateToken, createChannelInvite);
+addRoute(
+	router,
+	'get',
+	'/:channelId/invites',
+	channelPerm,
+	authenticateToken,
+	getChannelInvites
+);
+addRoute(
+	router,
+	'post',
+	'/:channelId/invites',
+	channelPerm,
+	authenticateToken,
+	createChannelInvite
+);
 
 export default router;

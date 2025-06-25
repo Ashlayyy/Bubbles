@@ -12,29 +12,54 @@ import {
 	getRoleStatistics,
 } from '../controllers/roleController.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
+const rolePerm = {
+	discordPermissions: ['MANAGE_ROLES'],
+	permissionsOverride: true,
+};
 
-router.get('/', authenticateToken, getRoles);
+addRoute(router, 'get', '/', {}, authenticateToken, getRoles);
+addRoute(router, 'post', '/', rolePerm, authenticateToken, createRole);
 
-router.post('/', authenticateToken, createRole);
+addRoute(
+	router,
+	'get',
+	'/auto-role',
+	{},
+	authenticateToken,
+	getAutoRoleSettings
+);
+addRoute(router, 'get', '/logs', rolePerm, authenticateToken, getRoleLogs);
+addRoute(
+	router,
+	'get',
+	'/statistics',
+	{},
+	authenticateToken,
+	getRoleStatistics
+);
 
-
-router.get('/auto-role', authenticateToken, getAutoRoleSettings);
-
-router.get('/logs', authenticateToken, getRoleLogs);
-
-router.get('/statistics', authenticateToken, getRoleStatistics);
-
-
-router.get('/:roleId', authenticateToken, getRole);
-
-router.patch('/:roleId', authenticateToken, updateRole);
-
-router.delete('/:roleId', authenticateToken, deleteRole);
-
-router.post('/:roleId/assign', authenticateToken, assignRole);
-router.post('/:roleId/remove', authenticateToken, removeRole);
+addRoute(router, 'get', '/:roleId', {}, authenticateToken, getRole);
+addRoute(router, 'patch', '/:roleId', rolePerm, authenticateToken, updateRole);
+addRoute(router, 'delete', '/:roleId', rolePerm, authenticateToken, deleteRole);
+addRoute(
+	router,
+	'post',
+	'/:roleId/assign',
+	rolePerm,
+	authenticateToken,
+	assignRole
+);
+addRoute(
+	router,
+	'post',
+	'/:roleId/remove',
+	rolePerm,
+	authenticateToken,
+	removeRole
+);
 
 export default router;

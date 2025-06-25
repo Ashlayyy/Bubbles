@@ -17,25 +17,60 @@ import {
 	configRateLimit,
 	analyticsRateLimit,
 } from '../middleware/rateLimiting.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
-router.use(authenticateToken, validateGuildAccess, requireAdminPermissions);
+router.use(authenticateToken, validateGuildAccess);
 
-router.get('/settings', generalRateLimit, getLoggingSettings);
-
-router.put(
+// Settings
+addRoute(
+	router,
+	'get',
 	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	generalRateLimit,
+	getLoggingSettings
+);
+
+addRoute(
+	router,
+	'put',
+	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validateLoggingSettings,
 	configRateLimit,
 	updateLoggingSettings
 );
 
-router.get('/audit', validatePagination, analyticsRateLimit, getAuditLogs);
+// Audit logs
+addRoute(
+	router,
+	'get',
+	'/audit',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	validatePagination,
+	analyticsRateLimit,
+	getAuditLogs
+);
 
-router.post('/audit/export', analyticsRateLimit, exportAuditLogs);
+addRoute(
+	router,
+	'post',
+	'/audit/export',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	analyticsRateLimit,
+	exportAuditLogs
+);
 
-router.get('/statistics', analyticsRateLimit, getLogStatistics);
+// Statistics
+addRoute(
+	router,
+	'get',
+	'/statistics',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	analyticsRateLimit,
+	getLogStatistics
+);
 
 export default router;

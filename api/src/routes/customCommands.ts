@@ -18,41 +18,74 @@ import {
 	customCommandsRateLimit,
 	guildCustomCommandsRateLimit,
 } from '../middleware/rateLimiting.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
-router.use(authenticateToken, validateGuildAccess, requireAdminPermissions);
+router.use(authenticateToken, validateGuildAccess);
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validatePagination,
 	guildCustomCommandsRateLimit,
 	getCustomCommands
 );
 
-router.get('/statistics', guildCustomCommandsRateLimit, getCommandStatistics);
+addRoute(
+	router,
+	'get',
+	'/statistics',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	guildCustomCommandsRateLimit,
+	getCommandStatistics
+);
 
-router.get('/:commandId', guildCustomCommandsRateLimit, getCustomCommand);
+addRoute(
+	router,
+	'get',
+	'/:commandId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	guildCustomCommandsRateLimit,
+	getCustomCommand
+);
 
-router.post(
+addRoute(
+	router,
+	'post',
 	'/',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validateCustomCommand,
 	customCommandsRateLimit,
 	createCustomCommand
 );
 
-router.put(
+addRoute(
+	router,
+	'put',
 	'/:commandId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validateCustomCommand,
 	customCommandsRateLimit,
 	updateCustomCommand
 );
 
-router.delete('/:commandId', customCommandsRateLimit, deleteCustomCommand);
+addRoute(
+	router,
+	'delete',
+	'/:commandId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	customCommandsRateLimit,
+	deleteCustomCommand
+);
 
-router.post(
+addRoute(
+	router,
+	'post',
 	'/:commandId/execute',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	customCommandsRateLimit,
 	executeCustomCommand
 );

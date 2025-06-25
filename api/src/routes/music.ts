@@ -25,48 +25,121 @@ import {
 	configRateLimit,
 } from '../middleware/rateLimiting.js';
 import { requireMusicPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-router.get('/status', generalRateLimit, getMusicStatus);
+addRoute(router, 'get', '/status', {}, generalRateLimit, getMusicStatus);
 
-router.post(
+addRoute(
+	router,
+	'post',
 	'/play',
+	{},
 	validateMusicAction,
 	generalRateLimit,
 	requireMusicPermissions,
 	playMusic
 );
 
-router.post('/pause', generalRateLimit, requireMusicPermissions, pauseMusic);
+addRoute(
+	router,
+	'post',
+	'/pause',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	requireMusicPermissions,
+	pauseMusic
+);
 
-router.post('/resume', generalRateLimit, requireMusicPermissions, resumeMusic);
+addRoute(
+	router,
+	'post',
+	'/resume',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	requireMusicPermissions,
+	resumeMusic
+);
 
-router.post('/skip', generalRateLimit, requireMusicPermissions, skipTrack);
+addRoute(
+	router,
+	'post',
+	'/skip',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	requireMusicPermissions,
+	skipTrack
+);
 
-router.post('/stop', generalRateLimit, requireMusicPermissions, stopMusic);
+addRoute(
+	router,
+	'post',
+	'/stop',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	requireMusicPermissions,
+	stopMusic
+);
 
-router.get('/queue', generalRateLimit, getQueue);
+addRoute(router, 'get', '/queue', { permissionsOverride: true }, getQueue);
 
-router.delete('/queue', generalRateLimit, requireMusicPermissions, clearQueue);
+addRoute(
+	router,
+	'delete',
+	'/queue',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	requireMusicPermissions,
+	clearQueue
+);
 
-router.post(
+addRoute(
+	router,
+	'post',
 	'/queue/shuffle',
+	{ permissionsOverride: true },
 	generalRateLimit,
 	requireMusicPermissions,
 	shuffleQueue
 );
 
-router.put('/volume', generalRateLimit, requireMusicPermissions, setVolume);
+addRoute(
+	router,
+	'put',
+	'/volume',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	requireMusicPermissions,
+	setVolume
+);
 
-router.put('/repeat', generalRateLimit, requireMusicPermissions, setRepeatMode);
+addRoute(
+	router,
+	'put',
+	'/repeat',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	requireMusicPermissions,
+	setRepeatMode
+);
 
-router.get('/settings', generalRateLimit, getMusicSettings);
-
-router.put(
+addRoute(
+	router,
+	'get',
 	'/settings',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	getMusicSettings
+);
+
+addRoute(
+	router,
+	'put',
+	'/settings',
+	{ permissionsOverride: true },
 	configRateLimit,
 	requireMusicPermissions,
 	updateMusicSettings

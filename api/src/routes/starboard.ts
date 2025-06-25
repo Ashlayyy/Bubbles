@@ -15,38 +15,46 @@ import {
 	starboardRateLimit,
 	guildStarboardRateLimit,
 } from '../middleware/rateLimiting.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildStarboardRateLimit,
-	requireAdminPermissions,
 	getStarboardSettings
 );
 
-router.put(
+addRoute(
+	router,
+	'put',
 	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	starboardRateLimit,
-	requireAdminPermissions,
 	updateStarboardSettings
 );
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/messages',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validatePagination,
 	guildStarboardRateLimit,
-	requireAdminPermissions,
 	getStarboardMessages
 );
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/statistics',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildStarboardRateLimit,
-	requireAdminPermissions,
 	getStarboardStats
 );
 

@@ -10,26 +10,81 @@ import {
 	purgeExpiredInvites,
 } from '../controllers/inviteController.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
+const manageGuildPerm = {
+	discordPermissions: ['MANAGE_GUILD'],
+	permissionsOverride: true,
+};
 
-router.get('/', authenticateToken, getGuildInvites);
+addRoute(
+	router,
+	'get',
+	'/',
+	manageGuildPerm,
+	authenticateToken,
+	getGuildInvites
+);
+addRoute(
+	router,
+	'get',
+	'/analytics',
+	manageGuildPerm,
+	authenticateToken,
+	getInviteAnalytics
+);
+addRoute(
+	router,
+	'post',
+	'/bulk-delete',
+	manageGuildPerm,
+	authenticateToken,
+	bulkDeleteInvites
+);
+addRoute(
+	router,
+	'post',
+	'/purge-expired',
+	manageGuildPerm,
+	authenticateToken,
+	purgeExpiredInvites
+);
 
-router.get('/analytics', authenticateToken, getInviteAnalytics);
+// Public invite info (no auth)
+addRoute(
+	router,
+	'get',
+	'/:inviteCode',
+	{ authRequired: false, tokenRequired: false, permissionsOverride: true },
+	getInvite
+);
 
-router.post('/bulk-delete', authenticateToken, bulkDeleteInvites);
+addRoute(
+	router,
+	'delete',
+	'/:inviteCode',
+	manageGuildPerm,
+	authenticateToken,
+	deleteInvite
+);
 
-router.post('/purge-expired', authenticateToken, purgeExpiredInvites);
-
-
-router.get('/:inviteCode', getInvite);
-
-router.delete('/:inviteCode', authenticateToken, deleteInvite);
-
-
-router.get('/channels/:channelId', authenticateToken, getChannelInvites);
-
-router.post('/channels/:channelId', authenticateToken, createChannelInvite);
+addRoute(
+	router,
+	'get',
+	'/channels/:channelId',
+	manageGuildPerm,
+	authenticateToken,
+	getChannelInvites
+);
+addRoute(
+	router,
+	'post',
+	'/channels/:channelId',
+	manageGuildPerm,
+	authenticateToken,
+	createChannelInvite
+);
 
 export default router;

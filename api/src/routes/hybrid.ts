@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticateToken } from '../middleware/auth.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 import { createLogger, type ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import hybridCommunicationService from '../services/hybridCommunicationService.js';
@@ -31,10 +31,12 @@ router.get(
 	}
 );
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/queue/stats',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	authenticateToken,
-	requireAdminPermissions,
 	async (req: AuthRequest, res: Response) => {
 		try {
 			const stats = await enhancedQueueManager.getQueueStats();
@@ -79,10 +81,12 @@ router.get(
 	}
 );
 
-router.post(
+addRoute(
+	router,
+	'post',
 	'/bulk/execute',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	authenticateToken,
-	requireAdminPermissions,
 	async (req: AuthRequest, res: Response) => {
 		try {
 			const { operations, options = {} } = req.body;
@@ -139,10 +143,12 @@ router.post(
 	}
 );
 
-router.post(
+addRoute(
+	router,
+	'post',
 	'/schedule',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	authenticateToken,
-	requireAdminPermissions,
 	async (req: AuthRequest, res: Response) => {
 		try {
 			const { operation, data, delay, options = {} } = req.body;

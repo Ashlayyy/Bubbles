@@ -1,4 +1,6 @@
 import { config } from "dotenv";
+import { existsSync } from "fs";
+import { resolve } from "path";
 
 let loadedFile = false;
 
@@ -30,3 +32,13 @@ export function isDevEnvironment(): boolean {
   }
 }
 isDevEnvironment(); // force load file on first import
+
+// Fallback: load repository root .env (one level above /bot) without overriding existing vars
+try {
+  const rootEnvPath = resolve(process.cwd(), "../.env");
+  if (existsSync(rootEnvPath)) {
+    config({ path: rootEnvPath, override: false });
+  }
+} catch {
+  /* silent */
+}

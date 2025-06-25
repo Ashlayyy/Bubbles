@@ -17,68 +17,92 @@ import {
 	validatePagination,
 } from '../middleware/validation.js';
 import { generalRateLimit } from '../middleware/rateLimiting.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-router.get(
+// List reminders
+addRoute(
+	router,
+	'get',
 	'/',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validatePagination,
 	generalRateLimit,
-	requireAdminPermissions,
 	getReminders
 );
 
-router.get(
+// Single reminder
+addRoute(
+	router,
+	'get',
 	'/:reminderId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	getReminder
 );
 
-router.post(
+// Create reminder
+addRoute(
+	router,
+	'post',
 	'/',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validateReminder,
 	generalRateLimit,
-	requireAdminPermissions,
 	createReminder
 );
 
-router.put(
+// Update
+addRoute(
+	router,
+	'put',
 	'/:reminderId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validateReminder,
 	generalRateLimit,
-	requireAdminPermissions,
 	updateReminder
 );
 
-router.delete(
+// Delete
+addRoute(
+	router,
+	'delete',
 	'/:reminderId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	deleteReminder
 );
 
-router.post(
+// Cancel
+addRoute(
+	router,
+	'post',
 	'/:reminderId/cancel',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	cancelReminder
 );
 
-router.post(
+// Test
+addRoute(
+	router,
+	'post',
 	'/:reminderId/test',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	testReminder
 );
 
-router.get(
+// Stats
+addRoute(
+	router,
+	'get',
 	'/statistics',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
-	requireAdminPermissions,
 	getReminderStatistics
 );
 

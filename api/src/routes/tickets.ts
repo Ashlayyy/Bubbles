@@ -20,46 +20,55 @@ import {
 	ticketsRateLimit,
 	guildTicketsRateLimit,
 } from '../middleware/rateLimiting.js';
-import {
-	requireAdminPermissions,
-	requireModerationPermissions,
-} from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
+import { requireModerationPermissions } from '../middleware/permissions.js';
 
 const router = Router({ mergeParams: true });
 
 router.use(authenticateToken, validateGuildAccess);
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildTicketsRateLimit,
-	requireAdminPermissions,
 	getTicketSettings
 );
 
-router.put(
+addRoute(
+	router,
+	'put',
 	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validateTicketSettings,
 	ticketsRateLimit,
-	requireAdminPermissions,
 	updateTicketSettings
 );
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/statistics',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildTicketsRateLimit,
-	requireAdminPermissions,
 	getTicketStatistics
 );
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/',
+	{
+		discordPermissions: ['BAN_MEMBERS', 'KICK_MEMBERS', 'MODERATE_MEMBERS'],
+		permissionsOverride: true,
+	},
 	validatePagination,
 	guildTicketsRateLimit,
-	requireModerationPermissions,
 	getTickets
 );
 
-router.post('/', ticketsRateLimit, createTicket);
+addRoute(router, 'post', '/', {}, ticketsRateLimit, createTicket);
 
 const ticketRouter = Router({ mergeParams: true });
 router.use('/:ticketId', requireModerationPermissions, ticketRouter);

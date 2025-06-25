@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import { createLogger, type ApiResponse } from '../types/shared.js';
 import { healthService } from '../services/healthService.js';
 import { authenticateToken, type AuthRequest } from '../middleware/auth.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router();
 const logger = createLogger('health-routes');
@@ -100,10 +100,12 @@ router.get(
 	}
 );
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/integration',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	authenticateToken,
-	requireAdminPermissions,
 	async (req: AuthRequest, res: Response) => {
 		try {
 			const health = await healthService.getSystemHealth();
@@ -154,10 +156,12 @@ router.get(
 	}
 );
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/live',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	authenticateToken,
-	requireAdminPermissions,
 	async (req: AuthRequest, res: Response) => {
 		try {
 			const health = await healthService.getSystemHealth();

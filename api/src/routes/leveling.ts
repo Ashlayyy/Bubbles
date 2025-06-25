@@ -21,24 +21,28 @@ import {
 	levelingRateLimit,
 	guildLevelingRateLimit,
 } from '../middleware/rateLimiting.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
 router.use(authenticateToken, validateGuildAccess);
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildLevelingRateLimit,
-	requireAdminPermissions,
 	getLevelingSettings
 );
 
-router.put(
+addRoute(
+	router,
+	'put',
 	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validateLevelingSettings,
 	levelingRateLimit,
-	requireAdminPermissions,
 	updateLevelingSettings
 );
 
@@ -49,10 +53,12 @@ router.get(
 	getLeaderboard
 );
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/statistics',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildLevelingRateLimit,
-	requireAdminPermissions,
 	getLevelingStatistics
 );
 
@@ -60,13 +66,41 @@ const userRouter = Router({ mergeParams: true });
 router.use('/users/:userId', validateUserId, userRouter);
 
 userRouter.get('/', guildLevelingRateLimit, getUserLevel);
-userRouter.put('/', levelingRateLimit, requireAdminPermissions, setUserLevel);
+addRoute(
+	userRouter,
+	'put',
+	'/',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	levelingRateLimit,
+	setUserLevel
+);
 
 const rewardsRouter = Router({ mergeParams: true });
-router.use('/rewards', requireAdminPermissions, rewardsRouter);
+router.use('/rewards', rewardsRouter);
 
-rewardsRouter.get('/', guildLevelingRateLimit, getLevelRewards);
-rewardsRouter.post('/', levelingRateLimit, addLevelReward);
-rewardsRouter.delete('/:rewardId', levelingRateLimit, removeLevelReward);
+addRoute(
+	rewardsRouter,
+	'get',
+	'/',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	guildLevelingRateLimit,
+	getLevelRewards
+);
+addRoute(
+	rewardsRouter,
+	'post',
+	'/',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	levelingRateLimit,
+	addLevelReward
+);
+addRoute(
+	rewardsRouter,
+	'delete',
+	'/:rewardId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	levelingRateLimit,
+	removeLevelReward
+);
 
 export default router;

@@ -118,16 +118,47 @@ const hasPermission = (
 	});
 };
 
+// -----------------------------------------------------------------------------
+// SIMPLE IN-MEMORY CACHE (TTL-BASED)
+// -----------------------------------------------------------------------------
+interface CacheEntry<T> {
+	value: T;
+	expires: number; // epoch ms
+}
+
+const USER_PERMS_TTL = 60 * 1000; // 1 minute
+const GUILD_ROLES_TTL = 5 * 60 * 1000; // 5 minutes
+
+const userPermsCache: Map<string, CacheEntry<string>> = new Map();
+const guildRolesCache: Map<string, CacheEntry<any[]>> = new Map();
+
 // Helper to get effective permission bitfield for a user in a guild
 async function getUserGuildPermissions(
 	guildId: string,
 	userId: string
 ): Promise<string> {
+	const cacheKey = `${guildId}:${userId}`;
+	const cached = userPermsCache.get(cacheKey);
+	if (cached && cached.expires > Date.now()) {
+		return cached.value;
+	}
+
 	try {
-		const [member, roles] = await Promise.all([
-			discordApi.getGuildMember(guildId, userId),
-			discordApi.getGuildRoles(guildId),
-		]);
+		// Fetch & cache guild roles (shared across users)
+		let roles: any[] | undefined;
+		const guildRolesCached = guildRolesCache.get(guildId);
+		if (guildRolesCached && guildRolesCached.expires > Date.now()) {
+			roles = guildRolesCached.value;
+		} else {
+			roles = await discordApi.getGuildRoles(guildId);
+			guildRolesCache.set(guildId, {
+				value: roles,
+				expires: Date.now() + GUILD_ROLES_TTL,
+			});
+		}
+
+		// Fetch member
+		const member = await discordApi.getGuildMember(guildId, userId);
 
 		const roleMap = new Map<string, string>();
 		roles.forEach((r: any) => roleMap.set(r.id, r.permissions));
@@ -144,10 +175,15 @@ async function getUserGuildPermissions(
 			if (perms) permissions |= BigInt(perms);
 		});
 
-		return permissions.toString();
-	} catch (err) {
-		// fallback – no permissions
-		return '0';
+		const bitfield = permissions.toString();
+		userPermsCache.set(cacheKey, {
+			value: bitfield,
+			expires: Date.now() + USER_PERMS_TTL,
+		});
+
+		return bitfield;
+	} catch {
+		return '0'; // fallback – no permissions
 	}
 }
 

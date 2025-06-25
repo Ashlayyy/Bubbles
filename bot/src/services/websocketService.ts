@@ -122,7 +122,7 @@ export class WebSocketService extends EventEmitter {
     // Generate a JWT token for bot authentication
     const payload = {
       type: "bot",
-      clientId: process.env.CLIENT_ID,
+      clientId: process.env.DISCORD_CLIENT_ID,
       shardId: this.client.shard?.ids[0] ?? 0,
       permissions: ["BOT_COMMANDS", "SEND_EVENTS"],
       iat: Math.floor(Date.now() / 1000),

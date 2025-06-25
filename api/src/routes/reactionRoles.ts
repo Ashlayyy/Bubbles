@@ -18,48 +18,77 @@ import {
 	reactionRolesRateLimit,
 	guildReactionRolesRateLimit,
 } from '../middleware/rateLimiting.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
-router.use(authenticateToken, validateGuildAccess, requireAdminPermissions);
+router.use(authenticateToken, validateGuildAccess);
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validatePagination,
 	guildReactionRolesRateLimit,
 	getReactionRoles
 );
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/logs',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validatePagination,
 	guildReactionRolesRateLimit,
 	getReactionRoleLogs
 );
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/statistics',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildReactionRolesRateLimit,
 	getReactionRoleStatistics
 );
 
-router.get('/:reactionRoleId', guildReactionRolesRateLimit, getReactionRole);
+addRoute(
+	router,
+	'get',
+	'/:reactionRoleId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	guildReactionRolesRateLimit,
+	getReactionRole
+);
 
-router.post(
+addRoute(
+	router,
+	'post',
 	'/',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validateReactionRole,
 	reactionRolesRateLimit,
 	createReactionRole
 );
 
-router.put(
+addRoute(
+	router,
+	'put',
 	'/:reactionRoleId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validateReactionRole,
 	reactionRolesRateLimit,
 	updateReactionRole
 );
 
-router.delete('/:reactionRoleId', reactionRolesRateLimit, deleteReactionRole);
+addRoute(
+	router,
+	'delete',
+	'/:reactionRoleId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	reactionRolesRateLimit,
+	deleteReactionRole
+);
 
 export default router;

@@ -26,99 +26,123 @@ import {
 	webhooksRateLimit,
 	guildWebhooksRateLimit,
 } from '../middleware/rateLimiting.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-router.get(
+addRoute(
+	router,
+	'get',
 	'/',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validatePagination,
 	guildWebhooksRateLimit,
-	requireAdminPermissions,
 	getWebhooks
 );
-router.get(
+addRoute(
+	router,
+	'get',
 	'/statistics',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildWebhooksRateLimit,
-	requireAdminPermissions,
 	getWebhookStatistics
 );
-router.get(
+addRoute(
+	router,
+	'get',
 	'/:webhookId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildWebhooksRateLimit,
-	requireAdminPermissions,
 	getWebhook
 );
-router.get(
+addRoute(
+	router,
+	'get',
 	'/:webhookId/logs',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validatePagination,
 	guildWebhooksRateLimit,
-	requireAdminPermissions,
 	getWebhookLogs
 );
-router.post(
+addRoute(
+	router,
+	'post',
 	'/',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validateWebhook,
 	webhooksRateLimit,
-	requireAdminPermissions,
 	createWebhook
 );
-router.put(
+addRoute(
+	router,
+	'put',
 	'/:webhookId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validateWebhook,
 	webhooksRateLimit,
-	requireAdminPermissions,
 	updateWebhook
 );
-router.delete(
+addRoute(
+	router,
+	'delete',
 	'/:webhookId',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	webhooksRateLimit,
-	requireAdminPermissions,
 	deleteWebhook
 );
-router.post(
+addRoute(
+	router,
+	'post',
 	'/:webhookId/test',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	webhooksRateLimit,
-	requireAdminPermissions,
 	testWebhook
 );
 
-router.post(
+addRoute(
+	router,
+	'post',
 	'/bot/command',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	webhooksRateLimit,
-	requireAdminPermissions,
 	sendBotCommand
 );
-router.get(
+addRoute(
+	router,
+	'get',
 	'/discord/events',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validatePagination,
 	guildWebhooksRateLimit,
-	requireAdminPermissions,
 	getDiscordEventHistory
 );
-router.get(
+addRoute(
+	router,
+	'get',
 	'/discord/stats',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildWebhooksRateLimit,
-	requireAdminPermissions,
 	getDiscordEventStats
 );
 
 // Global endpoints
 router.post('/discord/webhook', handleDiscordWebhook);
-router.get(
+addRoute(
+	router,
+	'get',
 	'/bot/shards',
-	authenticateToken,
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildWebhooksRateLimit,
-	requireAdminPermissions,
 	getShardStatus
 );
-router.get(
+addRoute(
+	router,
+	'get',
 	'/websocket/stats',
-	authenticateToken,
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildWebhooksRateLimit,
-	requireAdminPermissions,
 	getWebSocketStats
 );
 

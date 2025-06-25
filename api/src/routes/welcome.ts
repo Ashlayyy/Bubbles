@@ -13,24 +13,57 @@ import {
 	validatePagination,
 } from '../middleware/validation.js';
 import { generalRateLimit } from '../middleware/rateLimiting.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
-router.use(authenticateToken, validateGuildAccess, requireAdminPermissions);
+router.use(authenticateToken, validateGuildAccess);
 
-router.get('/settings', generalRateLimit, getWelcomeSettings);
-router.put(
+addRoute(
+	router,
+	'get',
 	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	generalRateLimit,
+	getWelcomeSettings
+);
+
+addRoute(
+	router,
+	'put',
+	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	validateWelcomeSettings,
 	generalRateLimit,
 	updateWelcomeSettings
 );
 
-router.post('/test', generalRateLimit, testWelcomeMessage);
+addRoute(
+	router,
+	'post',
+	'/test',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	generalRateLimit,
+	testWelcomeMessage
+);
 
-router.get('/logs', validatePagination, generalRateLimit, getWelcomeLogs);
+addRoute(
+	router,
+	'get',
+	'/logs',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	validatePagination,
+	generalRateLimit,
+	getWelcomeLogs
+);
 
-router.get('/statistics', generalRateLimit, getWelcomeStatistics);
+addRoute(
+	router,
+	'get',
+	'/statistics',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	generalRateLimit,
+	getWelcomeStatistics
+);
 
 export default router;

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { authenticateToken } from '../middleware/auth.js';
 import {
 	getAnalyticsOverview,
 	getMemberAnalytics,
@@ -6,54 +7,65 @@ import {
 	getModerationAnalytics,
 	getActivityAnalytics,
 } from '../controllers/analyticsController.js';
-import { authenticateToken } from '../middleware/auth.js';
 import {
 	validateGuildId,
 	validateGuildAccess,
-	validatePagination,
 } from '../middleware/validation.js';
-import {
-	analyticsRateLimit,
-	guildAnalyticsRateLimit,
-} from '../middleware/rateLimiting.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { guildAnalyticsRateLimit } from '../middleware/rateLimiting.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
+// Common validation for all analytics routes
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-router.get(
+// Overview
+addRoute(
+	router,
+	'get',
 	'/overview',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildAnalyticsRateLimit,
-	requireAdminPermissions,
 	getAnalyticsOverview
 );
 
-router.get(
+// Members
+addRoute(
+	router,
+	'get',
 	'/members',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildAnalyticsRateLimit,
-	requireAdminPermissions,
 	getMemberAnalytics
 );
 
-router.get(
+// Messages
+addRoute(
+	router,
+	'get',
 	'/messages',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildAnalyticsRateLimit,
-	requireAdminPermissions,
 	getMessageAnalytics
 );
 
-router.get(
+// Moderation
+addRoute(
+	router,
+	'get',
 	'/moderation',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildAnalyticsRateLimit,
-	requireAdminPermissions,
 	getModerationAnalytics
 );
 
-router.get(
+// Activity
+addRoute(
+	router,
+	'get',
 	'/activity',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildAnalyticsRateLimit,
-	requireAdminPermissions,
 	getActivityAnalytics
 );
 

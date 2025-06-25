@@ -1,6 +1,15 @@
 import dotenv from 'dotenv';
+import { resolve } from 'path';
+import { existsSync } from 'fs';
 
+// 1) Load local env (within /api)
 dotenv.config();
+
+// 2) Fallback – load repository-root .env if present (does NOT override existing vars)
+const rootEnvPath = resolve(process.cwd(), '../.env');
+if (existsSync(rootEnvPath)) {
+	dotenv.config({ path: rootEnvPath, override: false });
+}
 
 export interface Config {
 	port: number;

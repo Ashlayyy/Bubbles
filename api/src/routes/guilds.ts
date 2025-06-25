@@ -18,7 +18,7 @@ import {
 	generalRateLimit,
 	guildAnalyticsRateLimit,
 } from '../middleware/rateLimiting.js';
-import { requireAdminPermissions } from '../middleware/permissions.js';
+import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router();
 
@@ -28,7 +28,6 @@ const guildRouter = Router({ mergeParams: true });
 router.use('/:guildId', validateGuildId, validateGuildAccess, guildRouter);
 
 guildRouter.get('/', authenticateToken, generalRateLimit, getGuildInfo);
-
 
 guildRouter.get(
 	'/channels',
@@ -45,21 +44,22 @@ guildRouter.get(
 	getGuildMembers
 );
 
-
-guildRouter.get(
+addRoute(
+	guildRouter,
+	'get',
 	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	authenticateToken,
-	requireAdminPermissions,
 	getServerSettings
 );
 
-guildRouter.put(
+addRoute(
+	guildRouter,
+	'put',
 	'/settings',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	authenticateToken,
-	requireAdminPermissions,
 	updateServerSettings
 );
-
-
 
 export default router;
