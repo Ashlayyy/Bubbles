@@ -3,7 +3,6 @@ import {
 	getWelcomeSettings,
 	updateWelcomeSettings,
 	testWelcomeMessage,
-	getWelcomeLogs,
 	getWelcomeStatistics,
 } from '../controllers/welcomeController.js';
 import { authenticateToken } from '../middleware/auth.js';
@@ -45,16 +44,6 @@ addRoute(
 	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
 	testWelcomeMessage
-);
-
-addRoute(
-	router,
-	'get',
-	'/logs',
-	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
-	validatePagination,
-	generalRateLimit,
-	getWelcomeLogs
 );
 
 addRoute(
