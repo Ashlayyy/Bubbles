@@ -2,7 +2,6 @@ import type { Response } from 'express';
 import { discordApi } from '../services/discordApiService.js';
 import { getDiscordEventForwarder } from '../services/discordEventForwarder.js';
 import { createLogger } from '../types/shared.js';
-import type { ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 
 const logger = createLogger('api-audit');
@@ -17,10 +16,7 @@ export const getGuildAuditLog = async (req: AuthRequest, res: Response) => {
 		const { user_id, action_type, before, after, limit = 50 } = req.query;
 
 		if (!guildId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Guild ID is required',
-			} as ApiResponse);
+			return res.failure('Guild ID is required', 400);
 		}
 
 		const options = {
@@ -33,16 +29,10 @@ export const getGuildAuditLog = async (req: AuthRequest, res: Response) => {
 
 		const auditLog = await discordApi.getGuildAuditLog(guildId, options);
 
-		res.json({
-			success: true,
-			data: auditLog,
-		} as ApiResponse);
+		res.success(auditLog);
 	} catch (error) {
 		logger.error('Error fetching guild audit log:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch guild audit log',
-		} as ApiResponse);
+		res.failure('Failed to fetch guild audit log', 500);
 	}
 };
 
@@ -56,10 +46,7 @@ export const getAuditLogAnalytics = async (req: AuthRequest, res: Response) => {
 		const { days = '7' } = req.query;
 
 		if (!guildId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Guild ID is required',
-			} as ApiResponse);
+			return res.failure('Guild ID is required', 400);
 		}
 
 		// Get recent audit log entries
@@ -68,16 +55,10 @@ export const getAuditLogAnalytics = async (req: AuthRequest, res: Response) => {
 		// Analyze audit log data
 		const analytics = analyzeAuditLog(auditLog, parseInt(days as string));
 
-		res.json({
-			success: true,
-			data: analytics,
-		} as ApiResponse);
+		res.success(analytics);
 	} catch (error) {
 		logger.error('Error generating audit log analytics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to generate audit log analytics',
-		} as ApiResponse);
+		res.failure('Failed to generate audit log analytics', 500);
 	}
 };
 
@@ -87,10 +68,7 @@ export const getAuditLogsByUser = async (req: AuthRequest, res: Response) => {
 		const { limit = 50, action_type } = req.query;
 
 		if (!guildId || !userId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Guild ID and User ID are required',
-			} as ApiResponse);
+			return res.failure('Guild ID and User ID are required', 400);
 		}
 
 		const options = {
@@ -104,19 +82,13 @@ export const getAuditLogsByUser = async (req: AuthRequest, res: Response) => {
 		// Add user activity summary
 		const userAnalytics = analyzeUserActivity(auditLog);
 
-		res.json({
-			success: true,
-			data: {
-				audit_log_entries: auditLog.audit_log_entries,
-				user_analytics: userAnalytics,
-			},
-		} as ApiResponse);
+		res.success({
+			audit_log_entries: auditLog.audit_log_entries,
+			user_analytics: userAnalytics,
+		});
 	} catch (error) {
 		logger.error('Error fetching user audit logs:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch user audit logs',
-		} as ApiResponse);
+		res.failure('Failed to fetch user audit logs', 500);
 	}
 };
 
@@ -126,10 +98,7 @@ export const getAuditLogsByAction = async (req: AuthRequest, res: Response) => {
 		const { limit = 50, user_id } = req.query;
 
 		if (!guildId || !actionType) {
-			return res.status(400).json({
-				success: false,
-				error: 'Guild ID and Action Type are required',
-			} as ApiResponse);
+			return res.failure('Guild ID and Action Type are required', 400);
 		}
 
 		const options = {
@@ -143,19 +112,13 @@ export const getAuditLogsByAction = async (req: AuthRequest, res: Response) => {
 		// Add action-specific analytics
 		const actionAnalytics = analyzeActionType(auditLog, parseInt(actionType));
 
-		res.json({
-			success: true,
-			data: {
-				audit_log_entries: auditLog.audit_log_entries,
-				action_analytics: actionAnalytics,
-			},
-		} as ApiResponse);
+		res.success({
+			audit_log_entries: auditLog.audit_log_entries,
+			action_analytics: actionAnalytics,
+		});
 	} catch (error) {
 		logger.error('Error fetching action audit logs:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch action audit logs',
-		} as ApiResponse);
+		res.failure('Failed to fetch action audit logs', 500);
 	}
 };
 
@@ -169,10 +132,7 @@ export const getSecurityAlerts = async (req: AuthRequest, res: Response) => {
 		const { hours = '24' } = req.query;
 
 		if (!guildId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Guild ID is required',
-			} as ApiResponse);
+			return res.failure('Guild ID is required', 400);
 		}
 
 		// Get recent audit log entries
@@ -184,16 +144,10 @@ export const getSecurityAlerts = async (req: AuthRequest, res: Response) => {
 			parseInt(hours as string)
 		);
 
-		res.json({
-			success: true,
-			data: securityAlerts,
-		} as ApiResponse);
+		res.success(securityAlerts);
 	} catch (error) {
 		logger.error('Error generating security alerts:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to generate security alerts',
-		} as ApiResponse);
+		res.failure('Failed to generate security alerts', 500);
 	}
 };
 
@@ -203,10 +157,7 @@ export const getModerationHistory = async (req: AuthRequest, res: Response) => {
 		const { target_user_id, moderator_id, limit = 50 } = req.query;
 
 		if (!guildId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Guild ID is required',
-			} as ApiResponse);
+			return res.failure('Guild ID is required', 400);
 		}
 
 		// Get moderation-related audit log entries
@@ -293,19 +244,13 @@ export const getModerationHistory = async (req: AuthRequest, res: Response) => {
 		// Generate moderation analytics
 		const moderationAnalytics = analyzeModerationHistory(sortedLogs);
 
-		res.json({
-			success: true,
-			data: {
-				moderation_history: sortedLogs,
-				analytics: moderationAnalytics,
-			},
-		} as ApiResponse);
+		res.success({
+			moderation_history: sortedLogs,
+			analytics: moderationAnalytics,
+		});
 	} catch (error) {
 		logger.error('Error fetching moderation history:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch moderation history',
-		} as ApiResponse);
+		res.failure('Failed to fetch moderation history', 500);
 	}
 };
 

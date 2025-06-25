@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { createLogger, type ApiResponse } from '../types/shared.js';
+import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
 
@@ -57,16 +57,10 @@ export const getServerOverview = async (req: AuthRequest, res: Response) => {
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: overview,
-		} as ApiResponse);
+		res.success(overview);
 	} catch (error) {
 		logger.error('Error fetching server overview:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch server overview',
-		} as ApiResponse);
+		res.failure('Failed to fetch server overview', 500);
 	}
 };
 
@@ -115,19 +109,13 @@ export const getUserActivity = async (req: AuthRequest, res: Response) => {
 			})
 		);
 
-		res.json({
-			success: true,
-			data: {
-				period: period as string,
-				users: processedUsers,
-			},
-		} as ApiResponse);
+		res.success({
+			period: period as string,
+			users: processedUsers,
+		});
 	} catch (error) {
 		logger.error('Error fetching user activity:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch user activity',
-		} as ApiResponse);
+		res.failure('Failed to fetch user activity', 500);
 	}
 };
 
@@ -199,30 +187,24 @@ export const getCommandUsage = async (req: AuthRequest, res: Response) => {
 			0
 		);
 
-		res.json({
-			success: true,
-			data: {
-				period: period as string,
-				overview: {
-					totalExecutions,
-					uniqueCommands: customCommands.length,
-					averagePerDay: Math.round(
-						totalExecutions / Math.max(1, periodMs / (24 * 60 * 60 * 1000))
-					),
-				},
-				commands: processedCommands,
-				dailyActivity: Array.from(dailyMap.entries()).map(([date, count]) => ({
-					date,
-					count,
-				})),
+		res.success({
+			period: period as string,
+			overview: {
+				totalExecutions,
+				uniqueCommands: customCommands.length,
+				averagePerDay: Math.round(
+					totalExecutions / Math.max(1, periodMs / (24 * 60 * 60 * 1000))
+				),
 			},
-		} as ApiResponse);
+			commands: processedCommands,
+			dailyActivity: Array.from(dailyMap.entries()).map(([date, count]) => ({
+				date,
+				count,
+			})),
+		});
 	} catch (error) {
 		logger.error('Error fetching command usage:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch command usage',
-		} as ApiResponse);
+		res.failure('Failed to fetch command usage', 500);
 	}
 };
 
@@ -331,16 +313,10 @@ export const getModerationAnalytics = async (
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: moderationAnalytics,
-		} as ApiResponse);
+		res.success(moderationAnalytics);
 	} catch (error) {
 		logger.error('Error fetching moderation analytics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch moderation analytics',
-		} as ApiResponse);
+		res.failure('Failed to fetch moderation analytics', 500);
 	}
 };
 
@@ -426,16 +402,10 @@ export const getFeatureUsage = async (req: AuthRequest, res: Response) => {
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: featureUsage,
-		} as ApiResponse);
+		res.success(featureUsage);
 	} catch (error) {
 		logger.error('Error fetching feature usage:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch feature usage',
-		} as ApiResponse);
+		res.failure('Failed to fetch feature usage', 500);
 	}
 };
 
@@ -471,16 +441,10 @@ export const getAnalyticsReport = async (req: AuthRequest, res: Response) => {
 			featureUsage,
 		};
 
-		res.json({
-			success: true,
-			data: report,
-		} as ApiResponse);
+		res.success(report);
 	} catch (error) {
 		logger.error('Error generating analytics report:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to generate analytics report',
-		} as ApiResponse);
+		res.failure('Failed to generate analytics report', 500);
 	}
 };
 

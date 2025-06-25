@@ -87,16 +87,10 @@ export const getStarboardSettings = async (req: AuthRequest, res: Response) => {
 			updatedAt: settings.updatedAt,
 		};
 
-		res.json({
-			success: true,
-			data: settingsData,
-		} as ApiResponse);
+		res.success(settingsData);
 	} catch (error) {
 		logger.error('Error fetching starboard settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch starboard settings',
-		} as ApiResponse);
+		res.failure('Failed to fetch starboard settings', 500);
 	}
 };
 
@@ -145,17 +139,13 @@ export const updateStarboardSettings = async (
 			updatedBy: req.user?.id,
 		});
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Starboard settings updated',
 			data: settings,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating starboard settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update starboard settings',
-		} as ApiResponse);
+		res.failure('Failed to update starboard settings', 500);
 	}
 };
 
@@ -242,38 +232,32 @@ export const getStarboardMessages = async (req: AuthRequest, res: Response) => {
 			take: 5,
 		});
 
-		res.json({
-			success: true,
-			data: {
-				messages: formattedMessages,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
-				stats: {
-					totalStarred: total,
-					averageStars: avgStars._avg.starCount
-						? Math.round(avgStars._avg.starCount * 100) / 100
-						: 0,
-					topStarrers: topStarrers.map((user: any) => ({
-						userId: user.userId,
-						starsGiven: user._count.userId,
-					})),
-					topStarred: topStarred.map((user: any) => ({
-						userId: user.authorId,
-						starsReceived: user._sum.starCount,
-					})),
-				},
+		res.success({
+			messages: formattedMessages,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+			stats: {
+				totalStarred: total,
+				averageStars: avgStars._avg.starCount
+					? Math.round(avgStars._avg.starCount * 100) / 100
+					: 0,
+				topStarrers: topStarrers.map((user: any) => ({
+					userId: user.userId,
+					starsGiven: user._count.userId,
+				})),
+				topStarred: topStarred.map((user: any) => ({
+					userId: user.authorId,
+					starsReceived: user._sum.starCount,
+				})),
+			},
+		});
 	} catch (error) {
 		logger.error('Error fetching starboard messages:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch starboard messages',
-		} as ApiResponse);
+		res.failure('Failed to fetch starboard messages', 500);
 	}
 };
 
@@ -285,10 +269,7 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 		const prisma = getPrismaClient();
 
 		if (!messageId || !userId || !['add', 'remove'].includes(action)) {
-			return res.status(400).json({
-				success: false,
-				error: 'Invalid parameters',
-			} as ApiResponse);
+			return res.failure('Invalid parameters', 400);
 		}
 
 		// Get starboard settings
@@ -297,10 +278,7 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!settings?.isEnabled) {
-			return res.status(400).json({
-				success: false,
-				error: 'Starboard is disabled',
-			} as ApiResponse);
+			return res.failure('Starboard is disabled', 400);
 		}
 
 		// Check if message exists in starboard
@@ -320,10 +298,7 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 			});
 
 			if (existingReaction) {
-				return res.status(400).json({
-					success: false,
-					error: 'User already starred this message',
-				} as ApiResponse);
+				return res.failure('User already starred this message', 400);
 			}
 
 			// Create or update starboard message
@@ -366,10 +341,7 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 			});
 		} else if (action === 'remove') {
 			if (!starboardMessage) {
-				return res.status(404).json({
-					success: false,
-					error: 'Message not in starboard',
-				} as ApiResponse);
+				return res.failure('Message not in starboard', 404);
 			}
 
 			// Remove reaction
@@ -382,10 +354,7 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 			});
 
 			if (!reaction) {
-				return res.status(404).json({
-					success: false,
-					error: 'Reaction not found',
-				} as ApiResponse);
+				return res.failure('Reaction not found', 404);
 			}
 
 			await prisma.starboardReaction.delete({
@@ -426,21 +395,17 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 			starCount: starboardMessage?.starCount || 0,
 		});
 
-		res.json({
-			success: true,
+		res.success({
 			message: `Star ${action}ed successfully`,
 			data: {
 				messageId,
 				starCount: starboardMessage?.starCount || 0,
 				action,
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error toggling star:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to toggle star',
-		} as ApiResponse);
+		res.failure('Failed to toggle star', 500);
 	}
 };
 
@@ -564,15 +529,9 @@ export const getStarboardStats = async (req: AuthRequest, res: Response) => {
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: statistics,
-		} as ApiResponse);
+		res.success(statistics);
 	} catch (error) {
 		logger.error('Error fetching starboard statistics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch starboard statistics',
-		} as ApiResponse);
+		res.failure('Failed to fetch starboard statistics', 500);
 	}
 };

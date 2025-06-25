@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { createLogger, type ApiResponse } from '../types/shared.js';
+import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
 import { wsManager } from '../websocket/manager.js';
@@ -81,24 +81,18 @@ export const getCustomCommands = async (req: AuthRequest, res: Response) => {
 			})),
 		}));
 
-		res.json({
-			success: true,
-			data: {
-				commands: formattedCommands,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
+		res.success({
+			commands: formattedCommands,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching custom commands:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch custom commands',
-		} as ApiResponse);
+		res.failure('Failed to fetch custom commands', 500);
 	}
 };
 
@@ -122,22 +116,13 @@ export const getCustomCommand = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!command) {
-			return res.status(404).json({
-				success: false,
-				error: 'Custom command not found',
-			} as ApiResponse);
+			return res.failure('Custom command not found', 404);
 		}
 
-		res.json({
-			success: true,
-			data: command,
-		} as ApiResponse);
+		res.success(command);
 	} catch (error) {
 		logger.error('Error fetching custom command:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch custom command',
-		} as ApiResponse);
+		res.failure('Failed to fetch custom command', 500);
 	}
 };
 
@@ -161,10 +146,7 @@ export const createCustomCommand = async (req: AuthRequest, res: Response) => {
 
 		// Validate required fields
 		if (!name || !content) {
-			return res.status(400).json({
-				success: false,
-				error: 'Name and content are required',
-			} as ApiResponse);
+			return res.failure('Name and content are required', 400);
 		}
 
 		// Check for name conflicts
@@ -179,10 +161,7 @@ export const createCustomCommand = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (existingCommand) {
-			return res.status(400).json({
-				success: false,
-				error: 'Command name or alias already exists',
-			} as ApiResponse);
+			return res.failure('Command name or alias already exists', 400);
 		}
 
 		// Check alias conflicts
@@ -200,10 +179,10 @@ export const createCustomCommand = async (req: AuthRequest, res: Response) => {
 			});
 
 			if (aliasConflicts) {
-				return res.status(400).json({
-					success: false,
-					error: 'One or more aliases conflict with existing commands',
-				} as ApiResponse);
+				return res.failure(
+					'One or more aliases conflict with existing commands',
+					400
+				);
 			}
 		}
 
@@ -235,17 +214,16 @@ export const createCustomCommand = async (req: AuthRequest, res: Response) => {
 			commandId: command.id,
 		});
 
-		res.status(201).json({
-			success: true,
-			message: 'Custom command created successfully',
-			data: command,
-		} as ApiResponse);
+		res.success(
+			{
+				message: 'Custom command created successfully',
+				data: command,
+			},
+			201
+		);
 	} catch (error) {
 		logger.error('Error creating custom command:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to create custom command',
-		} as ApiResponse);
+		res.failure('Failed to create custom command', 500);
 	}
 };
 
@@ -265,10 +243,7 @@ export const updateCustomCommand = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!existingCommand) {
-			return res.status(404).json({
-				success: false,
-				error: 'Custom command not found',
-			} as ApiResponse);
+			return res.failure('Custom command not found', 404);
 		}
 
 		// Check for name conflicts if updating name
@@ -285,10 +260,7 @@ export const updateCustomCommand = async (req: AuthRequest, res: Response) => {
 			});
 
 			if (nameConflict) {
-				return res.status(400).json({
-					success: false,
-					error: 'Command name conflicts with existing command',
-				} as ApiResponse);
+				return res.failure('Command name conflicts with existing command', 400);
 			}
 		}
 
@@ -313,17 +285,13 @@ export const updateCustomCommand = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Updated custom command ${commandId} for guild ${guildId}`);
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Custom command updated successfully',
 			data: updatedCommand,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating custom command:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update custom command',
-		} as ApiResponse);
+		res.failure('Failed to update custom command', 500);
 	}
 };
 
@@ -342,13 +310,10 @@ export const deleteCustomCommand = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!existingCommand) {
-			return res.status(404).json({
-				success: false,
-				error: 'Custom command not found',
-			} as ApiResponse);
+			return res.failure('Custom command not found', 404);
 		}
 
-		// Delete command and its logs
+		// Delete command (cascade will handle logs)
 		await prisma.customCommand.delete({
 			where: { id: commandId },
 		});
@@ -356,31 +321,23 @@ export const deleteCustomCommand = async (req: AuthRequest, res: Response) => {
 		// Broadcast command deletion
 		wsManager.broadcastToGuild(
 			guildId,
-			createWebSocketMessage('customCommandDelete', {
-				id: commandId,
-			})
+			createWebSocketMessage('customCommandDelete', { id: commandId })
 		);
 
 		logger.info(`Deleted custom command ${commandId} from guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: 'Custom command deleted successfully',
-		} as ApiResponse);
+		res.success({ message: 'Custom command deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting custom command:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to delete custom command',
-		} as ApiResponse);
+		res.failure('Failed to delete custom command', 500);
 	}
 };
 
-// Execute custom command (for testing)
+// Execute custom command
 export const executeCustomCommand = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, commandId } = req.params;
-		const { userId, channelId, args = [] } = req.body;
+		const { userId, channelId, content = '' } = req.body;
 		const prisma = getPrismaClient();
 
 		// Get command
@@ -392,63 +349,17 @@ export const executeCustomCommand = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!command) {
-			return res.status(404).json({
-				success: false,
-				error: 'Custom command not found',
-			} as ApiResponse);
+			return res.failure('Custom command not found', 404);
 		}
 
 		if (!command.enabled) {
-			return res.status(400).json({
-				success: false,
-				error: 'Command is disabled',
-			} as ApiResponse);
+			return res.failure('Custom command is disabled', 400);
 		}
 
-		// Check cooldown
-		if (command.cooldownSeconds > 0 && command.lastUsed) {
-			const cooldownEnd = new Date(
-				command.lastUsed.getTime() + command.cooldownSeconds * 1000
-			);
-			if (new Date() < cooldownEnd) {
-				return res.status(400).json({
-					success: false,
-					error: 'Command is still in cooldown period',
-				} as ApiResponse);
-			}
-		}
+		// Check permissions and restrictions
+		// This would typically be done by the bot, but we can validate here too
 
-		// Process content with variable replacement
-		let processedContent = command.content;
-
-		// Replace variables
-		processedContent = processedContent.replace(/\{user\}/g, `<@${userId}>`);
-		processedContent = processedContent.replace(
-			/\{channel\}/g,
-			`<#${channelId}>`
-		);
-		processedContent = processedContent.replace(/\{server\}/g, 'Server');
-
-		// Replace argument variables
-		args.forEach((arg: string, index: number) => {
-			const regex = new RegExp(`\\{${index + 1}\\}`, 'g');
-			processedContent = processedContent.replace(regex, arg);
-		});
-
-		// Log execution
-		await prisma.customCommandLog.create({
-			data: {
-				guildId,
-				commandName: command.name,
-				userId,
-				channelId,
-				args,
-				success: true,
-				timestamp: new Date(),
-			},
-		});
-
-		// Update command usage
+		// Update usage statistics
 		await prisma.customCommand.update({
 			where: { id: commandId },
 			data: {
@@ -457,25 +368,37 @@ export const executeCustomCommand = async (req: AuthRequest, res: Response) => {
 			},
 		});
 
+		// Log execution
+		const executionLog = await prisma.customCommandLog.create({
+			data: {
+				guildId,
+				commandId,
+				commandName: command.name,
+				userId: userId || 'unknown',
+				channelId: channelId || null,
+				success: true,
+				timestamp: new Date(),
+			},
+		});
+
 		logger.info(`Executed custom command ${command.name}`, {
-			commandId,
+			executionId: executionLog.id,
+			guildId,
 			userId,
 		});
 
-		res.json({
-			success: true,
-			message: 'Command executed successfully',
+		res.success({
+			message: 'Custom command executed successfully',
 			data: {
-				content: processedContent,
-				originalContent: command.content,
+				command: command.name,
+				executed: true,
+				content: command.content,
+				timestamp: executionLog.timestamp,
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error executing custom command:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to execute custom command',
-		} as ApiResponse);
+		res.failure('Failed to execute custom command', 500);
 	}
 };
 
@@ -483,7 +406,7 @@ export const executeCustomCommand = async (req: AuthRequest, res: Response) => {
 export const getCommandLogs = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
-		const { page = 1, limit = 50, commandName, userId, success } = req.query;
+		const { page = 1, limit = 50, commandId, userId, success } = req.query;
 		const prisma = getPrismaClient();
 
 		const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
@@ -491,7 +414,7 @@ export const getCommandLogs = async (req: AuthRequest, res: Response) => {
 
 		// Build where clause
 		const where: any = { guildId };
-		if (commandName) where.commandName = commandName;
+		if (commandId) where.commandId = commandId;
 		if (userId) where.userId = userId;
 		if (success !== undefined) where.success = success === 'true';
 
@@ -511,30 +434,23 @@ export const getCommandLogs = async (req: AuthRequest, res: Response) => {
 			commandName: log.commandName,
 			userId: log.userId,
 			channelId: log.channelId,
-			args: log.args,
 			success: log.success,
 			error: log.error,
 			timestamp: log.timestamp,
 		}));
 
-		res.json({
-			success: true,
-			data: {
-				logs: formattedLogs,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
+		res.success({
+			logs: formattedLogs,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching command logs:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch command logs',
-		} as ApiResponse);
+		res.failure('Failed to fetch command logs', 500);
 	}
 };
 
@@ -554,7 +470,7 @@ export const getCommandStatistics = async (req: AuthRequest, res: Response) => {
 			activeCommands,
 			totalExecutions,
 			successfulExecutions,
-			categoryBreakdown,
+			commandBreakdown,
 			dailyActivity,
 		] = await Promise.all([
 			prisma.customCommand.count({ where: { guildId } }),
@@ -572,10 +488,15 @@ export const getCommandStatistics = async (req: AuthRequest, res: Response) => {
 					timestamp: { gte: startDate },
 				},
 			}),
-			prisma.customCommand.groupBy({
-				by: ['category'],
-				where: { guildId },
-				_count: { category: true },
+			prisma.customCommandLog.groupBy({
+				by: ['commandName'],
+				where: {
+					guildId,
+					timestamp: { gte: startDate },
+				},
+				_count: { commandName: true },
+				orderBy: { _count: { commandName: 'desc' } },
+				take: 10,
 			}),
 			prisma.customCommandLog.groupBy({
 				by: ['timestamp'],
@@ -612,28 +533,20 @@ export const getCommandStatistics = async (req: AuthRequest, res: Response) => {
 					totalExecutions / Math.max(1, periodMs / (24 * 60 * 60 * 1000))
 				),
 			},
-			breakdown: {
-				categories: categoryBreakdown.reduce((acc: any, cat: any) => {
-					acc[cat.category] = cat._count.category;
-					return acc;
-				}, {}),
-			},
+			topCommands: commandBreakdown.map((cmd: any) => ({
+				name: cmd.commandName,
+				executions: cmd._count.commandName,
+			})),
 			dailyActivity: Array.from(dailyMap.entries()).map(([date, count]) => ({
 				date,
 				count,
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: statistics,
-		} as ApiResponse);
+		res.success(statistics);
 	} catch (error) {
 		logger.error('Error fetching command statistics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch command statistics',
-		} as ApiResponse);
+		res.failure('Failed to fetch command statistics', 500);
 	}
 };
 

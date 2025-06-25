@@ -14,7 +14,9 @@ function createWebSocketMessage(event: string, data: any) {
 		event,
 		data,
 		timestamp: Date.now(),
-		messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+		messageId: `msg_${Date.now()}_${Math.random()
+			.toString(36)
+			.substring(2, 9)}`,
 	};
 }
 
@@ -65,19 +67,13 @@ export const getRoles = async (req: AuthRequest, res: Response) => {
 			};
 		});
 
-		res.json({
-			success: true,
-			data: {
-				roles: rolesWithConfig,
-				total: rolesWithConfig.length,
-			},
-		} as ApiResponse);
+		res.success({
+			roles: rolesWithConfig,
+			total: rolesWithConfig.length,
+		});
 	} catch (error) {
 		logger.error('Error fetching roles:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch roles',
-		} as ApiResponse);
+		res.failure('Failed to fetch roles', 500);
 	}
 };
 
@@ -145,16 +141,10 @@ export const getRole = async (req: AuthRequest, res: Response) => {
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: roleWithDetails,
-		} as ApiResponse);
+		res.success(roleWithDetails);
 	} catch (error) {
 		logger.error('Error fetching role:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch role',
-		} as ApiResponse);
+		res.failure('Failed to fetch role', 500);
 	}
 };
 
@@ -232,20 +222,16 @@ export const createRole = async (req: AuthRequest, res: Response) => {
 			roleId: newRole.id,
 		});
 
-		res.status(201).json({
-			success: true,
-			message: 'Role created successfully',
-			data: {
+		res.success(
+			{
 				role: newRole,
 				config: roleConfig,
 			},
-		} as ApiResponse);
+			201
+		);
 	} catch (error) {
 		logger.error('Error creating role:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to create role',
-		} as ApiResponse);
+		res.failure('Failed to create role', 500);
 	}
 };
 
@@ -312,20 +298,13 @@ export const updateRole = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Updated role ${roleId} for guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: 'Role updated successfully',
-			data: {
-				role: updatedRole,
-				config: updatedConfig,
-			},
-		} as ApiResponse);
+		res.success({
+			role: updatedRole,
+			config: updatedConfig,
+		});
 	} catch (error) {
 		logger.error('Error updating role:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update role',
-		} as ApiResponse);
+		res.failure('Failed to update role', 500);
 	}
 };
 
@@ -371,16 +350,10 @@ export const deleteRole = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Deleted role ${roleId} for guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: 'Role deleted successfully',
-		} as ApiResponse);
+		res.success({ message: 'Role deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting role:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to delete role',
-		} as ApiResponse);
+		res.failure('Failed to delete role', 500);
 	}
 };
 
@@ -397,17 +370,11 @@ export const assignRole = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (roleConfig && !roleConfig.enabled) {
-			return res.status(400).json({
-				success: false,
-				error: 'Role assignment is disabled',
-			} as ApiResponse);
+			return res.failure('Role assignment is disabled', 400);
 		}
 
 		if (roleConfig?.maxUses && roleConfig.currentUses >= roleConfig.maxUses) {
-			return res.status(400).json({
-				success: false,
-				error: 'Role has reached maximum usage limit',
-			} as ApiResponse);
+			return res.failure('Role has reached maximum usage limit', 400);
 		}
 
 		// Assign role via Discord API
@@ -447,16 +414,10 @@ export const assignRole = async (req: AuthRequest, res: Response) => {
 			`Assigned role ${roleId} to user ${userId} in guild ${guildId}`
 		);
 
-		res.json({
-			success: true,
-			message: 'Role assigned successfully',
-		} as ApiResponse);
+		res.success({ message: 'Role assigned successfully' });
 	} catch (error) {
 		logger.error('Error assigning role:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to assign role',
-		} as ApiResponse);
+		res.failure('Failed to assign role', 500);
 	}
 };
 
@@ -508,16 +469,10 @@ export const removeRole = async (req: AuthRequest, res: Response) => {
 			`Removed role ${roleId} from user ${userId} in guild ${guildId}`
 		);
 
-		res.json({
-			success: true,
-			message: 'Role removed successfully',
-		} as ApiResponse);
+		res.success({ message: 'Role removed successfully' });
 	} catch (error) {
 		logger.error('Error removing role:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to remove role',
-		} as ApiResponse);
+		res.failure('Failed to remove role', 500);
 	}
 };
 
@@ -550,16 +505,10 @@ export const getAutoRoleSettings = async (req: AuthRequest, res: Response) => {
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: settings,
-		} as ApiResponse);
+		res.success(settings);
 	} catch (error) {
 		logger.error('Error fetching auto-role settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch auto-role settings',
-		} as ApiResponse);
+		res.failure('Failed to fetch auto-role settings', 500);
 	}
 };
 
@@ -590,24 +539,18 @@ export const getRoleLogs = async (req: AuthRequest, res: Response) => {
 			prisma.roleLog.count({ where }),
 		]);
 
-		res.json({
-			success: true,
-			data: {
-				logs,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
+		res.success({
+			logs,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching role logs:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch role logs',
-		} as ApiResponse);
+		res.failure('Failed to fetch role logs', 500);
 	}
 };
 
@@ -706,16 +649,10 @@ export const getRoleStatistics = async (req: AuthRequest, res: Response) => {
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: statistics,
-		} as ApiResponse);
+		res.success(statistics);
 	} catch (error) {
 		logger.error('Error fetching role statistics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch role statistics',
-		} as ApiResponse);
+		res.failure('Failed to fetch role statistics', 500);
 	}
 };
 

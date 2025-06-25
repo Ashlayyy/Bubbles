@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { createLogger, type ApiResponse } from '../types/shared.js';
+import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
 import hybridCommunicationService from '../services/hybridCommunicationService.js';
@@ -31,26 +31,18 @@ export const getReminders = async (req: AuthRequest, res: Response) => {
 			prisma.reminder.count({ where }),
 		]);
 
-		return res.json({
-			success: true,
-			data: {
-				reminders,
-				pagination: {
-					page: parseInt(page as string),
-					limit: take,
-					total,
-					pages: Math.ceil(total / take),
-				},
+		return res.success({
+			reminders,
+			pagination: {
+				page: parseInt(page as string),
+				limit: take,
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching reminders:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to fetch reminders',
-			} as ApiResponse);
+		return res.failure('Failed to fetch reminders', 500);
 	}
 };
 
@@ -66,20 +58,13 @@ export const getReminder = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!reminder) {
-			return res
-				.status(404)
-				.json({ success: false, error: 'Reminder not found' } as ApiResponse);
+			return res.failure('Reminder not found', 404);
 		}
 
-		return res.json({ success: true, data: reminder } as ApiResponse);
+		return res.success(reminder);
 	} catch (error) {
 		logger.error('Error fetching reminder:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to fetch reminder',
-			} as ApiResponse);
+		return res.failure('Failed to fetch reminder', 500);
 	}
 };
 
@@ -92,12 +77,7 @@ export const createReminder = async (req: AuthRequest, res: Response) => {
 
 		// basic validation
 		if (!channelId || !content || !triggerAt) {
-			return res
-				.status(400)
-				.json({
-					success: false,
-					error: 'channelId, content and triggerAt are required',
-				} as ApiResponse);
+			return res.failure('channelId, content and triggerAt are required', 400);
 		}
 
 		const reminder = await prisma.reminder.create({
@@ -129,21 +109,10 @@ export const createReminder = async (req: AuthRequest, res: Response) => {
 			logger.warn('Failed to schedule reminder job:', schedErr);
 		}
 
-		return res
-			.status(201)
-			.json({
-				success: true,
-				message: 'Reminder created successfully',
-				data: reminder,
-			} as ApiResponse);
+		return res.success(reminder, 201);
 	} catch (error) {
 		logger.error('Error creating reminder:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to create reminder',
-			} as ApiResponse);
+		return res.failure('Failed to create reminder', 500);
 	}
 };
 
@@ -158,9 +127,7 @@ export const updateReminder = async (req: AuthRequest, res: Response) => {
 			where: { id: reminderId, guildId },
 		});
 		if (!existing) {
-			return res
-				.status(404)
-				.json({ success: false, error: 'Reminder not found' } as ApiResponse);
+			return res.failure('Reminder not found', 404);
 		}
 
 		const updated = await prisma.reminder.update({
@@ -168,19 +135,10 @@ export const updateReminder = async (req: AuthRequest, res: Response) => {
 			data: { ...updates, updatedAt: new Date() },
 		});
 
-		return res.json({
-			success: true,
-			message: 'Reminder updated successfully',
-			data: updated,
-		} as ApiResponse);
+		return res.success(updated);
 	} catch (error) {
 		logger.error('Error updating reminder:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to update reminder',
-			} as ApiResponse);
+		return res.failure('Failed to update reminder', 500);
 	}
 };
 
@@ -194,24 +152,14 @@ export const deleteReminder = async (req: AuthRequest, res: Response) => {
 			where: { id: reminderId, guildId },
 		});
 		if (!existing) {
-			return res
-				.status(404)
-				.json({ success: false, error: 'Reminder not found' } as ApiResponse);
+			return res.failure('Reminder not found', 404);
 		}
 
 		await prisma.reminder.delete({ where: { id: reminderId } });
-		return res.json({
-			success: true,
-			message: 'Reminder deleted successfully',
-		} as ApiResponse);
+		return res.success({ message: 'Reminder deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting reminder:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to delete reminder',
-			} as ApiResponse);
+		return res.failure('Failed to delete reminder', 500);
 	}
 };
 
@@ -225,27 +173,17 @@ export const cancelReminder = async (req: AuthRequest, res: Response) => {
 			where: { id: reminderId, guildId },
 		});
 		if (!existing) {
-			return res
-				.status(404)
-				.json({ success: false, error: 'Reminder not found' } as ApiResponse);
+			return res.failure('Reminder not found', 404);
 		}
 
 		await prisma.reminder.update({
 			where: { id: reminderId },
 			data: { isActive: false },
 		});
-		return res.json({
-			success: true,
-			message: 'Reminder cancelled successfully',
-		} as ApiResponse);
+		return res.success({ message: 'Reminder cancelled successfully' });
 	} catch (error) {
 		logger.error('Error cancelling reminder:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to cancel reminder',
-			} as ApiResponse);
+		return res.failure('Failed to cancel reminder', 500);
 	}
 };
 
@@ -259,9 +197,7 @@ export const testReminder = async (req: AuthRequest, res: Response) => {
 			where: { id: reminderId, guildId },
 		});
 		if (!reminder) {
-			return res
-				.status(404)
-				.json({ success: false, error: 'Reminder not found' } as ApiResponse);
+			return res.failure('Reminder not found', 404);
 		}
 
 		const result = await hybridCommunicationService.execute('SEND_MESSAGE', {
@@ -269,19 +205,10 @@ export const testReminder = async (req: AuthRequest, res: Response) => {
 			content: reminder.content,
 		});
 
-		return res.json({
-			success: true,
-			data: { method: result.method },
-			message: 'Test reminder sent',
-		} as ApiResponse);
+		return res.success({ method: result.method });
 	} catch (error) {
 		logger.error('Error testing reminder:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to test reminder',
-			} as ApiResponse);
+		return res.failure('Failed to test reminder', 500);
 	}
 };
 
@@ -302,23 +229,15 @@ export const getReminderStatistics = async (
 			prisma.reminder.count({ where: { guildId, isRecurring: true } }),
 		]);
 
-		return res.json({
-			success: true,
-			data: {
-				total,
-				active,
-				completed,
-				cancelled,
-				recurring,
-			},
-		} as ApiResponse);
+		return res.success({
+			total,
+			active,
+			completed,
+			cancelled,
+			recurring,
+		});
 	} catch (error) {
 		logger.error('Error fetching reminder statistics:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to fetch reminder statistics',
-			} as ApiResponse);
+		return res.failure('Failed to fetch reminder statistics', 500);
 	}
 };

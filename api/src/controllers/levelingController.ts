@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Response } from 'express';
-import { createLogger, type ApiResponse } from '../types/shared.js';
+import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
 
@@ -49,16 +49,10 @@ export const getLevelingSettings = async (req: AuthRequest, res: Response) => {
 			removeOldLevelRoles: true,
 		};
 
-		res.json({
-			success: true,
-			data: settings,
-		} as ApiResponse);
+		res.success(settings);
 	} catch (error) {
 		logger.error('Error fetching leveling settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch leveling settings',
-		} as ApiResponse);
+		res.failure('Failed to fetch leveling settings', 500);
 	}
 };
 
@@ -75,17 +69,10 @@ export const updateLevelingSettings = async (
 		// For now, we'll just log the update
 		logger.info(`Update leveling settings for guild ${guildId}`, settings);
 
-		res.json({
-			success: true,
-			message: 'Leveling settings updated',
-			data: settings,
-		} as ApiResponse);
+		res.success({ message: 'Leveling settings updated', data: settings });
 	} catch (error) {
 		logger.error('Error updating leveling settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update leveling settings',
-		} as ApiResponse);
+		res.failure('Failed to update leveling settings', 500);
 	}
 };
 
@@ -153,42 +140,36 @@ export const getLeaderboard = async (req: AuthRequest, res: Response) => {
 			_count: { userId: true },
 		});
 
-		res.json({
-			success: true,
-			data: {
-				users: leaderboard,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total: totalUsers.length,
-					pages: Math.ceil(totalUsers.length / take),
-				},
-				stats: {
-					totalUsers: totalUsers.length,
-					averageLevel:
-						leaderboard.length > 0
-							? leaderboard.reduce(
-									(sum: number, user: any) => sum + user.level,
-									0
-							  ) / leaderboard.length
-							: 0,
-					highestLevel:
-						leaderboard.length > 0
-							? Math.max(...leaderboard.map((u: any) => u.level))
-							: 0,
-					totalXP: leaderboard.reduce(
-						(sum: number, user: any) => sum + user.xp,
-						0
-					),
-				},
+		res.success({
+			users: leaderboard,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total: totalUsers.length,
+				pages: Math.ceil(totalUsers.length / take),
 			},
-		} as ApiResponse);
+			stats: {
+				totalUsers: totalUsers.length,
+				averageLevel:
+					leaderboard.length > 0
+						? leaderboard.reduce(
+								(sum: number, user: any) => sum + user.level,
+								0
+						  ) / leaderboard.length
+						: 0,
+				highestLevel:
+					leaderboard.length > 0
+						? Math.max(...leaderboard.map((u: any) => u.level))
+						: 0,
+				totalXP: leaderboard.reduce(
+					(sum: number, user: any) => sum + user.xp,
+					0
+				),
+			},
+		});
 	} catch (error) {
 		logger.error('Error fetching leaderboard:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch leaderboard',
-		} as ApiResponse);
+		res.failure('Failed to fetch leaderboard', 500);
 	}
 };
 
@@ -268,53 +249,39 @@ export const getUserLevel = async (req: AuthRequest, res: Response) => {
 			xp,
 			xpToNext,
 			xpForLevel,
-			rank: rank || 0,
+			rank,
 			messagesCount: messageCount,
 			joinedAt: Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000, // Placeholder
-			levelHistory: levelHistoryRecords.map((lh: any) => ({
-				level: lh.level,
-				reachedAt: lh.reachedAt.getTime(),
-			})),
+			totalUsers: allUsers.length,
 			xpHistory,
+			levelHistory: levelHistoryRecords,
 		};
 
-		res.json({
-			success: true,
-			data: userLevel,
-		} as ApiResponse);
+		res.success(userLevel);
 	} catch (error) {
 		logger.error('Error fetching user level:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch user level',
-		} as ApiResponse);
+		res.failure('Failed to fetch user level', 500);
 	}
 };
 
-// Set user level (admin function)
+// Set user level (admin action)
 export const setUserLevel = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, userId } = req.params;
 		const { level, xp } = req.body;
 
-		// In a real implementation, you'd update the user's level/XP in the database
-		// For now, we'll just return success
-		logger.info(`Set user level for ${userId} in guild ${guildId}`, {
-			level,
-			xp,
-		});
+		// In a real implementation, you'd update the user's level in the database
+		logger.info(
+			`Set user ${userId} level to ${level} (${xp} XP) in guild ${guildId}`
+		);
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'User level updated successfully',
 			data: { userId, level, xp },
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error setting user level:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to set user level',
-		} as ApiResponse);
+		res.failure('Failed to set user level', 500);
 	}
 };
 
@@ -322,37 +289,18 @@ export const setUserLevel = async (req: AuthRequest, res: Response) => {
 export const getLevelRewards = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
+		const prisma = getPrismaClient();
 
-		// In a real implementation, you'd fetch from a LevelRewards table
-		const rewards = [
-			{
-				id: '1',
-				level: 5,
-				type: 'ROLE',
-				roleId: '123456789',
-				roleName: 'Level 5',
-				description: 'Reached level 5!',
-			},
-			{
-				id: '2',
-				level: 10,
-				type: 'ROLE',
-				roleId: '987654321',
-				roleName: 'Level 10',
-				description: 'Reached level 10!',
-			},
-		];
+		// Get level rewards (using a placeholder query for now)
+		const rewards = await prisma.levelReward.findMany({
+			where: { guildId },
+			orderBy: { level: 'asc' },
+		});
 
-		res.json({
-			success: true,
-			data: { rewards },
-		} as ApiResponse);
+		res.success(rewards);
 	} catch (error) {
 		logger.error('Error fetching level rewards:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch level rewards',
-		} as ApiResponse);
+		res.failure('Failed to fetch level rewards', 500);
 	}
 };
 
@@ -360,27 +308,20 @@ export const getLevelRewards = async (req: AuthRequest, res: Response) => {
 export const addLevelReward = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
-		const rewardData = req.body;
+		const { level, roleId, description } = req.body;
+		const prisma = getPrismaClient();
 
-		// In a real implementation, you'd add to LevelRewards table
-		logger.info(`Add level reward for guild ${guildId}`, rewardData);
+		const reward = await prisma.levelReward.create({
+			data: { guildId, level, roleId, description },
+		});
 
-		const reward = {
-			id: Date.now().toString(),
-			...rewardData,
-		};
-
-		res.status(201).json({
-			success: true,
-			message: 'Level reward added successfully',
-			data: reward,
-		} as ApiResponse);
+		res.success(
+			{ message: 'Level reward added successfully', data: reward },
+			201
+		);
 	} catch (error) {
 		logger.error('Error adding level reward:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to add level reward',
-		} as ApiResponse);
+		res.failure('Failed to add level reward', 500);
 	}
 };
 
@@ -388,20 +329,14 @@ export const addLevelReward = async (req: AuthRequest, res: Response) => {
 export const removeLevelReward = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, rewardId } = req.params;
+		const prisma = getPrismaClient();
 
-		// In a real implementation, you'd delete from LevelRewards table
-		logger.info(`Remove level reward ${rewardId} from guild ${guildId}`);
+		await prisma.levelReward.delete({ where: { id: rewardId } });
 
-		res.json({
-			success: true,
-			message: 'Level reward removed successfully',
-		} as ApiResponse);
+		res.success({ message: 'Level reward removed successfully' });
 	} catch (error) {
 		logger.error('Error removing level reward:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to remove level reward',
-		} as ApiResponse);
+		res.failure('Failed to remove level reward', 500);
 	}
 };
 
@@ -412,53 +347,66 @@ export const getLevelingStatistics = async (
 ) => {
 	try {
 		const { guildId } = req.params;
-		const { period = '7d' } = req.query;
+		const { period = '30d' } = req.query;
 		const prisma = getPrismaClient();
 
 		const periodMs = parsePeriod(period as string);
 		const startDate = new Date(Date.now() - periodMs);
 
-		// Get message activity stats
-		const messageStats = await prisma.moderationLog.count({
-			where: {
-				guildId,
-				logType: 'messageCreate',
-				timestamp: { gte: startDate },
-			},
+		// Get statistics from message activity
+		const [totalUsers, recentActivity, levelDistribution] = await Promise.all([
+			prisma.moderationLog.groupBy({
+				by: ['userId'],
+				where: { guildId, logType: 'messageCreate' },
+				_count: { userId: true },
+			}),
+			prisma.moderationLog.count({
+				where: {
+					guildId,
+					logType: 'messageCreate',
+					timestamp: { gte: startDate },
+				},
+			}),
+			prisma.moderationLog.groupBy({
+				by: ['userId'],
+				where: { guildId, logType: 'messageCreate' },
+				_count: { userId: true },
+			}),
+		]);
+
+		// Calculate level statistics
+		const userLevels = levelDistribution.map((user: any) => {
+			const messageCount = user._count.userId;
+			const xp = messageCount * 15;
+			return Math.floor(Math.sqrt(xp / 100));
 		});
 
-		// Get active users count
-		const activeUsers = await prisma.moderationLog.groupBy({
-			by: ['userId'],
-			where: {
-				guildId,
-				logType: 'messageCreate',
-				timestamp: { gte: startDate },
-			},
-			_count: { userId: true },
-		});
+		const levelCounts = userLevels.reduce((acc: any, level: number) => {
+			acc[level] = (acc[level] || 0) + 1;
+			return acc;
+		}, {});
 
 		const statistics = {
 			period: period as string,
-			totalMessages: messageStats,
-			activeUsers: activeUsers.length,
-			averageMessagesPerUser:
-				activeUsers.length > 0
-					? Math.round(messageStats / activeUsers.length)
-					: 0,
-			totalXpAwarded: messageStats * 15,
+			overview: {
+				totalActiveUsers: totalUsers.length,
+				recentMessages: recentActivity,
+				averageLevel:
+					userLevels.length > 0
+						? userLevels.reduce((a: number, b: number) => a + b, 0) /
+						  userLevels.length
+						: 0,
+				highestLevel: userLevels.length > 0 ? Math.max(...userLevels) : 0,
+			},
+			levelDistribution: Object.entries(levelCounts)
+				.map(([level, count]) => ({ level: parseInt(level), users: count }))
+				.sort((a, b) => a.level - b.level),
 		};
 
-		res.json({
-			success: true,
-			data: statistics,
-		} as ApiResponse);
+		res.success(statistics);
 	} catch (error) {
 		logger.error('Error fetching leveling statistics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch leveling statistics',
-		} as ApiResponse);
+		res.failure('Failed to fetch leveling statistics', 500);
 	}
 };
 

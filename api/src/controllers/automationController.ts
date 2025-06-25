@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { createLogger, type ApiResponse } from '../types/shared.js';
+import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
 import { wsManager } from '../websocket/manager.js';
@@ -88,24 +88,18 @@ export const getAutomationRules = async (req: AuthRequest, res: Response) => {
 			})),
 		}));
 
-		res.json({
-			success: true,
-			data: {
-				rules: formattedRules,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
+		res.success({
+			rules: formattedRules,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching automation rules:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch automation rules',
-		} as ApiResponse);
+		res.failure('Failed to fetch automation rules', 500);
 	}
 };
 
@@ -129,22 +123,13 @@ export const getAutomationRule = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!rule) {
-			return res.status(404).json({
-				success: false,
-				error: 'Automation rule not found',
-			} as ApiResponse);
+			return res.failure('Automation rule not found', 404);
 		}
 
-		res.json({
-			success: true,
-			data: rule,
-		} as ApiResponse);
+		res.success(rule);
 	} catch (error) {
 		logger.error('Error fetching automation rule:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch automation rule',
-		} as ApiResponse);
+		res.failure('Failed to fetch automation rule', 500);
 	}
 };
 
@@ -168,10 +153,10 @@ export const createAutomationRule = async (req: AuthRequest, res: Response) => {
 
 		// Validate required fields
 		if (!name || !trigger || !actions.length) {
-			return res.status(400).json({
-				success: false,
-				error: 'Name, trigger, and at least one action are required',
-			} as ApiResponse);
+			return res.failure(
+				'Name, trigger, and at least one action are required',
+				400
+			);
 		}
 
 		// Create automation rule
@@ -203,17 +188,13 @@ export const createAutomationRule = async (req: AuthRequest, res: Response) => {
 			trigger,
 		});
 
-		res.status(201).json({
-			success: true,
-			message: 'Automation rule created successfully',
-			data: rule,
-		} as ApiResponse);
+		res.success(
+			{ message: 'Automation rule created successfully', data: rule },
+			201
+		);
 	} catch (error) {
 		logger.error('Error creating automation rule:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to create automation rule',
-		} as ApiResponse);
+		res.failure('Failed to create automation rule', 500);
 	}
 };
 
@@ -233,10 +214,7 @@ export const updateAutomationRule = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!existingRule) {
-			return res.status(404).json({
-				success: false,
-				error: 'Automation rule not found',
-			} as ApiResponse);
+			return res.failure('Automation rule not found', 404);
 		}
 
 		// Update rule
@@ -256,17 +234,13 @@ export const updateAutomationRule = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Updated automation rule ${ruleId} for guild ${guildId}`);
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Automation rule updated successfully',
 			data: updatedRule,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating automation rule:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update automation rule',
-		} as ApiResponse);
+		res.failure('Failed to update automation rule', 500);
 	}
 };
 
@@ -285,10 +259,7 @@ export const deleteAutomationRule = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!existingRule) {
-			return res.status(404).json({
-				success: false,
-				error: 'Automation rule not found',
-			} as ApiResponse);
+			return res.failure('Automation rule not found', 404);
 		}
 
 		// Delete rule and its executions
@@ -304,16 +275,10 @@ export const deleteAutomationRule = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Deleted automation rule ${ruleId} from guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: 'Automation rule deleted successfully',
-		} as ApiResponse);
+		res.success({ message: 'Automation rule deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting automation rule:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to delete automation rule',
-		} as ApiResponse);
+		res.failure('Failed to delete automation rule', 500);
 	}
 };
 
@@ -336,25 +301,16 @@ export const executeAutomationRule = async (
 		});
 
 		if (!rule) {
-			return res.status(404).json({
-				success: false,
-				error: 'Automation rule not found',
-			} as ApiResponse);
+			return res.failure('Automation rule not found', 404);
 		}
 
 		if (!rule.enabled) {
-			return res.status(400).json({
-				success: false,
-				error: 'Automation rule is disabled',
-			} as ApiResponse);
+			return res.failure('Automation rule is disabled', 400);
 		}
 
 		// Check execution limits
 		if (rule.maxExecutions && rule.currentExecutions >= rule.maxExecutions) {
-			return res.status(400).json({
-				success: false,
-				error: 'Rule has reached maximum execution limit',
-			} as ApiResponse);
+			return res.failure('Rule has reached maximum execution limit', 400);
 		}
 
 		// Check cooldown
@@ -363,10 +319,7 @@ export const executeAutomationRule = async (
 				rule.lastExecuted.getTime() + rule.cooldownSeconds * 1000
 			);
 			if (new Date() < cooldownEnd) {
-				return res.status(400).json({
-					success: false,
-					error: 'Rule is still in cooldown period',
-				} as ApiResponse);
+				return res.failure('Rule is still in cooldown period', 400);
 			}
 		}
 
@@ -395,17 +348,13 @@ export const executeAutomationRule = async (
 			executionId: execution.id,
 		});
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Automation rule executed successfully',
 			data: execution,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error executing automation rule:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to execute automation rule',
-		} as ApiResponse);
+		res.failure('Failed to execute automation rule', 500);
 	}
 };
 
@@ -443,24 +392,18 @@ export const getRuleExecutions = async (req: AuthRequest, res: Response) => {
 			timestamp: execution.timestamp,
 		}));
 
-		res.json({
-			success: true,
-			data: {
-				executions: formattedExecutions,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
+		res.success({
+			executions: formattedExecutions,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching rule executions:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch rule executions',
-		} as ApiResponse);
+		res.failure('Failed to fetch rule executions', 500);
 	}
 };
 
@@ -563,16 +506,10 @@ export const getAutomationStatistics = async (
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: statistics,
-		} as ApiResponse);
+		res.success(statistics);
 	} catch (error) {
 		logger.error('Error fetching automation statistics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch automation statistics',
-		} as ApiResponse);
+		res.failure('Failed to fetch automation statistics', 500);
 	}
 };
 
@@ -610,16 +547,10 @@ export const getAvailableTriggers = async (req: AuthRequest, res: Response) => {
 			distinct: ['trigger'],
 		});
 
-		res.json({
-			success: true,
-			data: triggers.map((t: { trigger: string }) => t.trigger),
-		} as ApiResponse);
+		res.success(triggers.map((t: { trigger: string }) => t.trigger));
 	} catch (error) {
 		logger.error('Error fetching triggers:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch triggers',
-		} as ApiResponse);
+		res.failure('Failed to fetch triggers', 500);
 	}
 };
 
@@ -639,12 +570,9 @@ export const getAvailableActions = async (req: AuthRequest, res: Response) => {
 			rule.actions.forEach((a: string) => actionSet.add(a));
 		});
 
-		res.json({ success: true, data: Array.from(actionSet) } as ApiResponse);
+		res.success(Array.from(actionSet));
 	} catch (error) {
 		logger.error('Error fetching actions:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch actions',
-		} as ApiResponse);
+		res.failure('Failed to fetch actions', 500);
 	}
 };

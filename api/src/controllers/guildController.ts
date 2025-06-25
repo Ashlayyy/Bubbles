@@ -20,9 +20,7 @@ export const getGuilds = async (req: AuthenticatedRequest, res: Response) => {
 	try {
 		const accessToken = req.session.accessToken;
 		if (!accessToken) {
-			return res
-				.status(401)
-				.json({ success: false, error: 'Not authenticated' });
+			return res.failure('Not authenticated', 401);
 		}
 
 		// Fetch guilds from Discord API
@@ -33,28 +31,22 @@ export const getGuilds = async (req: AuthenticatedRequest, res: Response) => {
 			(guild) => req.user?.guilds?.includes(guild.id) || guild.owner
 		);
 
-		res.json({
-			success: true,
-			data: {
-				guilds: userGuilds.map((guild) => ({
-					id: guild.id,
-					name: guild.name,
-					icon: guild.icon,
-					owner: guild.owner,
-					permissions: guild.permissions,
-					memberCount: guild.approximate_member_count,
-					description: guild.description,
-					features: guild.features,
-				})),
-				total: userGuilds.length,
-			},
+		res.success({
+			guilds: userGuilds.map((guild) => ({
+				id: guild.id,
+				name: guild.name,
+				icon: guild.icon,
+				owner: guild.owner,
+				permissions: guild.permissions,
+				memberCount: guild.approximate_member_count,
+				description: guild.description,
+				features: guild.features,
+			})),
+			total: userGuilds.length,
 		});
 	} catch (error) {
 		logger.error('Failed to fetch guilds:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch guilds',
-		});
+		res.failure('Failed to fetch guilds', 500);
 	}
 };
 
@@ -116,16 +108,10 @@ export const getGuild = async (req: AuthenticatedRequest, res: Response) => {
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: guildData,
-		});
+		res.success(guildData);
 	} catch (error) {
 		logger.error(`Failed to fetch guild ${req.params.guildId}:`, error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch guild details',
-		});
+		res.failure('Failed to fetch guild details', 500);
 	}
 };
 
@@ -141,48 +127,42 @@ export const getGuildMembers = async (
 		// Fetch members from Discord API
 		const members = await discordApi.getGuildMembers(guildId, limit, after);
 
-		res.json({
-			success: true,
-			data: {
-				members: members.map((member) => ({
-					user: {
-						id: member.user.id,
-						username: member.user.username,
-						discriminator: member.user.discriminator,
-						globalName: member.user.global_name,
-						avatar: member.user.avatar,
-						bot: member.user.bot,
-						system: member.user.system,
-						mfaEnabled: member.user.mfa_enabled,
-						verified: member.user.verified,
-						flags: member.user.flags,
-						premiumType: member.user.premium_type,
-						publicFlags: member.user.public_flags,
-					},
-					nick: member.nick,
-					avatar: member.avatar,
-					roles: member.roles,
-					joinedAt: member.joined_at,
-					premiumSince: member.premium_since,
-					deaf: member.deaf,
-					mute: member.mute,
-					flags: member.flags,
-					pending: member.pending,
-					permissions: member.permissions,
-					communicationDisabledUntil: member.communication_disabled_until,
-				})),
-				hasMore: members.length === limit,
-			},
+		res.success({
+			members: members.map((member) => ({
+				user: {
+					id: member.user.id,
+					username: member.user.username,
+					discriminator: member.user.discriminator,
+					globalName: member.user.global_name,
+					avatar: member.user.avatar,
+					bot: member.user.bot,
+					system: member.user.system,
+					mfaEnabled: member.user.mfa_enabled,
+					verified: member.user.verified,
+					flags: member.user.flags,
+					premiumType: member.user.premium_type,
+					publicFlags: member.user.public_flags,
+				},
+				nick: member.nick,
+				avatar: member.avatar,
+				roles: member.roles,
+				joinedAt: member.joined_at,
+				premiumSince: member.premium_since,
+				deaf: member.deaf,
+				mute: member.mute,
+				flags: member.flags,
+				pending: member.pending,
+				permissions: member.permissions,
+				communicationDisabledUntil: member.communication_disabled_until,
+			})),
+			hasMore: members.length === limit,
 		});
 	} catch (error) {
 		logger.error(
 			`Failed to fetch members for guild ${req.params.guildId}:`,
 			error
 		);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch guild members',
-		});
+		res.failure('Failed to fetch guild members', 500);
 	}
 };
 
@@ -196,57 +176,13 @@ export const getGuildChannels = async (
 		// Fetch channels from Discord API
 		const channels = await discordApi.getGuildChannels(guildId);
 
-		res.json({
-			success: true,
-			data: {
-				channels: channels.map((channel) => ({
-					id: channel.id,
-					name: channel.name,
-					type: channel.type,
-					position: channel.position,
-					permissionOverwrites: channel.permission_overwrites,
-					topic: channel.topic,
-					nsfw: channel.nsfw,
-					lastMessageId: channel.last_message_id,
-					bitrate: channel.bitrate,
-					userLimit: channel.user_limit,
-					rateLimitPerUser: channel.rate_limit_per_user,
-					recipients: channel.recipients,
-					icon: channel.icon,
-					ownerId: channel.owner_id,
-					applicationId: channel.application_id,
-					parentId: channel.parent_id,
-					lastPinTimestamp: channel.last_pin_timestamp,
-					rtcRegion: channel.rtc_region,
-					videoQualityMode: channel.video_quality_mode,
-					messageCount: channel.message_count,
-					memberCount: channel.member_count,
-					threadMetadata: channel.thread_metadata,
-					member: channel.member,
-					defaultAutoArchiveDuration: channel.default_auto_archive_duration,
-					permissions: channel.permissions,
-					flags: channel.flags,
-					totalMessageSent: channel.total_message_sent,
-					availableTags: channel.available_tags,
-					appliedTags: channel.applied_tags,
-					defaultReactionEmoji: channel.default_reaction_emoji,
-					defaultThreadRateLimitPerUser:
-						channel.default_thread_rate_limit_per_user,
-					defaultSortOrder: channel.default_sort_order,
-					defaultForumLayout: channel.default_forum_layout,
-				})),
-				total: channels.length,
-			},
-		});
+		res.success(channels);
 	} catch (error) {
 		logger.error(
 			`Failed to fetch channels for guild ${req.params.guildId}:`,
 			error
 		);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch guild channels',
-		});
+		res.failure('Failed to fetch guild channels', 500);
 	}
 };
 
@@ -260,35 +196,13 @@ export const getGuildRoles = async (
 		// Fetch roles from Discord API
 		const roles = await discordApi.getGuildRoles(guildId);
 
-		res.json({
-			success: true,
-			data: {
-				roles: roles.map((role) => ({
-					id: role.id,
-					name: role.name,
-					color: role.color,
-					hoist: role.hoist,
-					icon: role.icon,
-					unicodeEmoji: role.unicode_emoji,
-					position: role.position,
-					permissions: role.permissions,
-					managed: role.managed,
-					mentionable: role.mentionable,
-					tags: role.tags,
-					flags: role.flags,
-				})),
-				total: roles.length,
-			},
-		});
+		res.success(roles);
 	} catch (error) {
 		logger.error(
 			`Failed to fetch roles for guild ${req.params.guildId}:`,
 			error
 		);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch guild roles',
-		});
+		res.failure('Failed to fetch guild roles', 500);
 	}
 };
 
@@ -332,16 +246,10 @@ export const updateGuild = async (req: AuthenticatedRequest, res: Response) => {
 			['CLIENT', 'ADMIN']
 		);
 
-		res.json({
-			success: true,
-			message: 'Guild update command sent',
-		});
+		res.success({ message: 'Guild update command sent' });
 	} catch (error) {
 		logger.error(`Failed to update guild ${req.params.guildId}:`, error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update guild',
-		});
+		res.failure('Failed to update guild', 500);
 	}
 };
 
@@ -370,16 +278,10 @@ export const deleteGuild = async (req: AuthenticatedRequest, res: Response) => {
 			['BOT']
 		);
 
-		res.json({
-			success: true,
-			message: 'Leave guild command sent',
-		});
+		res.success({ message: 'Leave guild command sent' });
 	} catch (error) {
 		logger.error(`Failed to leave guild ${req.params.guildId}:`, error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to leave guild',
-		});
+		res.failure('Failed to leave guild', 500);
 	}
 };
 
@@ -461,19 +363,13 @@ export const getGuildSettings = async (
 		// Broadcast settings update via WebSocket
 		wsManager.broadcastToGuild(guildId, 'guildSettingsUpdate', settings);
 
-		res.json({
-			success: true,
-			data: settings,
-		});
+		res.success(settings);
 	} catch (error) {
 		logger.error(
 			`Failed to fetch guild settings for ${req.params.guildId}:`,
 			error
 		);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch guild settings',
-		});
+		res.failure('Failed to fetch guild settings', 500);
 	}
 };
 
@@ -597,8 +493,7 @@ export const updateGuildSettings = async (
 
 		logger.info(`Guild settings updated for ${guildId}`, { updates });
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Guild settings updated successfully',
 			data: finalConfig,
 		});
@@ -607,9 +502,6 @@ export const updateGuildSettings = async (
 			`Failed to update guild settings for ${req.params.guildId}:`,
 			error
 		);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update guild settings',
-		});
+		res.failure('Failed to update guild settings', 500);
 	}
 };

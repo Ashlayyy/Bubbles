@@ -17,6 +17,8 @@ export default new ClientEvent("interactionCreate", async (interaction: Interact
       await handleServerAutocomplete(interaction, client);
     } else if (interaction.commandName === "rbac") {
       await handleRbacAutocomplete(interaction, client);
+    } else if (interaction.commandName === "automod") {
+      await handleAutomodAutocomplete(interaction, client);
     }
   } catch (error) {
     logger.error("Error in autocomplete handler:", error);
@@ -324,7 +326,8 @@ async function handleRbacAutocomplete(interaction: AutocompleteInteraction, clie
 
   if (focusedOption.name === "role") {
     const roles = await prisma.customRole.findMany({ where: { guildId, name: { startsWith: focusedOption.value } } });
-    await interaction.respond(roles.map((role: any) => ({ name: role.name, value: role.name })).slice(0, 25));
+    const roleSuggestions = roles.map((role: { name: string }) => ({ name: role.name, value: role.name }));
+    await interaction.respond(roleSuggestions.slice(0, 25));
   } else if (focusedOption.name === "permission") {
     const allPermissions = client.commands.map((c) => `command.${c.builder.name}`);
     allPermissions.push("command.*"); // Add wildcard option
@@ -334,10 +337,9 @@ async function handleRbacAutocomplete(interaction: AutocompleteInteraction, clie
       if (roleName) {
         const role = await prisma.customRole.findUnique({ where: { guildId_name: { guildId, name: roleName } } });
         if (role) {
-          // For 'remove', suggest only permissions the role has
           if (interaction.options.getSubcommand() === "permission_remove") {
-            const filtered = role.permissions.filter((p: any) => p.startsWith(focusedOption.value));
-            await interaction.respond(filtered.map((p: any) => ({ name: p, value: p })).slice(0, 25));
+            const filtered = role.permissions.filter((p: string) => p.startsWith(focusedOption.value));
+            await interaction.respond(filtered.map((p: string) => ({ name: p, value: p })).slice(0, 25));
             return;
           }
         }
@@ -347,5 +349,30 @@ async function handleRbacAutocomplete(interaction: AutocompleteInteraction, clie
     // For 'add' or if no role context, suggest all possible permissions
     const filtered = allPermissions.filter((p) => p.startsWith(focusedOption.value));
     await interaction.respond(filtered.map((p) => ({ name: p, value: p })).slice(0, 25));
+  }
+}
+
+async function handleAutomodAutocomplete(interaction: AutocompleteInteraction, _client: Client) {
+  const focused = interaction.options.getFocused(true);
+  if (focused.name !== "rule") {
+    await interaction.respond([]);
+    return;
+  }
+
+  try {
+    const rules = (await prisma.autoModRule.findMany({
+      where: {
+        guildId: interaction.guildId ?? undefined,
+        name: { contains: focused.value, mode: "insensitive" },
+      },
+      take: 25,
+      select: { name: true },
+    })) as { name: string }[];
+
+    const suggestions = rules.map((r) => ({ name: r.name, value: r.name }));
+    await interaction.respond(suggestions);
+  } catch (err) {
+    logger.error("Automod autocomplete error", err);
+    await interaction.respond([]);
   }
 }

@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { createLogger, type ApiResponse } from '../types/shared.js';
+import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
 
@@ -30,26 +30,18 @@ export const getApplications = async (req: AuthRequest, res: Response) => {
 			prisma.application.count({ where }),
 		]);
 
-		return res.json({
-			success: true,
-			data: {
-				applications,
-				pagination: {
-					page: parseInt(page as string),
-					limit: take,
-					total,
-					pages: Math.ceil(total / take),
-				},
+		return res.success({
+			applications,
+			pagination: {
+				page: parseInt(page as string),
+				limit: take,
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching applications:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to fetch applications',
-			} as ApiResponse);
+		return res.failure('Failed to fetch applications', 500);
 	}
 };
 
@@ -64,9 +56,7 @@ export const submitApplication = async (req: AuthRequest, res: Response) => {
 			where: { id: formId, guildId },
 		});
 		if (!form) {
-			return res
-				.status(404)
-				.json({ success: false, error: 'Form not found' } as ApiResponse);
+			return res.failure('Form not found', 404);
 		}
 
 		const app = await prisma.application.create({
@@ -81,21 +71,16 @@ export const submitApplication = async (req: AuthRequest, res: Response) => {
 			},
 		});
 
-		return res
-			.status(201)
-			.json({
-				success: true,
+		return res.success(
+			{
 				data: app,
 				message: 'Application submitted successfully',
-			} as ApiResponse);
+			},
+			201
+		);
 	} catch (error) {
 		logger.error('Error submitting application:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to submit application',
-			} as ApiResponse);
+		return res.failure('Failed to submit application', 500);
 	}
 };
 
@@ -110,23 +95,13 @@ export const getApplication = async (req: AuthRequest, res: Response) => {
 			include: { form: true },
 		});
 		if (!application) {
-			return res
-				.status(404)
-				.json({
-					success: false,
-					error: 'Application not found',
-				} as ApiResponse);
+			return res.failure('Application not found', 404);
 		}
 
-		return res.json({ success: true, data: application } as ApiResponse);
+		return res.success(application);
 	} catch (error) {
 		logger.error('Error fetching application:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to fetch application',
-			} as ApiResponse);
+		return res.failure('Failed to fetch application', 500);
 	}
 };
 
@@ -144,12 +119,7 @@ export const updateApplicationStatus = async (
 			where: { id: applicationId, guildId },
 		});
 		if (!application) {
-			return res
-				.status(404)
-				.json({
-					success: false,
-					error: 'Application not found',
-				} as ApiResponse);
+			return res.failure('Application not found', 404);
 		}
 
 		const updated = await prisma.application.update({
@@ -162,19 +132,13 @@ export const updateApplicationStatus = async (
 			},
 		});
 
-		return res.json({
-			success: true,
+		return res.success({
 			data: updated,
 			message: 'Application status updated successfully',
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating application status:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to update application status',
-			} as ApiResponse);
+		return res.failure('Failed to update application status', 500);
 	}
 };
 
@@ -185,15 +149,10 @@ export const getApplicationForms = async (req: AuthRequest, res: Response) => {
 		const prisma = getPrismaClient();
 
 		const forms = await prisma.applicationForm.findMany({ where: { guildId } });
-		return res.json({ success: true, data: forms } as ApiResponse);
+		return res.success(forms);
 	} catch (error) {
 		logger.error('Error fetching application forms:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to fetch application forms',
-			} as ApiResponse);
+		return res.failure('Failed to fetch application forms', 500);
 	}
 };
 
@@ -210,21 +169,16 @@ export const createApplicationForm = async (
 		const form = await prisma.applicationForm.create({
 			data: { guildId, ...formData, createdBy: req.user?.id || 'unknown' },
 		});
-		return res
-			.status(201)
-			.json({
-				success: true,
+		return res.success(
+			{
 				data: form,
 				message: 'Application form created successfully',
-			} as ApiResponse);
+			},
+			201
+		);
 	} catch (error) {
 		logger.error('Error creating application form:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to create application form',
-			} as ApiResponse);
+		return res.failure('Failed to create application form', 500);
 	}
 };
 
@@ -242,28 +196,20 @@ export const updateApplicationForm = async (
 			where: { id: formId, guildId },
 		});
 		if (!existing) {
-			return res
-				.status(404)
-				.json({ success: false, error: 'Form not found' } as ApiResponse);
+			return res.failure('Form not found', 404);
 		}
 
 		const updated = await prisma.applicationForm.update({
 			where: { id: formId },
 			data: { ...formData, updatedAt: new Date() },
 		});
-		return res.json({
-			success: true,
+		return res.success({
 			data: updated,
 			message: 'Application form updated successfully',
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating application form:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to update application form',
-			} as ApiResponse);
+		return res.failure('Failed to update application form', 500);
 	}
 };
 
@@ -280,23 +226,13 @@ export const deleteApplicationForm = async (
 			where: { id: formId, guildId },
 		});
 		if (!existing) {
-			return res
-				.status(404)
-				.json({ success: false, error: 'Form not found' } as ApiResponse);
+			return res.failure('Form not found', 404);
 		}
 
 		await prisma.applicationForm.delete({ where: { id: formId } });
-		return res.json({
-			success: true,
-			message: 'Application form deleted successfully',
-		} as ApiResponse);
+		return res.success({ message: 'Application form deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting application form:', error);
-		return res
-			.status(500)
-			.json({
-				success: false,
-				error: 'Failed to delete application form',
-			} as ApiResponse);
+		return res.failure('Failed to delete application form', 500);
 	}
 };

@@ -15,12 +15,19 @@ import {
 } from "discord.js";
 
 import type { Ticket as DbTicket } from "@shared/database";
-import { getGuildConfig } from "../../database/GuildConfig.js";
+import camelCaseFn from "lodash/camelCase.js";
+import kebabCaseFn from "lodash/kebabCase.js";
+import {
+  getGuildConfig,
+  defaults as guildConfigDefaults,
+  descriptions as guildConfigDescriptions,
+} from "../../database/GuildConfig.js";
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
 import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import { changeSetting, resetSettings } from "../../subCommandHandlers/config/configHandler.js";
 
 // Helper function to sanitize username for channel/thread names
 function sanitizeUsername(username: string): string {
@@ -861,6 +868,22 @@ async function removeUserFromTicket(_client: Client, _interaction: ChatInputComm
   // TODO: Implement remove user from ticket functionality
 }
 
+// Ticket-related setting keys from GuildConfig
+const ticketSettings = [
+  "ticketChannelId",
+  "ticketCategoryId",
+  "useTicketThreads",
+  "ticketOnCallRoleId",
+  "ticketSilentClaim",
+  "ticketAccessType",
+  "ticketAccessRoleId",
+  "ticketAccessPermission",
+  "ticketLogChannelId",
+] as const;
+
+const kebabCase = kebabCaseFn;
+const camelCase = camelCaseFn;
+
 export default new Command(
   new SlashCommandBuilder()
     .setName("ticket")
@@ -967,12 +990,78 @@ export default new Command(
             .setDescription("HTML theme (for HTML format)")
             .addChoices({ name: "Light", value: "light" }, { name: "Dark", value: "dark" })
         )
-    ),
+    )
+    .addSubcommandGroup((g) => {
+      g.setName("settings").setDescription("Ticket system configuration");
+
+      // reset subcommand first
+      g.addSubcommand((s) => s.setName("reset").setDescription("Reset ticket settings to defaults"));
+
+      ticketSettings.forEach((key) => {
+        const subName = kebabCase(key);
+        const defVal = (guildConfigDefaults as Record<string, unknown>)[key];
+
+        g.addSubcommand((s) => {
+          s.setName(subName).setDescription(guildConfigDescriptions[key] ?? "Update setting");
+
+          if (typeof defVal === "boolean") {
+            s.addBooleanOption((o) => o.setName("new-value").setDescription("New value").setRequired(true));
+          } else if (typeof defVal === "number") {
+            s.addIntegerOption((o) => o.setName("new-value").setDescription("New value").setRequired(true));
+          } else if (key.endsWith("ChannelId")) {
+            s.addChannelOption((o) =>
+              o
+                .setName("channel")
+                .setDescription("Channel")
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+                .setRequired(true)
+            );
+          } else if (key.endsWith("RoleId")) {
+            s.addRoleOption((o) => o.setName("role").setDescription("Role").setRequired(true));
+          } else {
+            s.addStringOption((o) => o.setName("new-value").setDescription("New value").setRequired(true));
+          }
+          return s;
+        });
+      });
+
+      return g;
+    }),
 
   async (client, interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
     const subcommand = interaction.options.getSubcommand();
+    const subcommandGroup = interaction.options.getSubcommandGroup(false);
+
+    // Handle settings group
+    if (subcommandGroup === "settings") {
+      if (subcommand === "reset") {
+        await resetSettings(interaction);
+        return;
+      }
+
+      const settingKey = camelCase(subcommand);
+      if ((ticketSettings as readonly string[]).includes(settingKey)) {
+        let newVal: unknown;
+        const defVal = (guildConfigDefaults as Record<string, unknown>)[settingKey];
+
+        if (typeof defVal === "boolean") {
+          newVal = interaction.options.getBoolean("new-value", true);
+        } else if (typeof defVal === "number") {
+          newVal = interaction.options.getInteger("new-value", true);
+        } else if (settingKey.endsWith("ChannelId")) {
+          newVal = interaction.options.getChannel("channel", true).id;
+        } else if (settingKey.endsWith("RoleId")) {
+          newVal = interaction.options.getRole("role", true).id;
+        } else {
+          newVal = interaction.options.getString("new-value", true);
+        }
+
+        await changeSetting(interaction, settingKey, newVal);
+        return;
+      }
+    }
 
     switch (subcommand) {
       case "create":

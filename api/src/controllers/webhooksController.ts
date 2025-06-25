@@ -255,25 +255,19 @@ export const getWebhooks = async (req: AuthRequest, res: Response) => {
 			updatedAt: webhook.updatedAt,
 		}));
 
-		res.json({
-			success: true,
-			data: {
-				webhooks: formattedWebhooks,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
-				stats: statsObj,
+		res.success({
+			webhooks: formattedWebhooks,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+			stats: statsObj,
+		});
 	} catch (error) {
 		logger.error('Error fetching webhooks:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch webhooks',
-		} as ApiResponse);
+		res.failure('Failed to fetch webhooks', 500);
 	}
 };
 
@@ -339,16 +333,10 @@ export const getWebhook = async (req: AuthRequest, res: Response) => {
 			totalLogs: webhook._count.logs,
 		};
 
-		res.json({
-			success: true,
-			data: webhookData,
-		} as ApiResponse);
+		res.success(webhookData);
 	} catch (error) {
 		logger.error('Error fetching webhook:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch webhook',
-		} as ApiResponse);
+		res.failure('Failed to fetch webhook', 500);
 	}
 };
 
@@ -370,10 +358,7 @@ export const createWebhook = async (req: AuthRequest, res: Response) => {
 
 		// Validate required fields
 		if (!name || !url) {
-			return res.status(400).json({
-				success: false,
-				error: 'Name and URL are required',
-			} as ApiResponse);
+			return res.failure('Name and URL are required', 400);
 		}
 
 		// Check if webhook name already exists
@@ -385,10 +370,7 @@ export const createWebhook = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (existingWebhook) {
-			return res.status(400).json({
-				success: false,
-				error: 'Webhook name already exists',
-			} as ApiResponse);
+			return res.failure('Webhook name already exists', 400);
 		}
 
 		// Create webhook
@@ -418,24 +400,23 @@ export const createWebhook = async (req: AuthRequest, res: Response) => {
 			createdBy: req.user?.id,
 		});
 
-		res.status(201).json({
-			success: true,
-			message: 'Webhook created successfully',
-			data: {
-				id: webhook.id,
-				name: webhook.name,
-				url: webhook.url,
-				isActive: webhook.isActive,
-				events: webhook.events,
-				createdAt: webhook.createdAt,
+		res.success(
+			{
+				message: 'Webhook created successfully',
+				data: {
+					id: webhook.id,
+					name: webhook.name,
+					url: webhook.url,
+					isActive: webhook.isActive,
+					events: webhook.events,
+					createdAt: webhook.createdAt,
+				},
 			},
-		} as ApiResponse);
+			201
+		);
 	} catch (error) {
 		logger.error('Error creating webhook:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to create webhook',
-		} as ApiResponse);
+		res.failure('Failed to create webhook', 500);
 	}
 };
 
@@ -455,10 +436,7 @@ export const updateWebhook = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!existingWebhook) {
-			return res.status(404).json({
-				success: false,
-				error: 'Webhook not found',
-			} as ApiResponse);
+			return res.failure('Webhook not found', 404);
 		}
 
 		// Check name uniqueness if name is being updated
@@ -472,10 +450,7 @@ export const updateWebhook = async (req: AuthRequest, res: Response) => {
 			});
 
 			if (nameExists) {
-				return res.status(400).json({
-					success: false,
-					error: 'Webhook name already exists',
-				} as ApiResponse);
+				return res.failure('Webhook name already exists', 400);
 			}
 		}
 
@@ -499,17 +474,13 @@ export const updateWebhook = async (req: AuthRequest, res: Response) => {
 			updatedBy: req.user?.id,
 		});
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Webhook updated successfully',
 			data: updatedWebhook,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating webhook:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update webhook',
-		} as ApiResponse);
+		res.failure('Failed to update webhook', 500);
 	}
 };
 
@@ -550,16 +521,10 @@ export const deleteWebhook = async (req: AuthRequest, res: Response) => {
 			deletedBy: req.user?.id,
 		});
 
-		res.json({
-			success: true,
-			message: 'Webhook deleted successfully',
-		} as ApiResponse);
+		res.success({ message: 'Webhook deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting webhook:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to delete webhook',
-		} as ApiResponse);
+		res.failure('Failed to delete webhook', 500);
 	}
 };
 
@@ -579,10 +544,7 @@ export const testWebhook = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!webhook) {
-			return res.status(404).json({
-				success: false,
-				error: 'Webhook not found',
-			} as ApiResponse);
+			return res.failure('Webhook not found', 404);
 		}
 
 		// Create test payload
@@ -600,17 +562,13 @@ export const testWebhook = async (req: AuthRequest, res: Response) => {
 			testedBy: req.user?.id,
 		});
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Webhook test scheduled',
 			data: { payload },
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error testing webhook:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to test webhook',
-		} as ApiResponse);
+		res.failure('Failed to test webhook', 500);
 	}
 };
 
@@ -671,34 +629,28 @@ export const getWebhookLogs = async (req: AuthRequest, res: Response) => {
 			response: log.response,
 		}));
 
-		res.json({
-			success: true,
-			data: {
-				logs: formattedLogs,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
-				stats: {
-					events: eventStats.map((stat: any) => ({
-						event: stat.event,
-						count: stat._count.event,
-					})),
-					statuses: statusStats.map((stat: any) => ({
-						status: stat.status,
-						count: stat._count.status,
-					})),
-				},
+		res.success({
+			logs: formattedLogs,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+			stats: {
+				events: eventStats.map((stat: any) => ({
+					event: stat.event,
+					count: stat._count.event,
+				})),
+				statuses: statusStats.map((stat: any) => ({
+					status: stat.status,
+					count: stat._count.status,
+				})),
+			},
+		});
 	} catch (error) {
 		logger.error('Error fetching webhook logs:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch webhook logs',
-		} as ApiResponse);
+		res.failure('Failed to fetch webhook logs', 500);
 	}
 };
 
@@ -806,16 +758,10 @@ export const getWebhookStatistics = async (req: AuthRequest, res: Response) => {
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: statistics,
-		} as ApiResponse);
+		res.success(statistics);
 	} catch (error) {
 		logger.error('Error fetching webhook statistics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch webhook statistics',
-		} as ApiResponse);
+		res.failure('Failed to fetch webhook statistics', 500);
 	}
 };
 
@@ -827,10 +773,7 @@ export const handleDiscordWebhook = async (req: AuthRequest, res: Response) => {
 		await discordWebhookHandler.handleWebhook(req, res);
 	} catch (error) {
 		logger.error('Error processing Discord webhook:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Internal server error',
-		} as ApiResponse);
+		res.failure('Internal server error', 500);
 	}
 };
 
@@ -846,21 +789,14 @@ export const sendBotCommand = async (req: AuthRequest, res: Response) => {
 			timestamp: Date.now(),
 		});
 
-		res.json({
-			success,
-			message: 'Command sent to bot',
-			data: {
-				guildId,
-				command,
-				timestamp: Date.now(),
-			},
-		} as ApiResponse);
+		res.success({
+			guildId,
+			command,
+			timestamp: Date.now(),
+		});
 	} catch (error) {
 		logger.error('Error sending bot command:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to send bot command',
-		} as ApiResponse);
+		res.failure('Failed to send bot command', 500);
 	}
 };
 
@@ -879,21 +815,15 @@ export const getDiscordEventHistory = async (
 			parseInt(limit as string)
 		);
 
-		res.json({
-			success: true,
-			data: {
-				events,
-				guildId,
-				eventType: eventType || 'all',
-				limit: parseInt(limit as string),
-			},
-		} as ApiResponse);
+		res.success({
+			events,
+			guildId,
+			eventType: eventType || 'all',
+			limit: parseInt(limit as string),
+		});
 	} catch (error) {
 		logger.error('Error fetching Discord event history:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch Discord event history',
-		} as ApiResponse);
+		res.failure('Failed to fetch Discord event history', 500);
 	}
 };
 
@@ -904,19 +834,13 @@ export const getDiscordEventStats = async (req: AuthRequest, res: Response) => {
 
 		const stats = discordWebhookHandler.getEventStats(guildId);
 
-		res.json({
-			success: true,
-			data: {
-				stats,
-				guildId,
-			},
-		} as ApiResponse);
+		res.success({
+			stats,
+			guildId,
+		});
 	} catch (error) {
 		logger.error('Error fetching Discord event stats:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch Discord event stats',
-		} as ApiResponse);
+		res.failure('Failed to fetch Discord event stats', 500);
 	}
 };
 
@@ -925,19 +849,13 @@ export const getShardStatus = async (req: AuthRequest, res: Response) => {
 	try {
 		const shardStatus = discordWebhookHandler.getShardStatus();
 
-		res.json({
-			success: true,
-			data: {
-				shardStatus,
-				timestamp: new Date().toISOString(),
-			},
-		} as ApiResponse);
+		res.success({
+			shardStatus,
+			timestamp: new Date().toISOString(),
+		});
 	} catch (error) {
 		logger.error('Error fetching shard status:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch shard status',
-		} as ApiResponse);
+		res.failure('Failed to fetch shard status', 500);
 	}
 };
 
@@ -946,18 +864,12 @@ export const getWebSocketStats = async (req: AuthRequest, res: Response) => {
 	try {
 		const stats = wsManager.getConnectionStats();
 
-		res.json({
-			success: true,
-			data: {
-				websocketStats: stats,
-				timestamp: new Date().toISOString(),
-			},
-		} as ApiResponse);
+		res.success({
+			websocketStats: stats,
+			timestamp: new Date().toISOString(),
+		});
 	} catch (error) {
 		logger.error('Error fetching WebSocket stats:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch WebSocket stats',
-		} as ApiResponse);
+		res.failure('Failed to fetch WebSocket stats', 500);
 	}
 };

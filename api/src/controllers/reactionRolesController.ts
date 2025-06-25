@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { createLogger, type ApiResponse } from '../types/shared.js';
+import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
 import { discordApi } from '../services/discordApiService.js';
@@ -60,24 +60,18 @@ export const getReactionRoles = async (req: AuthRequest, res: Response) => {
 				: null,
 		}));
 
-		res.json({
-			success: true,
-			data: {
-				reactionRoles: formattedRoles,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
+		res.success({
+			reactionRoles: formattedRoles,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching reaction roles:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch reaction roles',
-		} as ApiResponse);
+		res.failure('Failed to fetch reaction roles', 500);
 	}
 };
 
@@ -101,7 +95,7 @@ export const getReactionRole = async (req: AuthRequest, res: Response) => {
 			return res.status(404).json({
 				success: false,
 				error: 'Reaction role not found',
-			} as ApiResponse);
+			});
 		}
 
 		// Get usage history
@@ -141,13 +135,13 @@ export const getReactionRole = async (req: AuthRequest, res: Response) => {
 		res.json({
 			success: true,
 			data: formattedRole,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching reaction role:', error);
 		res.status(500).json({
 			success: false,
 			error: 'Failed to fetch reaction role',
-		} as ApiResponse);
+		});
 	}
 };
 
@@ -174,7 +168,7 @@ export const createReactionRole = async (req: AuthRequest, res: Response) => {
 			return res.status(400).json({
 				success: false,
 				error: 'Message not found or bot cannot access it',
-			} as ApiResponse);
+			});
 		}
 
 		// Create reaction role in database
@@ -214,13 +208,13 @@ export const createReactionRole = async (req: AuthRequest, res: Response) => {
 			success: true,
 			message: 'Reaction role created successfully',
 			data: reactionRole,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error creating reaction role:', error);
 		res.status(500).json({
 			success: false,
 			error: 'Failed to create reaction role',
-		} as ApiResponse);
+		});
 	}
 };
 
@@ -255,13 +249,13 @@ export const updateReactionRole = async (req: AuthRequest, res: Response) => {
 			success: true,
 			message: 'Reaction role updated successfully',
 			data: updatedRole,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating reaction role:', error);
 		res.status(500).json({
 			success: false,
 			error: 'Failed to update reaction role',
-		} as ApiResponse);
+		});
 	}
 };
 
@@ -283,7 +277,7 @@ export const deleteReactionRole = async (req: AuthRequest, res: Response) => {
 			return res.status(404).json({
 				success: false,
 				error: 'Reaction role not found',
-			} as ApiResponse);
+			});
 		}
 
 		// Delete from database (cascade will handle logs)
@@ -312,13 +306,13 @@ export const deleteReactionRole = async (req: AuthRequest, res: Response) => {
 		res.json({
 			success: true,
 			message: 'Reaction role deleted successfully',
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error deleting reaction role:', error);
 		res.status(500).json({
 			success: false,
 			error: 'Failed to delete reaction role',
-		} as ApiResponse);
+		});
 	}
 };
 
@@ -378,13 +372,13 @@ export const getReactionRoleLogs = async (req: AuthRequest, res: Response) => {
 					pages: Math.ceil(total / take),
 				},
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching reaction role logs:', error);
 		res.status(500).json({
 			success: false,
 			error: 'Failed to fetch reaction role logs',
-		} as ApiResponse);
+		});
 	}
 };
 
@@ -481,13 +475,13 @@ export const getReactionRoleStatistics = async (
 		res.json({
 			success: true,
 			data: statistics,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching reaction role statistics:', error);
 		res.status(500).json({
 			success: false,
 			error: 'Failed to fetch reaction role statistics',
-		} as ApiResponse);
+		});
 	}
 };
 

@@ -6,6 +6,7 @@ import { createServer } from 'http';
 import { createLogger } from './types/shared.js';
 import { config } from './config/index.js';
 import { applySecureRouterPatch } from './utils/secureRouterPatch.js';
+import { responseEnhancer } from './middleware/response.js';
 applySecureRouterPatch();
 
 import apiRoutes from './routes/index.js';
@@ -37,6 +38,9 @@ app.use(
 );
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Attach res.success / res.failure helpers
+app.use(responseEnhancer);
 
 // Session middleware
 app.use(
@@ -137,22 +141,16 @@ app.use(
 		next: express.NextFunction
 	) => {
 		logger.error('Unhandled error:', err);
-		res.status(500).json({
-			success: false,
-			error:
-				config.nodeEnv === 'development'
-					? err.message
-					: 'Internal server error',
-		});
+		res.failure(
+			config.nodeEnv === 'development' ? err.message : 'Internal server error',
+			500
+		);
 	}
 );
 
 // 404 handler
 app.use((req, res) => {
-	res.status(404).json({
-		success: false,
-		error: 'Endpoint not found',
-	});
+	res.failure('Endpoint not found', 404);
 });
 
 // Initialize server

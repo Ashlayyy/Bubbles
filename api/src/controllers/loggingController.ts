@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { createLogger, type ApiResponse } from '../types/shared.js';
+import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
 
@@ -82,16 +82,10 @@ export const getLoggingSettings = async (req: AuthRequest, res: Response) => {
 			filterRules: logSettings.filterRules,
 		};
 
-		res.json({
-			success: true,
-			data: settings,
-		} as ApiResponse);
+		res.success(settings);
 	} catch (error) {
 		logger.error('Error fetching logging settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch logging settings',
-		} as ApiResponse);
+		res.failure('Failed to fetch logging settings', 500);
 	}
 };
 
@@ -141,17 +135,10 @@ export const updateLoggingSettings = async (
 			enabledLogTypes: enabledLogTypes.length,
 		});
 
-		res.json({
-			success: true,
-			message: 'Logging settings updated',
-			data: updatedSettings,
-		} as ApiResponse);
+		res.success(updatedSettings);
 	} catch (error) {
 		logger.error('Error updating logging settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update logging settings',
-		} as ApiResponse);
+		res.failure('Failed to update logging settings', 500);
 	}
 };
 
@@ -206,24 +193,18 @@ export const getAuditLogs = async (req: AuthRequest, res: Response) => {
 			},
 		}));
 
-		res.json({
-			success: true,
-			data: {
-				logs: formattedLogs,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
+		res.success({
+			logs: formattedLogs,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching audit logs:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch audit logs',
-		} as ApiResponse);
+		res.failure('Failed to fetch audit logs', 500);
 	}
 };
 
@@ -260,22 +241,15 @@ export const exportAuditLogs = async (req: AuthRequest, res: Response) => {
 			totalLogs,
 		});
 
-		res.json({
-			success: true,
-			message: 'Audit log export initiated',
-			data: {
-				exportId,
-				status: 'processing',
-				totalLogs,
-				estimatedCompletion: Date.now() + Math.min(totalLogs * 10, 30000), // Estimate based on log count
-			},
-		} as ApiResponse);
+		res.success({
+			exportId,
+			status: 'processing',
+			totalLogs,
+			estimatedCompletion: Date.now() + Math.min(totalLogs * 10, 30000), // Estimate based on log count
+		});
 	} catch (error) {
 		logger.error('Error exporting audit logs:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to export audit logs',
-		} as ApiResponse);
+		res.failure('Failed to export audit logs', 500);
 	}
 };
 
@@ -283,79 +257,85 @@ export const exportAuditLogs = async (req: AuthRequest, res: Response) => {
 export const getLogStatistics = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
-		const { period = '7d' } = req.query;
+		const { period = '30d' } = req.query;
 		const prisma = getPrismaClient();
 
-		// Calculate date range
 		const periodMs = parsePeriod(period as string);
 		const startDate = new Date(Date.now() - periodMs);
 
-		// Get event counts by type
-		const logCounts = await prisma.moderationLog.groupBy({
-			by: ['logType'],
-			where: {
-				guildId,
-				timestamp: { gte: startDate },
-			},
-			_count: { logType: true },
-		});
+		// Get log statistics
+		const [totalLogs, logTypeBreakdown, dailyActivity, userActivity] =
+			await Promise.all([
+				prisma.moderationLog.count({
+					where: {
+						guildId,
+						timestamp: { gte: startDate },
+					},
+				}),
+				prisma.moderationLog.groupBy({
+					by: ['logType'],
+					where: {
+						guildId,
+						timestamp: { gte: startDate },
+					},
+					_count: { logType: true },
+				}),
+				prisma.moderationLog.groupBy({
+					by: ['timestamp'],
+					where: {
+						guildId,
+						timestamp: { gte: startDate },
+					},
+					_count: { timestamp: true },
+				}),
+				prisma.moderationLog.groupBy({
+					by: ['userId'],
+					where: {
+						guildId,
+						timestamp: { gte: startDate },
+					},
+					_count: { userId: true },
+					orderBy: { _count: { userId: 'desc' } },
+					take: 10,
+				}),
+			]);
 
-		// Get daily activity
-		const dailyActivity = await prisma.moderationLog.groupBy({
-			by: ['timestamp'],
-			where: {
-				guildId,
-				timestamp: { gte: startDate },
-			},
-			_count: { timestamp: true },
-		});
-
-		// Process daily activity into proper format
-		const dailyActivityMap = new Map();
+		// Process daily activity
+		const dailyMap = new Map<string, number>();
 		dailyActivity.forEach((day: any) => {
 			const dateKey = day.timestamp.toISOString().split('T')[0];
-			dailyActivityMap.set(
+			dailyMap.set(
 				dateKey,
-				(dailyActivityMap.get(dateKey) || 0) + day._count.timestamp
+				(dailyMap.get(dateKey) || 0) + day._count.timestamp
 			);
 		});
 
-		// Fill missing days with 0
-		const dailyActivityArray = [];
-		const dayMs = 24 * 60 * 60 * 1000;
-		for (let i = Math.floor(periodMs / dayMs); i >= 0; i--) {
-			const date = new Date(Date.now() - i * dayMs);
-			const dateKey = date.toISOString().split('T')[0];
-			dailyActivityArray.push({
-				date: dateKey,
-				count: dailyActivityMap.get(dateKey) || 0,
-			});
-		}
-
-		const eventBreakdown: any = {};
-		let totalEvents = 0;
-		logCounts.forEach((count: any) => {
-			eventBreakdown[count.logType] = count._count.logType;
-			totalEvents += count._count.logType;
-		});
-
-		const stats = {
+		const statistics = {
 			period: period as string,
-			totalEvents,
-			eventBreakdown,
-			dailyActivity: dailyActivityArray,
+			overview: {
+				totalLogs,
+				averagePerDay: Math.round(
+					totalLogs / Math.max(1, periodMs / (24 * 60 * 60 * 1000))
+				),
+			},
+			logTypeBreakdown: logTypeBreakdown.reduce((acc: any, type: any) => {
+				acc[type.logType] = type._count.logType;
+				return acc;
+			}, {}),
+			topUsers: userActivity.map((user: any) => ({
+				userId: user.userId,
+				logCount: user._count.userId,
+			})),
+			dailyActivity: Array.from(dailyMap.entries()).map(([date, count]) => ({
+				date,
+				count,
+			})),
 		};
 
-		res.json({
-			success: true,
-			data: stats,
-		} as ApiResponse);
+		res.success(statistics);
 	} catch (error) {
 		logger.error('Error fetching log statistics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch log statistics',
-		} as ApiResponse);
+		res.failure('Failed to fetch log statistics', 500);
 	}
 };
 

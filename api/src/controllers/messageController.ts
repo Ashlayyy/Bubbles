@@ -24,18 +24,14 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
 
 		// Basic validation
 		if (!channelId || (!content && !embeds && !files)) {
-			return res.status(400).json({
-				success: false,
-				error:
-					'Channel ID and at least one of content, embeds, or files are required',
-			} as ApiResponse);
+			return res.failure(
+				'Channel ID and at least one of content, embeds, or files are required',
+				400
+			);
 		}
 
 		if (content && content.length > 2000) {
-			return res.status(400).json({
-				success: false,
-				error: 'Message content cannot exceed 2000 characters',
-			} as ApiResponse);
+			return res.failure('Message content cannot exceed 2000 characters', 400);
 		}
 
 		// Prepare message options
@@ -67,17 +63,10 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Sent message ${sentMessage.id} to channel ${channelId}`);
 
-		res.json({
-			success: true,
-			message: 'Message sent successfully',
-			data: sentMessage,
-		} as ApiResponse);
+		res.success(sentMessage);
 	} catch (error) {
 		logger.error('Error in sendMessage controller:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to send message',
-		} as ApiResponse);
+		res.failure('Failed to send message', 500);
 	}
 };
 
@@ -86,10 +75,7 @@ export const getChannels = async (req: AuthRequest, res: Response) => {
 		const { guildId } = req.params;
 
 		if (!guildId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Guild ID is required',
-			} as ApiResponse);
+			return res.failure('Guild ID is required', 400);
 		}
 
 		// Use Discord API to get real channels
@@ -97,16 +83,10 @@ export const getChannels = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Fetched ${channels.length} channels for guild: ${guildId}`);
 
-		res.json({
-			success: true,
-			data: channels,
-		} as ApiResponse);
+		res.success(channels);
 	} catch (error) {
 		logger.error('Error fetching channels:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch channels from Discord',
-		} as ApiResponse);
+		res.failure('Failed to fetch channels from Discord', 500);
 	}
 };
 
@@ -120,10 +100,7 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
 		const { limit = 50, before, after } = req.query;
 
 		if (!channelId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID is required',
-			} as ApiResponse);
+			return res.failure('Channel ID is required', 400);
 		}
 
 		const messages = await discordApi.getChannelMessages(
@@ -136,16 +113,10 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
 			`Fetched ${messages.length} messages from channel: ${channelId}`
 		);
 
-		res.json({
-			success: true,
-			data: messages,
-		} as ApiResponse);
+		res.success(messages);
 	} catch (error) {
 		logger.error('Error fetching messages:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch messages',
-		} as ApiResponse);
+		res.failure('Failed to fetch messages', 500);
 	}
 };
 
@@ -154,24 +125,15 @@ export const getMessage = async (req: AuthRequest, res: Response) => {
 		const { channelId, messageId } = req.params;
 
 		if (!channelId || !messageId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID and Message ID are required',
-			} as ApiResponse);
+			return res.failure('Channel ID and Message ID are required', 400);
 		}
 
 		const message = await discordApi.getMessage(channelId, messageId);
 
-		res.json({
-			success: true,
-			data: message,
-		} as ApiResponse);
+		res.success(message);
 	} catch (error) {
 		logger.error('Error fetching message:', error);
-		res.status(404).json({
-			success: false,
-			error: 'Message not found',
-		} as ApiResponse);
+		res.failure('Message not found', 404);
 	}
 };
 
@@ -181,10 +143,7 @@ export const editMessage = async (req: AuthRequest, res: Response) => {
 		const { content, embeds, components, flags, allowed_mentions } = req.body;
 
 		if (!channelId || !messageId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID and Message ID are required',
-			} as ApiResponse);
+			return res.failure('Channel ID and Message ID are required', 400);
 		}
 
 		const editOptions = {
@@ -214,16 +173,10 @@ export const editMessage = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Edited message ${messageId} in channel ${channelId}`);
 
-		res.json({
-			success: true,
-			data: editedMessage,
-		} as ApiResponse);
+		res.success(editedMessage);
 	} catch (error) {
 		logger.error('Error editing message:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to edit message',
-		} as ApiResponse);
+		res.failure('Failed to edit message', 500);
 	}
 };
 
@@ -233,10 +186,7 @@ export const deleteMessage = async (req: AuthRequest, res: Response) => {
 		const { reason } = req.body;
 
 		if (!channelId || !messageId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID and Message ID are required',
-			} as ApiResponse);
+			return res.failure('Channel ID and Message ID are required', 400);
 		}
 
 		await discordApi.deleteMessage(channelId, messageId, reason);
@@ -254,16 +204,10 @@ export const deleteMessage = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Deleted message ${messageId} in channel ${channelId}`);
 
-		res.json({
-			success: true,
-			message: 'Message deleted successfully',
-		} as ApiResponse);
+		res.success({ message: 'Message deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting message:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to delete message',
-		} as ApiResponse);
+		res.failure('Failed to delete message', 500);
 	}
 };
 

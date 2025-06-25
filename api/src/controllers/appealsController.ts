@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { createLogger, type ApiResponse } from '../types/shared.js';
+import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
 import { discordApi } from '../services/discordApiService.js';
@@ -30,32 +30,23 @@ export const getAppealSettings = async (req: AuthRequest, res: Response) => {
 
 		if (!settings) {
 			// Return default settings
-			return res.json({
-				success: true,
-				data: {
-					enabled: false,
-					channelId: null,
-					staffRoleIds: [],
-					cooldownDays: 30,
-					maxAppealsPerUser: 3,
-					requireReason: true,
-					notifyStaff: true,
-					dmUser: true,
-					autoUnbanOnApproval: true,
-				},
-			} as ApiResponse);
+			return res.success({
+				enabled: false,
+				channelId: null,
+				staffRoleIds: [],
+				cooldownDays: 30,
+				maxAppealsPerUser: 3,
+				requireReason: true,
+				notifyStaff: true,
+				dmUser: true,
+				autoUnbanOnApproval: true,
+			});
 		}
 
-		res.json({
-			success: true,
-			data: settings,
-		} as ApiResponse);
+		res.success(settings);
 	} catch (error) {
 		logger.error('Error fetching appeal settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch appeal settings',
-		} as ApiResponse);
+		res.failure('Failed to fetch appeal settings', 500);
 	}
 };
 
@@ -81,17 +72,13 @@ export const updateAppealSettings = async (req: AuthRequest, res: Response) => {
 			enabled: updatedSettings.enabled,
 		});
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Appeal settings updated successfully',
 			data: updatedSettings,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating appeal settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update appeal settings',
-		} as ApiResponse);
+		res.failure('Failed to update appeal settings', 500);
 	}
 };
 
@@ -149,24 +136,18 @@ export const getAppeals = async (req: AuthRequest, res: Response) => {
 			responses: appeal.responses,
 		}));
 
-		res.json({
-			success: true,
-			data: {
-				appeals: formattedAppeals,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
+		res.success({
+			appeals: formattedAppeals,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching appeals:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch appeals',
-		} as ApiResponse);
+		res.failure('Failed to fetch appeals', 500);
 	}
 };
 
@@ -189,22 +170,13 @@ export const getAppeal = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!appeal) {
-			return res.status(404).json({
-				success: false,
-				error: 'Appeal not found',
-			} as ApiResponse);
+			return res.failure('Appeal not found', 404);
 		}
 
-		res.json({
-			success: true,
-			data: appeal,
-		} as ApiResponse);
+		res.success(appeal);
 	} catch (error) {
 		logger.error('Error fetching appeal:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch appeal',
-		} as ApiResponse);
+		res.failure('Failed to fetch appeal', 500);
 	}
 };
 
@@ -221,20 +193,14 @@ export const createAppeal = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!settings?.enabled) {
-			return res.status(400).json({
-				success: false,
-				error: 'Appeals are not enabled for this server',
-			} as ApiResponse);
+			return res.failure('Appeals are not enabled for this server', 400);
 		}
 
 		// Check user limits
 		const userAppeals = await prisma.appeal.count({ guildId, userId });
 
 		if (userAppeals >= settings.maxAppealsPerUser) {
-			return res.status(400).json({
-				success: false,
-				error: 'Maximum appeals limit reached',
-			} as ApiResponse);
+			return res.failure('Maximum appeals limit reached', 400);
 		}
 
 		// Check cooldown
@@ -249,10 +215,10 @@ export const createAppeal = async (req: AuthRequest, res: Response) => {
 					settings.cooldownDays * 24 * 60 * 60 * 1000
 			);
 			if (new Date() < cooldownEnd) {
-				return res.status(400).json({
-					success: false,
-					error: `Appeal cooldown active. Try again after ${cooldownEnd.toDateString()}`,
-				} as ApiResponse);
+				return res.failure(
+					`Appeal cooldown active. Try again after ${cooldownEnd.toDateString()}`,
+					400
+				);
 			}
 		}
 
@@ -299,17 +265,16 @@ export const createAppeal = async (req: AuthRequest, res: Response) => {
 			type,
 		});
 
-		res.status(201).json({
-			success: true,
-			message: 'Appeal submitted successfully',
-			data: appeal,
-		} as ApiResponse);
+		res.success(
+			{
+				message: 'Appeal submitted successfully',
+				data: appeal,
+			},
+			201
+		);
 	} catch (error) {
 		logger.error('Error creating appeal:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to create appeal',
-		} as ApiResponse);
+		res.failure('Failed to create appeal', 500);
 	}
 };
 
@@ -327,10 +292,7 @@ export const updateAppealStatus = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!appeal) {
-			return res.status(404).json({
-				success: false,
-				error: 'Appeal not found',
-			} as ApiResponse);
+			return res.failure('Appeal not found', 404);
 		}
 
 		// Update appeal
@@ -389,17 +351,13 @@ export const updateAppealStatus = async (req: AuthRequest, res: Response) => {
 			reviewerId,
 		});
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Appeal status updated successfully',
 			data: updatedAppeal,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating appeal status:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update appeal status',
-		} as ApiResponse);
+		res.failure('Failed to update appeal status', 500);
 	}
 };
 
@@ -422,16 +380,10 @@ export const deleteAppeal = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Deleted appeal ${appealId} from guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: 'Appeal deleted successfully',
-		} as ApiResponse);
+		res.success({ message: 'Appeal deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting appeal:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to delete appeal',
-		} as ApiResponse);
+		res.failure('Failed to delete appeal', 500);
 	}
 };
 
@@ -525,16 +477,10 @@ export const getAppealStatistics = async (req: AuthRequest, res: Response) => {
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: statistics,
-		} as ApiResponse);
+		res.success(statistics);
 	} catch (error) {
 		logger.error('Error fetching appeal statistics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch appeal statistics',
-		} as ApiResponse);
+		res.failure('Failed to fetch appeal statistics', 500);
 	}
 };
 

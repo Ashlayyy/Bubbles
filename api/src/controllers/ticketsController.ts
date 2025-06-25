@@ -73,16 +73,10 @@ export const getTicketSettings = async (req: AuthRequest, res: Response) => {
 			],
 		};
 
-		res.json({
-			success: true,
-			data: settings,
-		} as ApiResponse);
+		res.success(settings);
 	} catch (error) {
 		logger.error('Error fetching ticket settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch ticket settings',
-		} as ApiResponse);
+		res.failure('Failed to fetch ticket settings', 500);
 	}
 };
 
@@ -123,17 +117,13 @@ export const updateTicketSettings = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Updated ticket settings for guild ${guildId}`, settings);
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Ticket settings updated',
 			data: updatedConfig,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating ticket settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update ticket settings',
-		} as ApiResponse);
+		res.failure('Failed to update ticket settings', 500);
 	}
 };
 
@@ -208,24 +198,18 @@ export const getTickets = async (req: AuthRequest, res: Response) => {
 				: null,
 		}));
 
-		res.json({
-			success: true,
-			data: {
-				tickets: formattedTickets,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
+		res.success({
+			tickets: formattedTickets,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching tickets:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch tickets',
-		} as ApiResponse);
+		res.failure('Failed to fetch tickets', 500);
 	}
 };
 
@@ -248,10 +232,7 @@ export const getTicket = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!ticket) {
-			return res.status(404).json({
-				success: false,
-				error: 'Ticket not found',
-			} as ApiResponse);
+			return res.failure('Ticket not found', 404);
 		}
 
 		const formattedTicket = {
@@ -285,16 +266,10 @@ export const getTicket = async (req: AuthRequest, res: Response) => {
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: formattedTicket,
-		} as ApiResponse);
+		res.success(formattedTicket);
 	} catch (error) {
 		logger.error('Error fetching ticket:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch ticket',
-		} as ApiResponse);
+		res.failure('Failed to fetch ticket', 500);
 	}
 };
 
@@ -317,10 +292,7 @@ export const createTicket = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!guildConfig?.ticketChannelId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Ticket system not configured for this guild',
-			} as ApiResponse);
+			return res.failure('Ticket system not configured for this guild', 400);
 		}
 
 		// Check if user has reached max tickets limit
@@ -334,10 +306,10 @@ export const createTicket = async (req: AuthRequest, res: Response) => {
 
 		if (userTickets >= 5) {
 			// Max tickets per user
-			return res.status(400).json({
-				success: false,
-				error: 'You have reached the maximum number of open tickets',
-			} as ApiResponse);
+			return res.failure(
+				'You have reached the maximum number of open tickets',
+				400
+			);
 		}
 
 		// Get next ticket number
@@ -385,10 +357,7 @@ export const createTicket = async (req: AuthRequest, res: Response) => {
 			}
 		} catch (error) {
 			logger.error('Failed to create Discord channel/thread:', error);
-			return res.status(500).json({
-				success: false,
-				error: 'Failed to create ticket channel',
-			} as ApiResponse);
+			return res.failure('Failed to create ticket channel', 500);
 		}
 
 		// Create ticket in database
@@ -429,17 +398,10 @@ export const createTicket = async (req: AuthRequest, res: Response) => {
 			category,
 		});
 
-		res.status(201).json({
-			success: true,
-			message: 'Ticket created successfully',
-			data: ticket,
-		} as ApiResponse);
+		res.success(ticket, 201);
 	} catch (error) {
 		logger.error('Error creating ticket:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to create ticket',
-		} as ApiResponse);
+		res.failure('Failed to create ticket', 500);
 	}
 };
 
@@ -468,17 +430,13 @@ export const updateTicket = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Updated ticket ${ticketId} for guild ${guildId}`, updates);
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Ticket updated successfully',
 			data: updatedTicket,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating ticket:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update ticket',
-		} as ApiResponse);
+		res.failure('Failed to update ticket', 500);
 	}
 };
 
@@ -498,10 +456,7 @@ export const closeTicket = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!ticket) {
-			return res.status(404).json({
-				success: false,
-				error: 'Ticket not found',
-			} as ApiResponse);
+			return res.failure('Ticket not found', 404);
 		}
 
 		// Update ticket status
@@ -537,17 +492,13 @@ export const closeTicket = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Closed ticket ${ticketId} for guild ${guildId}`, { reason });
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Ticket closed successfully',
 			data: closedTicket,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error closing ticket:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to close ticket',
-		} as ApiResponse);
+		res.failure('Failed to close ticket', 500);
 	}
 };
 
@@ -578,17 +529,13 @@ export const claimTicket = async (req: AuthRequest, res: Response) => {
 			assignedTo: req.user?.id,
 		});
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Ticket claimed successfully',
 			data: claimedTicket,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error claiming ticket:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to claim ticket',
-		} as ApiResponse);
+		res.failure('Failed to claim ticket', 500);
 	}
 };
 
@@ -673,16 +620,10 @@ export const getTicketStatistics = async (req: AuthRequest, res: Response) => {
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: statistics,
-		} as ApiResponse);
+		res.success(statistics);
 	} catch (error) {
 		logger.error('Error fetching ticket statistics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch ticket statistics',
-		} as ApiResponse);
+		res.failure('Failed to fetch ticket statistics', 500);
 	}
 };
 

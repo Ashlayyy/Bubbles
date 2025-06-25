@@ -2,7 +2,6 @@ import type { Response } from 'express';
 import { discordApi } from '../services/discordApiService.js';
 import { getDiscordEventForwarder } from '../services/discordEventForwarder.js';
 import { createLogger } from '../types/shared.js';
-import type { ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 
 const logger = createLogger('api-invites');
@@ -18,10 +17,7 @@ export const getInvite = async (req: AuthRequest, res: Response) => {
 			req.query;
 
 		if (!inviteCode) {
-			return res.status(400).json({
-				success: false,
-				error: 'Invite code is required',
-			} as ApiResponse);
+			return res.failure('Invite code is required', 400);
 		}
 
 		const invite = await discordApi.getInvite(
@@ -31,16 +27,10 @@ export const getInvite = async (req: AuthRequest, res: Response) => {
 			guild_scheduled_event_id as string
 		);
 
-		res.json({
-			success: true,
-			data: invite,
-		} as ApiResponse);
+		res.success(invite);
 	} catch (error) {
 		logger.error('Error fetching invite:', error);
-		res.status(404).json({
-			success: false,
-			error: 'Invite not found or expired',
-		} as ApiResponse);
+		res.failure('Invite not found or expired', 404);
 	}
 };
 
@@ -50,10 +40,7 @@ export const deleteInvite = async (req: AuthRequest, res: Response) => {
 		const { reason } = req.body;
 
 		if (!inviteCode) {
-			return res.status(400).json({
-				success: false,
-				error: 'Invite code is required',
-			} as ApiResponse);
+			return res.failure('Invite code is required', 400);
 		}
 
 		// Get invite info before deletion for event forwarding
@@ -80,17 +67,13 @@ export const deleteInvite = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Deleted invite ${inviteCode}`);
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Invite deleted successfully',
 			data: deletedInvite,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error deleting invite:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to delete invite',
-		} as ApiResponse);
+		res.failure('Failed to delete invite', 500);
 	}
 };
 
@@ -103,24 +86,15 @@ export const getGuildInvites = async (req: AuthRequest, res: Response) => {
 		const { guildId } = req.params;
 
 		if (!guildId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Guild ID is required',
-			} as ApiResponse);
+			return res.failure('Guild ID is required', 400);
 		}
 
 		const invites = await discordApi.getGuildInvites(guildId);
 
-		res.json({
-			success: true,
-			data: invites,
-		} as ApiResponse);
+		res.success(invites);
 	} catch (error) {
 		logger.error('Error fetching guild invites:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch guild invites',
-		} as ApiResponse);
+		res.failure('Failed to fetch guild invites', 500);
 	}
 };
 
@@ -143,10 +117,7 @@ export const createChannelInvite = async (req: AuthRequest, res: Response) => {
 		} = req.body;
 
 		if (!channelId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID is required',
-			} as ApiResponse);
+			return res.failure('Channel ID is required', 400);
 		}
 
 		const inviteOptions = {
@@ -180,17 +151,13 @@ export const createChannelInvite = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Created invite ${invite.code} for channel ${channelId}`);
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Channel invite created successfully',
 			data: invite,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error creating channel invite:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to create channel invite',
-		} as ApiResponse);
+		res.failure('Failed to create channel invite', 500);
 	}
 };
 
@@ -199,24 +166,15 @@ export const getChannelInvites = async (req: AuthRequest, res: Response) => {
 		const { channelId } = req.params;
 
 		if (!channelId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID is required',
-			} as ApiResponse);
+			return res.failure('Channel ID is required', 400);
 		}
 
 		const invites = await discordApi.getChannelInvites(channelId);
 
-		res.json({
-			success: true,
-			data: invites,
-		} as ApiResponse);
+		res.success(invites);
 	} catch (error) {
 		logger.error('Error fetching channel invites:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch channel invites',
-		} as ApiResponse);
+		res.failure('Failed to fetch channel invites', 500);
 	}
 };
 
@@ -230,10 +188,7 @@ export const getInviteAnalytics = async (req: AuthRequest, res: Response) => {
 		const { period = '7d' } = req.query;
 
 		if (!guildId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Guild ID is required',
-			} as ApiResponse);
+			return res.failure('Guild ID is required', 400);
 		}
 
 		// Get all guild invites
@@ -277,16 +232,10 @@ export const getInviteAnalytics = async (req: AuthRequest, res: Response) => {
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: analytics,
-		} as ApiResponse);
+		res.success(analytics);
 	} catch (error) {
 		logger.error('Error fetching invite analytics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch invite analytics',
-		} as ApiResponse);
+		res.failure('Failed to fetch invite analytics', 500);
 	}
 };
 
@@ -296,10 +245,7 @@ export const bulkDeleteInvites = async (req: AuthRequest, res: Response) => {
 		const { inviteCodes, reason } = req.body;
 
 		if (!guildId || !inviteCodes || !Array.isArray(inviteCodes)) {
-			return res.status(400).json({
-				success: false,
-				error: 'Guild ID and invite codes array are required',
-			} as ApiResponse);
+			return res.failure('Guild ID and invite codes array are required', 400);
 		}
 
 		const results = [];
@@ -341,17 +287,13 @@ export const bulkDeleteInvites = async (req: AuthRequest, res: Response) => {
 			`Bulk deleted invites in guild ${guildId}: ${results.length} successful, ${errors.length} failed`
 		);
 
-		res.json({
-			success: true,
+		res.success({
 			message: `Bulk invite deletion completed: ${results.length} successful, ${errors.length} failed`,
 			data: { results, errors },
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error in bulk delete invites:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to perform bulk invite deletion',
-		} as ApiResponse);
+		res.failure('Failed to perform bulk invite deletion', 500);
 	}
 };
 
@@ -361,10 +303,7 @@ export const purgeExpiredInvites = async (req: AuthRequest, res: Response) => {
 		const { reason } = req.body;
 
 		if (!guildId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Guild ID is required',
-			} as ApiResponse);
+			return res.failure('Guild ID is required', 400);
 		}
 
 		// Get all guild invites
@@ -422,8 +361,7 @@ export const purgeExpiredInvites = async (req: AuthRequest, res: Response) => {
 			`Purged expired invites in guild ${guildId}: ${results.length} successful, ${errors.length} failed`
 		);
 
-		res.json({
-			success: true,
+		res.success({
 			message: `Purged ${results.length} expired invites successfully`,
 			data: {
 				purged: results.length,
@@ -431,12 +369,9 @@ export const purgeExpiredInvites = async (req: AuthRequest, res: Response) => {
 				results,
 				errors,
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error purging expired invites:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to purge expired invites',
-		} as ApiResponse);
+		res.failure('Failed to purge expired invites', 500);
 	}
 };

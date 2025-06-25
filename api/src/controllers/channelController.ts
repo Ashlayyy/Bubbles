@@ -3,7 +3,6 @@ import { discordApi } from '../services/discordApiService.js';
 import { wsManager } from '../websocket/manager.js';
 import { getDiscordEventForwarder } from '../services/discordEventForwarder.js';
 import { createLogger } from '../types/shared.js';
-import type { ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 
 const logger = createLogger('api-channels');
@@ -17,24 +16,15 @@ export const getChannel = async (req: AuthRequest, res: Response) => {
 		const { channelId } = req.params;
 
 		if (!channelId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID is required',
-			} as ApiResponse);
+			return res.failure('Channel ID is required', 400);
 		}
 
 		const channel = await discordApi.getChannel(channelId);
 
-		res.json({
-			success: true,
-			data: channel,
-		} as ApiResponse);
+		res.success(channel);
 	} catch (error) {
 		logger.error('Error fetching channel:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch channel',
-		} as ApiResponse);
+		res.failure('Failed to fetch channel', 500);
 	}
 };
 
@@ -64,10 +54,7 @@ export const createChannel = async (req: AuthRequest, res: Response) => {
 		} = req.body;
 
 		if (!guildId || !name) {
-			return res.status(400).json({
-				success: false,
-				error: 'Guild ID and channel name are required',
-			} as ApiResponse);
+			return res.failure('Guild ID and channel name are required', 400);
 		}
 
 		const channelOptions = {
@@ -109,17 +96,13 @@ export const createChannel = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Created channel ${channel.id} in guild ${guildId}`);
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Channel created successfully',
 			data: channel,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error creating channel:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to create channel',
-		} as ApiResponse);
+		res.failure('Failed to create channel', 500);
 	}
 };
 
@@ -150,10 +133,7 @@ export const modifyChannel = async (req: AuthRequest, res: Response) => {
 		} = req.body;
 
 		if (!channelId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID is required',
-			} as ApiResponse);
+			return res.failure('Channel ID is required', 400);
 		}
 
 		const modifyOptions = {
@@ -201,17 +181,13 @@ export const modifyChannel = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Modified channel ${channelId}`);
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Channel modified successfully',
 			data: channel,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error modifying channel:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to modify channel',
-		} as ApiResponse);
+		res.failure('Failed to modify channel', 500);
 	}
 };
 
@@ -221,10 +197,7 @@ export const deleteChannel = async (req: AuthRequest, res: Response) => {
 		const { reason } = req.body;
 
 		if (!channelId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID is required',
-			} as ApiResponse);
+			return res.failure('Channel ID is required', 400);
 		}
 
 		// Get channel info before deletion for event forwarding
@@ -247,16 +220,12 @@ export const deleteChannel = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Deleted channel ${channelId}`);
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Channel deleted successfully',
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error deleting channel:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to delete channel',
-		} as ApiResponse);
+		res.failure('Failed to delete channel', 500);
 	}
 };
 
@@ -273,17 +242,14 @@ export const editChannelPermissions = async (
 		const { allow, deny, type, reason } = req.body;
 
 		if (!channelId || !overwriteId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID and overwrite ID are required',
-			} as ApiResponse);
+			return res.failure('Channel ID and overwrite ID are required', 400);
 		}
 
 		if (allow === undefined && deny === undefined) {
-			return res.status(400).json({
-				success: false,
-				error: 'At least one of allow or deny permissions must be provided',
-			} as ApiResponse);
+			return res.failure(
+				'At least one of allow or deny permissions must be provided',
+				400
+			);
 		}
 
 		const permissionOptions = {
@@ -318,16 +284,10 @@ export const editChannelPermissions = async (
 			`Updated permissions for overwrite ${overwriteId} in channel ${channelId}`
 		);
 
-		res.json({
-			success: true,
-			message: 'Channel permissions updated successfully',
-		} as ApiResponse);
+		res.success({ message: 'Channel permissions updated successfully' });
 	} catch (error) {
 		logger.error('Error updating channel permissions:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update channel permissions',
-		} as ApiResponse);
+		res.failure('Failed to update channel permissions', 500);
 	}
 };
 
@@ -340,10 +300,7 @@ export const deleteChannelPermission = async (
 		const { reason } = req.body;
 
 		if (!channelId || !overwriteId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID and overwrite ID are required',
-			} as ApiResponse);
+			return res.failure('Channel ID and overwrite ID are required', 400);
 		}
 
 		await discordApi.deleteChannelPermission(channelId, overwriteId, reason);
@@ -364,16 +321,10 @@ export const deleteChannelPermission = async (
 			`Deleted permission overwrite ${overwriteId} from channel ${channelId}`
 		);
 
-		res.json({
-			success: true,
-			message: 'Channel permission deleted successfully',
-		} as ApiResponse);
+		res.success({ message: 'Channel permission deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting channel permission:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to delete channel permission',
-		} as ApiResponse);
+		res.failure('Failed to delete channel permission', 500);
 	}
 };
 
@@ -386,24 +337,15 @@ export const getChannelInvites = async (req: AuthRequest, res: Response) => {
 		const { channelId } = req.params;
 
 		if (!channelId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID is required',
-			} as ApiResponse);
+			return res.failure('Channel ID is required', 400);
 		}
 
 		const invites = await discordApi.getChannelInvites(channelId);
 
-		res.json({
-			success: true,
-			data: invites,
-		} as ApiResponse);
+		res.success(invites);
 	} catch (error) {
 		logger.error('Error fetching channel invites:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch channel invites',
-		} as ApiResponse);
+		res.failure('Failed to fetch channel invites', 500);
 	}
 };
 
@@ -422,10 +364,7 @@ export const createChannelInvite = async (req: AuthRequest, res: Response) => {
 		} = req.body;
 
 		if (!channelId) {
-			return res.status(400).json({
-				success: false,
-				error: 'Channel ID is required',
-			} as ApiResponse);
+			return res.failure('Channel ID is required', 400);
 		}
 
 		const inviteOptions = {
@@ -459,16 +398,12 @@ export const createChannelInvite = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Created invite ${invite.code} for channel ${channelId}`);
 
-		res.json({
-			success: true,
+		res.success({
 			message: 'Channel invite created successfully',
 			data: invite,
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error creating channel invite:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to create channel invite',
-		} as ApiResponse);
+		res.failure('Failed to create channel invite', 500);
 	}
 };

@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { createLogger, type ApiResponse } from '../types/shared.js';
+import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { wsManager } from '../websocket/manager.js';
 import { getPrismaClient } from '../services/databaseService.js';
@@ -45,47 +45,41 @@ export const getModerationCases = async (req: AuthRequest, res: Response) => {
 			prisma.moderationCase.count({ where }),
 		]);
 
-		res.json({
-			success: true,
-			data: {
-				cases: cases.map((caseItem: any) => ({
-					id: caseItem.id,
-					caseNumber: caseItem.caseNumber,
-					type: caseItem.type,
-					userId: caseItem.userId,
-					moderatorId: caseItem.moderatorId,
-					reason: caseItem.reason,
-					evidence: caseItem.evidence,
-					duration: caseItem.duration,
-					expiresAt: caseItem.expiresAt,
-					isActive: caseItem.isActive,
-					severity: caseItem.severity,
-					points: caseItem.points,
-					canAppeal: caseItem.canAppeal,
-					appealedAt: caseItem.appealedAt,
-					appealStatus: caseItem.appealStatus,
-					dmSent: caseItem.dmSent,
-					publicNote: caseItem.publicNote,
-					staffNote: caseItem.staffNote,
-					createdAt: caseItem.createdAt,
-					updatedAt: caseItem.updatedAt,
-					notes: caseItem.notes,
-					appeals: caseItem.appeals,
-				})),
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
+		res.success({
+			cases: cases.map((caseItem: any) => ({
+				id: caseItem.id,
+				caseNumber: caseItem.caseNumber,
+				type: caseItem.type,
+				userId: caseItem.userId,
+				moderatorId: caseItem.moderatorId,
+				reason: caseItem.reason,
+				evidence: caseItem.evidence,
+				duration: caseItem.duration,
+				expiresAt: caseItem.expiresAt,
+				isActive: caseItem.isActive,
+				severity: caseItem.severity,
+				points: caseItem.points,
+				canAppeal: caseItem.canAppeal,
+				appealedAt: caseItem.appealedAt,
+				appealStatus: caseItem.appealStatus,
+				dmSent: caseItem.dmSent,
+				publicNote: caseItem.publicNote,
+				staffNote: caseItem.staffNote,
+				createdAt: caseItem.createdAt,
+				updatedAt: caseItem.updatedAt,
+				notes: caseItem.notes,
+				appeals: caseItem.appeals,
+			})),
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching moderation cases:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch moderation cases',
-		} as ApiResponse);
+		res.failure('Failed to fetch moderation cases', 500);
 	}
 };
 
@@ -142,17 +136,10 @@ export const createModerationCase = async (req: AuthRequest, res: Response) => {
 		// Broadcast to WebSocket
 		wsManager.broadcastToGuild(guildId, 'moderationCaseCreate', newCase);
 
-		res.status(201).json({
-			success: true,
-			data: newCase,
-			message: 'Moderation case created successfully',
-		} as ApiResponse);
+		res.success(newCase, 201);
 	} catch (error) {
 		logger.error('Error creating moderation case:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to create moderation case',
-		} as ApiResponse);
+		res.failure('Failed to create moderation case', 500);
 	}
 };
 
@@ -204,24 +191,18 @@ export const getBannedUsers = async (req: AuthRequest, res: Response) => {
 			caseNumber: banCase.caseNumber,
 		}));
 
-		res.json({
-			success: true,
-			data: {
-				bans,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
+		res.success({
+			bans,
+			pagination: {
+				page: parseInt(page as string),
+				limit: parseInt(limit as string),
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching banned users:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch banned users',
-		} as ApiResponse);
+		res.failure('Failed to fetch banned users', 500);
 	}
 };
 
@@ -243,10 +224,7 @@ export const banUser = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (existingBan) {
-			return res.status(400).json({
-				success: false,
-				error: 'User is already banned',
-			} as ApiResponse);
+			return res.failure('User is already banned', 400);
 		}
 
 		// Create moderation case first
@@ -322,17 +300,10 @@ export const banUser = async (req: AuthRequest, res: Response) => {
 			case: banCase,
 		});
 
-		res.json({
-			success: true,
-			message: 'User banned successfully',
-			data: banCase,
-		} as ApiResponse);
+		res.success(banCase);
 	} catch (error) {
 		logger.error('Error banning user:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to ban user',
-		} as ApiResponse);
+		res.failure('Failed to ban user', 500);
 	}
 };
 
@@ -371,16 +342,10 @@ export const unbanUser = async (req: AuthRequest, res: Response) => {
 			reason: reason || 'No reason provided',
 		});
 
-		res.json({
-			success: true,
-			message: 'User unbanned successfully',
-		} as ApiResponse);
+		res.success({ message: 'User unbanned successfully' });
 	} catch (error) {
 		logger.error('Error unbanning user:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to unban user',
-		} as ApiResponse);
+		res.failure('Failed to unban user', 500);
 	}
 };
 
@@ -433,16 +398,10 @@ export const getModerationSettings = async (
 			})),
 		};
 
-		res.json({
-			success: true,
-			data: settings,
-		} as ApiResponse);
+		res.success(settings);
 	} catch (error) {
 		logger.error('Error fetching moderation settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch moderation settings',
-		} as ApiResponse);
+		res.failure('Failed to fetch moderation settings', 500);
 	}
 };
 
@@ -478,17 +437,10 @@ export const updateModerationSettings = async (
 		// Broadcast update to connected clients
 		wsManager.broadcastToGuild(guildId, 'moderationSettingsUpdate', settings);
 
-		res.json({
-			success: true,
-			message: 'Moderation settings updated',
-			data: settings,
-		} as ApiResponse);
+		res.success({ data: settings, message: 'Moderation settings updated' });
 	} catch (error) {
 		logger.error('Error updating moderation settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update moderation settings',
-		} as ApiResponse);
+		res.failure('Failed to update moderation settings', 500);
 	}
 };
 
@@ -560,22 +512,13 @@ export const getModerationCase = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!moderationCase) {
-			return res.status(404).json({
-				success: false,
-				error: 'Moderation case not found',
-			} as ApiResponse);
+			return res.failure('Moderation case not found', 404);
 		}
 
-		return res.json({
-			success: true,
-			data: moderationCase,
-		} as ApiResponse);
+		return res.success(moderationCase);
 	} catch (error) {
 		logger.error('Error fetching moderation case:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to fetch moderation case',
-		} as ApiResponse);
+		return res.failure('Failed to fetch moderation case', 500);
 	}
 };
 
@@ -592,10 +535,7 @@ export const updateModerationCase = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!existing) {
-			return res.status(404).json({
-				success: false,
-				error: 'Moderation case not found',
-			} as ApiResponse);
+			return res.failure('Moderation case not found', 404);
 		}
 
 		const updateData: any = {};
@@ -631,17 +571,13 @@ export const updateModerationCase = async (req: AuthRequest, res: Response) => {
 			);
 		}
 
-		return res.json({
-			success: true,
+		return res.success({
 			data: updatedCase,
 			message: 'Moderation case updated successfully',
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating moderation case:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to update moderation case',
-		} as ApiResponse);
+		return res.failure('Failed to update moderation case', 500);
 	}
 };
 
@@ -658,10 +594,7 @@ export const deleteModerationCase = async (req: AuthRequest, res: Response) => {
 		});
 
 		if (!existing) {
-			return res.status(404).json({
-				success: false,
-				error: 'Moderation case not found',
-			} as ApiResponse);
+			return res.failure('Moderation case not found', 404);
 		}
 
 		await prisma.moderationCase.delete({ where: { id: caseId } });
@@ -669,16 +602,10 @@ export const deleteModerationCase = async (req: AuthRequest, res: Response) => {
 		// Broadcast deletion to clients
 		wsManager.broadcastToGuild(guildId, 'moderationCaseDelete', { id: caseId });
 
-		return res.json({
-			success: true,
-			message: 'Moderation case deleted successfully',
-		} as ApiResponse);
+		return res.success({ message: 'Moderation case deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting moderation case:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to delete moderation case',
-		} as ApiResponse);
+		return res.failure('Failed to delete moderation case', 500);
 	}
 };
 
@@ -712,32 +639,26 @@ export const getMutedUsers = async (req: AuthRequest, res: Response) => {
 			}),
 		]);
 
-		return res.json({
-			success: true,
-			data: {
-				mutes: muteCases.map((mc: any) => ({
-					userId: mc.userId,
-					reason: mc.reason,
-					mutedAt: mc.createdAt,
-					mutedBy: mc.moderatorId,
-					expiresAt: mc.expiresAt,
-					caseId: mc.id,
-					caseNumber: mc.caseNumber,
-				})),
-				pagination: {
-					page: parseInt(page as string),
-					limit: take,
-					total,
-					pages: Math.ceil(total / take),
-				},
+		return res.success({
+			mutes: muteCases.map((mc: any) => ({
+				userId: mc.userId,
+				reason: mc.reason,
+				mutedAt: mc.createdAt,
+				mutedBy: mc.moderatorId,
+				expiresAt: mc.expiresAt,
+				caseId: mc.id,
+				caseNumber: mc.caseNumber,
+			})),
+			pagination: {
+				page: parseInt(page as string),
+				limit: take,
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching muted users:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to fetch muted users',
-		} as ApiResponse);
+		return res.failure('Failed to fetch muted users', 500);
 	}
 };
 
@@ -777,23 +698,19 @@ export const muteUser = async (req: AuthRequest, res: Response) => {
 		};
 
 		if (result.success) {
-			res.status(201).json({
-				success: true,
-				data: muteCase,
-				message: `User timeout executed via ${result.method}`,
-			} as ApiResponse);
+			res.success(
+				{
+					data: muteCase,
+					message: `User timeout executed via ${result.method}`,
+				},
+				201
+			);
 		} else {
-			res.status(500).json({
-				success: false,
-				error: result.error || 'Failed to execute timeout',
-			} as ApiResponse);
+			res.failure(result.error || 'Failed to execute timeout', 500);
 		}
 	} catch (error) {
 		logger.error('Error muting user:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to mute user',
-		} as ApiResponse);
+		res.failure('Failed to mute user', 500);
 	}
 };
 
@@ -827,16 +744,10 @@ export const unmuteUser = async (req: AuthRequest, res: Response) => {
 			moderatorId: req.user?.id,
 		});
 
-		return res.json({
-			success: true,
-			message: 'User unmuted successfully',
-		} as ApiResponse);
+		return res.success({ message: 'User unmuted successfully' });
 	} catch (error) {
 		logger.error('Error unmuting user:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to unmute user',
-		} as ApiResponse);
+		return res.failure('Failed to unmute user', 500);
 	}
 };
 
@@ -863,24 +774,18 @@ export const getUserWarnings = async (req: AuthRequest, res: Response) => {
 			prisma.moderationCase.count({ where }),
 		]);
 
-		return res.json({
-			success: true,
-			data: {
-				warnings: warnCases,
-				pagination: {
-					page: parseInt(page as string),
-					limit: take,
-					total,
-					pages: Math.ceil(total / take),
-				},
+		return res.success({
+			warnings: warnCases,
+			pagination: {
+				page: parseInt(page as string),
+				limit: take,
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching user warnings:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to fetch user warnings',
-		} as ApiResponse);
+		return res.failure('Failed to fetch user warnings', 500);
 	}
 };
 
@@ -907,17 +812,13 @@ export const addWarning = async (req: AuthRequest, res: Response) => {
 
 		wsManager.broadcastToGuild(guildId, 'moderationWarningAdd', warnCase);
 
-		return res.status(201).json({
-			success: true,
-			data: warnCase,
-			message: 'Warning added successfully',
-		} as ApiResponse);
+		return res.success(
+			{ data: warnCase, message: 'Warning added successfully' },
+			201
+		);
 	} catch (error) {
 		logger.error('Error adding warning:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to add warning',
-		} as ApiResponse);
+		return res.failure('Failed to add warning', 500);
 	}
 };
 
@@ -932,9 +833,7 @@ export const removeWarning = async (req: AuthRequest, res: Response) => {
 			where: { id: warningId, guildId, type: 'WARN' },
 		});
 		if (!existing) {
-			return res
-				.status(404)
-				.json({ success: false, error: 'Warning not found' } as ApiResponse);
+			return res.failure('Warning not found', 404);
 		}
 
 		await prisma.moderationCase.delete({ where: { id: warningId } });
@@ -943,16 +842,10 @@ export const removeWarning = async (req: AuthRequest, res: Response) => {
 			id: warningId,
 		});
 
-		return res.json({
-			success: true,
-			message: 'Warning removed successfully',
-		} as ApiResponse);
+		return res.success({ message: 'Warning removed successfully' });
 	} catch (error) {
 		logger.error('Error removing warning:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to remove warning',
-		} as ApiResponse);
+		return res.failure('Failed to remove warning', 500);
 	}
 };
 
@@ -963,13 +856,10 @@ export const getAutomodRules = async (req: AuthRequest, res: Response) => {
 		const prisma = getPrismaClient();
 
 		const rules = await prisma.autoModRule.findMany({ where: { guildId } });
-		return res.json({ success: true, data: rules } as ApiResponse);
+		return res.success(rules);
 	} catch (error) {
 		logger.error('Error fetching automod rules:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to fetch automod rules',
-		} as ApiResponse);
+		return res.failure('Failed to fetch automod rules', 500);
 	}
 };
 
@@ -983,17 +873,13 @@ export const createAutomodRule = async (req: AuthRequest, res: Response) => {
 		const newRule = await prisma.autoModRule.create({
 			data: { guildId, ...data, createdBy: req.user?.id || 'unknown' },
 		});
-		return res.status(201).json({
-			success: true,
-			data: newRule,
-			message: 'Automod rule created successfully',
-		} as ApiResponse);
+		return res.success(
+			{ data: newRule, message: 'Automod rule created successfully' },
+			201
+		);
 	} catch (error) {
 		logger.error('Error creating automod rule:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to create automod rule',
-		} as ApiResponse);
+		return res.failure('Failed to create automod rule', 500);
 	}
 };
 
@@ -1008,10 +894,7 @@ export const updateAutomodRule = async (req: AuthRequest, res: Response) => {
 			where: { id: ruleId, guildId },
 		});
 		if (!existing) {
-			return res.status(404).json({
-				success: false,
-				error: 'Automod rule not found',
-			} as ApiResponse);
+			return res.failure('Automod rule not found', 404);
 		}
 
 		const updatedRule = await prisma.autoModRule.update({
@@ -1022,17 +905,13 @@ export const updateAutomodRule = async (req: AuthRequest, res: Response) => {
 				updatedBy: req.user?.id || 'unknown',
 			},
 		});
-		return res.json({
-			success: true,
+		return res.success({
 			data: updatedRule,
 			message: 'Automod rule updated successfully',
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating automod rule:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to update automod rule',
-		} as ApiResponse);
+		return res.failure('Failed to update automod rule', 500);
 	}
 };
 
@@ -1046,23 +925,14 @@ export const deleteAutomodRule = async (req: AuthRequest, res: Response) => {
 			where: { id: ruleId, guildId },
 		});
 		if (!existing) {
-			return res.status(404).json({
-				success: false,
-				error: 'Automod rule not found',
-			} as ApiResponse);
+			return res.failure('Automod rule not found', 404);
 		}
 
 		await prisma.autoModRule.delete({ where: { id: ruleId } });
-		return res.json({
-			success: true,
-			message: 'Automod rule deleted successfully',
-		} as ApiResponse);
+		return res.success({ message: 'Automod rule deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting automod rule:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to delete automod rule',
-		} as ApiResponse);
+		return res.failure('Failed to delete automod rule', 500);
 	}
 };
 
@@ -1092,24 +962,18 @@ export const getModeratorNotes = async (req: AuthRequest, res: Response) => {
 			prisma.caseNote.count({ where }),
 		]);
 
-		return res.json({
-			success: true,
-			data: {
-				notes,
-				pagination: {
-					page: parseInt(page as string),
-					limit: take,
-					total,
-					pages: Math.ceil(total / take),
-				},
+		return res.success({
+			notes,
+			pagination: {
+				page: parseInt(page as string),
+				limit: take,
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching moderator notes:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to fetch moderator notes',
-		} as ApiResponse);
+		return res.failure('Failed to fetch moderator notes', 500);
 	}
 };
 
@@ -1124,10 +988,7 @@ export const addModeratorNote = async (req: AuthRequest, res: Response) => {
 			where: { id: caseId, guildId },
 		});
 		if (!modCase) {
-			return res.status(404).json({
-				success: false,
-				error: 'Moderation case not found',
-			} as ApiResponse);
+			return res.failure('Moderation case not found', 404);
 		}
 
 		const note = await prisma.caseNote.create({
@@ -1138,17 +999,13 @@ export const addModeratorNote = async (req: AuthRequest, res: Response) => {
 				authorId: req.user?.id || 'unknown',
 			},
 		});
-		return res.status(201).json({
-			success: true,
-			data: note,
-			message: 'Moderator note added successfully',
-		} as ApiResponse);
+		return res.success(
+			{ data: note, message: 'Moderator note added successfully' },
+			201
+		);
 	} catch (error) {
 		logger.error('Error adding moderator note:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to add moderator note',
-		} as ApiResponse);
+		return res.failure('Failed to add moderator note', 500);
 	}
 };
 
@@ -1164,26 +1021,20 @@ export const updateModeratorNote = async (req: AuthRequest, res: Response) => {
 			where: { id: noteId, case: { guildId } },
 		});
 		if (!existing) {
-			return res
-				.status(404)
-				.json({ success: false, error: 'Note not found' } as ApiResponse);
+			return res.failure('Note not found', 404);
 		}
 
 		const updated = await prisma.caseNote.update({
 			where: { id: noteId },
 			data: { content, isInternal },
 		});
-		return res.json({
-			success: true,
+		return res.success({
 			data: updated,
 			message: 'Moderator note updated successfully',
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error updating moderator note:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to update moderator note',
-		} as ApiResponse);
+		return res.failure('Failed to update moderator note', 500);
 	}
 };
 
@@ -1197,21 +1048,13 @@ export const deleteModeratorNote = async (req: AuthRequest, res: Response) => {
 			where: { id: noteId, case: { guildId } },
 		});
 		if (!existing) {
-			return res
-				.status(404)
-				.json({ success: false, error: 'Note not found' } as ApiResponse);
+			return res.failure('Note not found', 404);
 		}
 
 		await prisma.caseNote.delete({ where: { id: noteId } });
-		return res.json({
-			success: true,
-			message: 'Moderator note deleted successfully',
-		} as ApiResponse);
+		return res.success({ message: 'Moderator note deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting moderator note:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to delete moderator note',
-		} as ApiResponse);
+		return res.failure('Failed to delete moderator note', 500);
 	}
 };

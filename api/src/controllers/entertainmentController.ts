@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { createLogger, type ApiResponse } from '../types/shared.js';
+import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
 
@@ -20,16 +20,10 @@ export const getGameConfigs = async (req: AuthRequest, res: Response) => {
 		const prisma = getPrismaClient();
 
 		const config = await prisma.gameSettings.findUnique({ where: { guildId } });
-		return res.json({
-			success: true,
-			data: config || defaultGameSettings,
-		} as ApiResponse);
+		return res.success(config || defaultGameSettings);
 	} catch (error) {
 		logger.error('Error fetching game configs:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to fetch game configurations',
-		} as ApiResponse);
+		return res.failure('Failed to fetch game configurations', 500);
 	}
 };
 
@@ -54,17 +48,13 @@ export const updateGameSettings = async (req: AuthRequest, res: Response) => {
 			create: { guildId, ...defaultGameSettings, ...sanitized },
 		});
 
-		return res.json({
-			success: true,
-			data: updated,
+		return res.success({
 			message: 'Game settings updated successfully',
-		} as ApiResponse);
+			data: updated,
+		});
 	} catch (error) {
 		logger.error('Error updating game settings:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to update game settings',
-		} as ApiResponse);
+		return res.failure('Failed to update game settings', 500);
 	}
 };
 
@@ -77,16 +67,10 @@ export const getEconomySettings = async (req: AuthRequest, res: Response) => {
 		const settings = await prisma.gameSettings.findUnique({
 			where: { guildId },
 		});
-		return res.json({
-			success: true,
-			data: settings || defaultGameSettings,
-		} as ApiResponse);
+		return res.success(settings || defaultGameSettings);
 	} catch (error) {
 		logger.error('Error fetching economy settings:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to fetch economy settings',
-		} as ApiResponse);
+		return res.failure('Failed to fetch economy settings', 500);
 	}
 };
 
@@ -113,17 +97,13 @@ export const updateEconomySettings = async (
 			create: { guildId, ...defaultGameSettings, ...sanitized },
 		});
 
-		return res.json({
-			success: true,
-			data: updated,
+		return res.success({
 			message: 'Economy settings updated successfully',
-		} as ApiResponse);
+			data: updated,
+		});
 	} catch (error) {
 		logger.error('Error updating economy settings:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to update economy settings',
-		} as ApiResponse);
+		return res.failure('Failed to update economy settings', 500);
 	}
 };
 
@@ -151,24 +131,18 @@ export const getTriviaQuestions = async (req: AuthRequest, res: Response) => {
 			prisma.triviaQuestion.count({ where }),
 		]);
 
-		return res.json({
-			success: true,
-			data: {
-				questions,
-				pagination: {
-					page: parseInt(page as string),
-					limit: take,
-					total,
-					pages: Math.ceil(total / take),
-				},
+		return res.success({
+			questions,
+			pagination: {
+				page: parseInt(page as string),
+				limit: take,
+				total,
+				pages: Math.ceil(total / take),
 			},
-		} as ApiResponse);
+		});
 	} catch (error) {
 		logger.error('Error fetching trivia questions:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to fetch trivia questions',
-		} as ApiResponse);
+		return res.failure('Failed to fetch trivia questions', 500);
 	}
 };
 
@@ -182,16 +156,15 @@ export const addTriviaQuestion = async (req: AuthRequest, res: Response) => {
 		const question = await prisma.triviaQuestion.create({
 			data: { ...data, guildId, createdBy: req.user?.id || 'unknown' },
 		});
-		return res.status(201).json({
-			success: true,
-			data: question,
-			message: 'Trivia question added successfully',
-		} as ApiResponse);
+		return res.success(
+			{
+				message: 'Trivia question added successfully',
+				data: question,
+			},
+			201
+		);
 	} catch (error) {
 		logger.error('Error adding trivia question:', error);
-		return res.status(500).json({
-			success: false,
-			error: 'Failed to add trivia question',
-		} as ApiResponse);
+		return res.failure('Failed to add trivia question', 500);
 	}
 };

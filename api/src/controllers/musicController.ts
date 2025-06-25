@@ -1,7 +1,8 @@
 import type { Response } from 'express';
-import { createLogger, type ApiResponse } from '../types/shared.js';
+import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { wsManager } from '../websocket/manager.js';
+import { getPrismaClient } from '../services/databaseService.js';
 
 const logger = createLogger('music-controller');
 
@@ -112,16 +113,10 @@ export const getMusicStatus = async (req: AuthRequest, res: Response) => {
 			duration: queue?.currentTrack?.duration || 0,
 		};
 
-		res.json({
-			success: true,
-			data: status,
-		} as ApiResponse);
+		res.success(status);
 	} catch (error) {
 		logger.error('Error fetching music status:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch music status',
-		} as ApiResponse);
+		res.failure('Failed to fetch music status', 500);
 	}
 };
 
@@ -132,10 +127,7 @@ export const playMusic = async (req: AuthRequest, res: Response) => {
 		const { query, platform = 'youtube' } = req.body;
 
 		if (!query) {
-			return res.status(400).json({
-				success: false,
-				error: 'Query is required',
-			} as ApiResponse);
+			return res.failure('Query is required', 400);
 		}
 
 		// Simulate track resolution (in real implementation, would use YouTube API, Spotify, etc.)
@@ -198,21 +190,14 @@ export const playMusic = async (req: AuthRequest, res: Response) => {
 			requestedBy: req.user?.id,
 		});
 
-		res.json({
-			success: true,
-			message: 'Track added to queue',
-			data: {
-				added: true,
-				position: newTrack.position + 1,
-				track: newTrack,
-			},
-		} as ApiResponse);
+		res.success({
+			added: true,
+			position: newTrack.position + 1,
+			track: newTrack,
+		});
 	} catch (error) {
 		logger.error('Error playing music:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to play music',
-		} as ApiResponse);
+		res.failure('Failed to play music', 500);
 	}
 };
 
@@ -223,10 +208,7 @@ export const pauseMusic = async (req: AuthRequest, res: Response) => {
 
 		const queue = musicQueues.get(guildId);
 		if (!queue) {
-			return res.status(404).json({
-				success: false,
-				error: 'No active music queue',
-			} as ApiResponse);
+			return res.failure('No active music queue', 404);
 		}
 
 		queue.paused = true;
@@ -240,16 +222,10 @@ export const pauseMusic = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Paused music for guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: 'Music paused',
-		} as ApiResponse);
+		res.success({ message: 'Music paused' });
 	} catch (error) {
 		logger.error('Error pausing music:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to pause music',
-		} as ApiResponse);
+		res.failure('Failed to pause music', 500);
 	}
 };
 
@@ -260,10 +236,7 @@ export const resumeMusic = async (req: AuthRequest, res: Response) => {
 
 		const queue = musicQueues.get(guildId);
 		if (!queue) {
-			return res.status(404).json({
-				success: false,
-				error: 'No active music queue',
-			} as ApiResponse);
+			return res.failure('No active music queue', 404);
 		}
 
 		queue.paused = false;
@@ -278,16 +251,10 @@ export const resumeMusic = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Resumed music for guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: 'Music resumed',
-		} as ApiResponse);
+		res.success({ message: 'Music resumed' });
 	} catch (error) {
 		logger.error('Error resuming music:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to resume music',
-		} as ApiResponse);
+		res.failure('Failed to resume music', 500);
 	}
 };
 
@@ -298,10 +265,7 @@ export const skipTrack = async (req: AuthRequest, res: Response) => {
 
 		const queue = musicQueues.get(guildId);
 		if (!queue) {
-			return res.status(404).json({
-				success: false,
-				error: 'No active music queue',
-			} as ApiResponse);
+			return res.failure('No active music queue', 404);
 		}
 
 		// Add current track to history
@@ -353,16 +317,10 @@ export const skipTrack = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Skipped track for guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: 'Track skipped',
-		} as ApiResponse);
+		res.success({ message: 'Track skipped' });
 	} catch (error) {
 		logger.error('Error skipping track:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to skip track',
-		} as ApiResponse);
+		res.failure('Failed to skip track', 500);
 	}
 };
 
@@ -373,10 +331,7 @@ export const stopMusic = async (req: AuthRequest, res: Response) => {
 
 		const queue = musicQueues.get(guildId);
 		if (!queue) {
-			return res.status(404).json({
-				success: false,
-				error: 'No active music queue',
-			} as ApiResponse);
+			return res.failure('No active music queue', 404);
 		}
 
 		// Clear queue and stop
@@ -394,16 +349,10 @@ export const stopMusic = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Stopped music for guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: 'Music stopped and queue cleared',
-		} as ApiResponse);
+		res.success({ message: 'Music stopped and queue cleared' });
 	} catch (error) {
 		logger.error('Error stopping music:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to stop music',
-		} as ApiResponse);
+		res.failure('Failed to stop music', 500);
 	}
 };
 
@@ -414,45 +363,15 @@ export const getQueue = async (req: AuthRequest, res: Response) => {
 		const { includeHistory = false } = req.query;
 
 		const queue = musicQueues.get(guildId);
-		const history =
-			includeHistory === 'true' ? trackHistory.get(guildId) || [] : [];
+		const history = includeHistory ? trackHistory.get(guildId) || [] : [];
 
-		if (!queue) {
-			return res.json({
-				success: true,
-				data: {
-					playing: false,
-					queue: [],
-					currentTrack: null,
-					history: [],
-				},
-			} as ApiResponse);
-		}
-
-		const queueData = {
-			id: queue.id,
-			guildId: queue.guildId,
-			channelId: queue.channelId,
-			playing: queue.playing,
-			paused: queue.paused,
-			volume: queue.volume,
-			repeat: queue.repeat,
-			shuffle: queue.shuffle,
-			currentTrack: queue.currentTrack,
-			queue: queue.tracks,
-			history,
-		};
-
-		res.json({
-			success: true,
-			data: queueData,
-		} as ApiResponse);
+		res.success({
+			queue: queue || null,
+			history: history.slice(-10), // Last 10 tracks
+		});
 	} catch (error) {
-		logger.error('Error fetching music queue:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch music queue',
-		} as ApiResponse);
+		logger.error('Error getting queue:', error);
+		res.failure('Failed to get queue', 500);
 	}
 };
 
@@ -463,10 +382,7 @@ export const clearQueue = async (req: AuthRequest, res: Response) => {
 
 		const queue = musicQueues.get(guildId);
 		if (!queue) {
-			return res.status(404).json({
-				success: false,
-				error: 'No active music queue',
-			} as ApiResponse);
+			return res.failure('No active music queue', 404);
 		}
 
 		queue.tracks = [];
@@ -480,16 +396,10 @@ export const clearQueue = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Cleared queue for guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: 'Queue cleared',
-		} as ApiResponse);
+		res.success({ message: 'Queue cleared' });
 	} catch (error) {
 		logger.error('Error clearing queue:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to clear queue',
-		} as ApiResponse);
+		res.failure('Failed to clear queue', 500);
 	}
 };
 
@@ -500,10 +410,7 @@ export const shuffleQueue = async (req: AuthRequest, res: Response) => {
 
 		const queue = musicQueues.get(guildId);
 		if (!queue) {
-			return res.status(404).json({
-				success: false,
-				error: 'No active music queue',
-			} as ApiResponse);
+			return res.failure('No active music queue', 404);
 		}
 
 		// Shuffle tracks using Fisher-Yates algorithm
@@ -531,16 +438,10 @@ export const shuffleQueue = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Shuffled queue for guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: 'Queue shuffled',
-		} as ApiResponse);
+		res.success({ message: 'Queue shuffled', queue });
 	} catch (error) {
 		logger.error('Error shuffling queue:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to shuffle queue',
-		} as ApiResponse);
+		res.failure('Failed to shuffle queue', 500);
 	}
 };
 
@@ -550,19 +451,13 @@ export const setVolume = async (req: AuthRequest, res: Response) => {
 		const { guildId } = req.params;
 		const { volume } = req.body;
 
-		if (typeof volume !== 'number' || volume < 0 || volume > 100) {
-			return res.status(400).json({
-				success: false,
-				error: 'Volume must be a number between 0 and 100',
-			} as ApiResponse);
+		if (typeof volume !== 'number' || volume < 0 || volume > 200) {
+			return res.failure('Volume must be between 0 and 200', 400);
 		}
 
 		const queue = musicQueues.get(guildId);
 		if (!queue) {
-			return res.status(404).json({
-				success: false,
-				error: 'No active music queue',
-			} as ApiResponse);
+			return res.failure('No active music queue', 404);
 		}
 
 		queue.volume = volume;
@@ -579,17 +474,10 @@ export const setVolume = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Set volume to ${volume} for guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: `Volume set to ${volume}%`,
-			data: { volume },
-		} as ApiResponse);
+		res.success({ volume });
 	} catch (error) {
 		logger.error('Error setting volume:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to set volume',
-		} as ApiResponse);
+		res.failure('Failed to set volume', 500);
 	}
 };
 
@@ -599,20 +487,16 @@ export const setRepeatMode = async (req: AuthRequest, res: Response) => {
 		const { guildId } = req.params;
 		const { mode } = req.body;
 
-		const validModes = ['OFF', 'TRACK', 'QUEUE'];
-		if (!validModes.includes(mode)) {
-			return res.status(400).json({
-				success: false,
-				error: 'Invalid repeat mode. Must be: OFF, TRACK, or QUEUE',
-			} as ApiResponse);
+		if (!['OFF', 'TRACK', 'QUEUE'].includes(mode)) {
+			return res.failure(
+				'Invalid repeat mode. Must be OFF, TRACK, or QUEUE',
+				400
+			);
 		}
 
 		const queue = musicQueues.get(guildId);
 		if (!queue) {
-			return res.status(404).json({
-				success: false,
-				error: 'No active music queue',
-			} as ApiResponse);
+			return res.failure('No active music queue', 404);
 		}
 
 		queue.repeat = mode;
@@ -629,17 +513,10 @@ export const setRepeatMode = async (req: AuthRequest, res: Response) => {
 
 		logger.info(`Set repeat mode to ${mode} for guild ${guildId}`);
 
-		res.json({
-			success: true,
-			message: `Repeat mode set to ${mode}`,
-			data: { mode },
-		} as ApiResponse);
+		res.success({ repeatMode: mode });
 	} catch (error) {
 		logger.error('Error setting repeat mode:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to set repeat mode',
-		} as ApiResponse);
+		res.failure('Failed to set repeat mode', 500);
 	}
 };
 
@@ -647,31 +524,27 @@ export const setRepeatMode = async (req: AuthRequest, res: Response) => {
 export const getMusicSettings = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
+		const prisma = getPrismaClient();
 
-		// Default settings (in real implementation, would come from database)
-		const settings = {
+		const guildConfig = await prisma.guildConfig.findUnique({
+			where: { guildId },
+			select: {
+				musicSettings: true,
+			},
+		});
+
+		const settings = guildConfig?.musicSettings || {
 			enabled: true,
-			djRoleId: null,
 			maxQueueSize: 100,
-			maxTrackDuration: 600000, // 10 minutes
-			allowNSFW: false,
-			defaultVolume: 50,
-			autoLeave: true,
-			autoLeaveDelay: 300000, // 5 minutes
-			allowedChannels: [],
-			blockedChannels: [],
+			maxTrackDuration: 3600, // 1 hour
+			allowExplicit: false,
+			djRole: null,
 		};
 
-		res.json({
-			success: true,
-			data: settings,
-		} as ApiResponse);
+		res.success(settings);
 	} catch (error) {
-		logger.error('Error fetching music settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch music settings',
-		} as ApiResponse);
+		logger.error('Error getting music settings:', error);
+		res.failure('Failed to get music settings', 500);
 	}
 };
 
@@ -680,52 +553,48 @@ export const updateMusicSettings = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
 		const settings = req.body;
+		const prisma = getPrismaClient();
 
-		// In a real implementation, would save to database
-		logger.info(`Update music settings for guild ${guildId}`, settings);
+		await prisma.guildConfig.upsert({
+			where: { guildId },
+			update: {
+				musicSettings: settings,
+				updatedAt: new Date(),
+			},
+			create: {
+				guildId,
+				musicSettings: settings,
+			},
+		});
 
-		res.json({
-			success: true,
-			message: 'Music settings updated',
-			data: settings,
-		} as ApiResponse);
+		res.success(settings);
 	} catch (error) {
 		logger.error('Error updating music settings:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to update music settings',
-		} as ApiResponse);
+		res.failure('Failed to update music settings', 500);
 	}
 };
 
-// Get in-memory playlists
+// Get playlists
 export const getPlaylists = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
-		const { page = 1, limit = 20, search } = req.query;
+		const { includePublic = true, createdBy } = req.query;
 
-		const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
-		const take = parseInt(limit as string);
+		const playlists: MusicPlaylist[] = [];
 
-		// Get playlists for guild
-		const guildPlaylists = Array.from(musicPlaylists.values())
-			.filter((playlist) => {
-				if (playlist.guildId !== guildId) return false;
-				if (search) {
-					const searchLower = (search as string).toLowerCase();
-					return (
-						playlist.name.toLowerCase().includes(searchLower) ||
-						playlist.description?.toLowerCase().includes(searchLower)
-					);
-				}
-				return true;
-			})
-			.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+		// Get guild playlists
+		musicPlaylists.forEach((playlist) => {
+			if (playlist.guildId === guildId) {
+				if (createdBy && playlist.createdBy !== createdBy) return;
+				if (!includePublic && playlist.isPublic) return;
+				playlists.push(playlist);
+			}
+		});
 
-		const total = guildPlaylists.length;
-		const playlists = guildPlaylists.slice(skip, skip + take);
+		// Sort by creation date (newest first)
+		playlists.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
-		const formattedPlaylists = playlists.map((playlist) => ({
+		const playlistSummaries = playlists.map((playlist) => ({
 			id: playlist.id,
 			name: playlist.name,
 			description: playlist.description,
@@ -735,28 +604,15 @@ export const getPlaylists = async (req: AuthRequest, res: Response) => {
 				(sum, track) => sum + track.duration,
 				0
 			),
+			createdBy: playlist.createdBy,
 			createdAt: playlist.createdAt,
 			updatedAt: playlist.updatedAt,
 		}));
 
-		res.json({
-			success: true,
-			data: {
-				playlists: formattedPlaylists,
-				pagination: {
-					page: parseInt(page as string),
-					limit: parseInt(limit as string),
-					total,
-					pages: Math.ceil(total / take),
-				},
-			},
-		} as ApiResponse);
+		res.success(playlistSummaries);
 	} catch (error) {
-		logger.error('Error fetching playlists:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch playlists',
-		} as ApiResponse);
+		logger.error('Error getting playlists:', error);
+		res.failure('Failed to get playlists', 500);
 	}
 };
 
@@ -764,27 +620,27 @@ export const getPlaylists = async (req: AuthRequest, res: Response) => {
 export const createPlaylist = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
-		const { name, description = '', isPublic = true } = req.body;
+		const { name, description, isPublic = false } = req.body;
 
-		// Check if playlist name exists
+		if (!name || name.trim().length === 0) {
+			return res.failure('Playlist name is required', 400);
+		}
+
+		// Check if playlist name already exists for this guild
 		const existingPlaylist = Array.from(musicPlaylists.values()).find(
 			(p) =>
 				p.guildId === guildId && p.name.toLowerCase() === name.toLowerCase()
 		);
 
 		if (existingPlaylist) {
-			return res.status(400).json({
-				success: false,
-				error: 'Playlist name already exists',
-			} as ApiResponse);
+			return res.failure('A playlist with this name already exists', 400);
 		}
 
-		// Create playlist
 		const playlist: MusicPlaylist = {
 			id: generateId(),
 			guildId,
-			name,
-			description,
+			name: name.trim(),
+			description: description?.trim(),
 			isPublic,
 			tracks: [],
 			createdBy: req.user?.id || 'unknown',
@@ -794,84 +650,55 @@ export const createPlaylist = async (req: AuthRequest, res: Response) => {
 
 		musicPlaylists.set(playlist.id, playlist);
 
-		// Broadcast playlist creation
-		wsManager.broadcastToGuild(
-			guildId,
-			createWebSocketMessage('musicPlaylistCreate', playlist)
-		);
+		logger.info(`Created playlist "${name}" for guild ${guildId}`);
 
-		logger.info(`Created playlist '${name}' for guild ${guildId}`, {
-			playlistId: playlist.id,
-			createdBy: req.user?.id,
-		});
-
-		res.status(201).json({
-			success: true,
-			message: 'Playlist created successfully',
-			data: playlist,
-		} as ApiResponse);
+		res.success(playlist, 201);
 	} catch (error) {
 		logger.error('Error creating playlist:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to create playlist',
-		} as ApiResponse);
+		res.failure('Failed to create playlist', 500);
 	}
 };
 
-// Add tracks to playlist
+// Add to playlist
 export const addToPlaylist = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, playlistId } = req.params;
-		const { tracks } = req.body;
+		const { url, title, artist, thumbnail, duration } = req.body;
 
 		const playlist = musicPlaylists.get(playlistId);
 		if (!playlist || playlist.guildId !== guildId) {
-			return res.status(404).json({
-				success: false,
-				error: 'Playlist not found',
-			} as ApiResponse);
+			return res.failure('Playlist not found', 404);
 		}
 
-		// Add tracks to playlist
-		const startPosition = playlist.tracks.length;
-		const newTracks = tracks.map((track: any, index: number) => ({
-			title: track.title,
-			artist: track.artist || 'Unknown Artist',
-			url: track.url,
-			thumbnail: track.thumbnail || null,
-			duration: track.duration || 0,
-			position: startPosition + index,
-			addedBy: req.user?.id || 'unknown',
-		}));
+		if (!url || !title) {
+			return res.failure('URL and title are required', 400);
+		}
 
-		playlist.tracks.push(...newTracks);
+		// Check if track already exists in playlist
+		const existingTrack = playlist.tracks.find((t) => t.url === url);
+		if (existingTrack) {
+			return res.failure('Track already exists in playlist', 400);
+		}
+
+		const track = {
+			title,
+			artist: artist || 'Unknown Artist',
+			url,
+			thumbnail,
+			duration: duration || 0,
+			addedBy: req.user?.id || 'unknown',
+			position: playlist.tracks.length,
+		};
+
+		playlist.tracks.push(track);
 		playlist.updatedAt = new Date();
 
-		// Broadcast playlist update
-		wsManager.broadcastToGuild(
-			guildId,
-			createWebSocketMessage('musicPlaylistUpdate', {
-				playlistId,
-				tracksAdded: newTracks.length,
-			})
-		);
+		logger.info(`Added track to playlist "${playlist.name}": ${title}`);
 
-		logger.info(
-			`Added ${tracks.length} tracks to playlist ${playlistId} for guild ${guildId}`
-		);
-
-		res.json({
-			success: true,
-			message: `Added ${tracks.length} tracks to playlist`,
-			data: newTracks,
-		} as ApiResponse);
+		res.success({ track, playlist });
 	} catch (error) {
-		logger.error('Error adding tracks to playlist:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to add tracks to playlist',
-		} as ApiResponse);
+		logger.error('Error adding to playlist:', error);
+		res.failure('Failed to add track to playlist', 500);
 	}
 };
 
@@ -879,89 +706,65 @@ export const addToPlaylist = async (req: AuthRequest, res: Response) => {
 export const getMusicStatistics = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
-		const { period = '7d' } = req.query;
+		const { timeframe = '7d' } = req.query;
 
-		const playlists = Array.from(musicPlaylists.values()).filter(
-			(p) => p.guildId === guildId
-		);
+		// Calculate timeframe
+		const now = new Date();
+		let startDate = new Date();
+		switch (timeframe) {
+			case '24h':
+				startDate.setHours(now.getHours() - 24);
+				break;
+			case '7d':
+				startDate.setDate(now.getDate() - 7);
+				break;
+			case '30d':
+				startDate.setDate(now.getDate() - 30);
+				break;
+			default:
+				startDate.setDate(now.getDate() - 7);
+		}
 
 		const history = trackHistory.get(guildId) || [];
-		const queue = musicQueues.get(guildId);
+		const recentTracks = history.filter((track) => track.playedAt >= startDate);
 
-		// Calculate statistics
-		const totalPlaylists = playlists.length;
-		const totalPlaylistTracks = playlists.reduce(
-			(sum, p) => sum + p.tracks.length,
-			0
-		);
-		const recentHistory = history.length;
-
-		// Get most played tracks (from history)
-		const trackCounts = new Map<string, { count: number; track: any }>();
-		history.forEach((track) => {
-			const key = `${track.title}-${track.artist}`;
-			const existing = trackCounts.get(key);
-			if (existing) {
-				existing.count++;
-			} else {
-				trackCounts.set(key, { count: 1, track });
-			}
-		});
-
-		const topTracks = Array.from(trackCounts.values())
-			.sort((a, b) => b.count - a.count)
-			.slice(0, 10)
-			.map(({ count, track }) => ({
-				title: track.title,
-				artist: track.artist,
-				playCount: count,
-			}));
-
-		// Get most active users
-		const userCounts = new Map<string, number>();
-		history.forEach((track) => {
-			const existing = userCounts.get(track.requestedBy);
-			userCounts.set(track.requestedBy, (existing || 0) + 1);
-		});
-
-		const topUsers = Array.from(userCounts.entries())
-			.sort((a, b) => b[1] - a[1])
-			.slice(0, 10)
-			.map(([userId, count]) => ({
-				userId,
-				requestCount: count,
-			}));
-
-		const statistics = {
-			period: period as string,
-			overview: {
-				totalPlaylists,
-				totalPlaylistTracks,
-				tracksPlayedRecently: recentHistory,
-				averageTracksPerDay: Math.round(recentHistory / 7), // Simplified
-				currentQueueSize: queue?.tracks.length || 0,
-			},
-			topTracks,
-			topUsers,
-			currentQueue: queue
-				? {
-						playing: queue.playing,
-						paused: queue.paused,
-						trackCount: queue.tracks.length,
-						currentTrack: queue.currentTrack?.title || null,
-				  }
-				: null,
+		const stats = {
+			totalTracks: recentTracks.length,
+			totalDuration: recentTracks.reduce(
+				(sum, track) => sum + track.duration,
+				0
+			),
+			uniqueRequesters: new Set(recentTracks.map((track) => track.requestedBy))
+				.size,
+			topArtists: getTopItems(recentTracks, 'artist', 5),
+			topRequesters: getTopItems(recentTracks, 'requestedBy', 5),
+			averageTrackDuration:
+				recentTracks.length > 0
+					? Math.round(
+							recentTracks.reduce((sum, track) => sum + track.duration, 0) /
+								recentTracks.length
+					  )
+					: 0,
+			timeframe,
 		};
 
-		res.json({
-			success: true,
-			data: statistics,
-		} as ApiResponse);
+		res.success(stats);
 	} catch (error) {
-		logger.error('Error fetching music statistics:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch music statistics',
-		} as ApiResponse);
+		logger.error('Error getting music statistics:', error);
+		res.failure('Failed to get music statistics', 500);
 	}
 };
+
+// Helper function to get top items from an array
+function getTopItems(items: any[], field: string, limit: number) {
+	const counts = new Map();
+	items.forEach((item) => {
+		const value = item[field];
+		counts.set(value, (counts.get(value) || 0) + 1);
+	});
+
+	return Array.from(counts.entries())
+		.sort((a, b) => b[1] - a[1])
+		.slice(0, limit)
+		.map(([name, count]) => ({ name, count }));
+}
