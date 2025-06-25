@@ -17,9 +17,6 @@ import type { GuildChatInputCommandInteraction } from "../../structures/Command.
 
 const kebabCase = kebabCaseFn;
 
-/** GuildConfig settings that should be exposed (omit internal ones) */
-export const guildConfigSettings = Object.keys(guildConfigDefaults).filter((setting) => setting !== "greetings");
-
 /* -------------------------------------------------------------------------- */
 /*   SIMPLE CHANNEL HANDLERS                                                   */
 /* -------------------------------------------------------------------------- */
@@ -51,7 +48,8 @@ export async function displayCurrentSettings(
 
   type SettingValue = number | string | boolean | Record<string, unknown> | null;
 
-  const settingsFieldArr: EmbedField[] = guildConfigSettings.map((setting) => {
+  const visibleSettings = Object.keys(guildConfigDefaults).filter((s) => s !== "greetings");
+  const settingsFieldArr: EmbedField[] = visibleSettings.map((setting) => {
     // Extract value as unknown then process
     const tempVal = (currentGuildConfig as Record<string, unknown>)[setting];
     let currentValue: SettingValue;
@@ -65,7 +63,7 @@ export async function displayCurrentSettings(
     const settingDisplayValue = getSettingDisplayValue({ name: setting, value: currentValue });
 
     return {
-      name: `${kebabCase(setting)}: \`${settingDisplayValue}\``,
+      name: `${setting}: \`${settingDisplayValue}\``,
       value: guildConfigDescriptions[setting] ?? "No description available",
       inline: false,
     };

@@ -4,6 +4,7 @@ import camelCaseFn from "lodash/camelCase.js";
 import kebabCaseFn from "lodash/kebabCase.js";
 import {
   getGuildConfig,
+  defaults as guildConfigDefaults,
   descriptions as guildConfigDescriptions,
   updateGuildConfig,
 } from "../../database/GuildConfig.js";
@@ -17,7 +18,6 @@ import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import {
   changeSetting,
   displayCurrentSettings as displaySettings,
-  guildConfigSettings,
   handleLoggingHelp,
   handleSetGoodbyeChannel,
   handleSetWelcomeChannel,
@@ -26,6 +26,29 @@ import {
 
 // Helper to build yes/no text
 const boolEmoji = (v: boolean) => (v ? "✅ Enabled" : "❌ Disabled");
+
+// Mapping of logical groups to guildConfig setting keys (camelCase)
+export const settingGroups: Record<string, string[]> = {
+  // Existing moderation group already defined explicitly above – only add extra keys
+  music: ["defaultRepeatMode", "musicChannelId"],
+  "reaction-roles": ["reactionRoleChannels", "logReactionRoles"],
+  welcome: ["welcomeChannelId", "welcomeEnabled"],
+  goodbye: ["goodbyeChannelId", "goodbyeEnabled"],
+  tickets: [
+    "ticketChannelId",
+    "ticketCategoryId",
+    "useTicketThreads",
+    "ticketOnCallRoleId",
+    "ticketSilentClaim",
+    "ticketAccessType",
+    "ticketAccessRoleId",
+    "ticketAccessPermission",
+    "ticketLogChannelId",
+  ],
+  logging: ["logSettingsId"],
+  appeals: ["appealSettingsId"],
+  general: ["maxMessagesCleared"],
+};
 
 export default new Command(
   (() => {
@@ -92,16 +115,38 @@ export default new Command(
       )
       .addSubcommand((s) => s.setName("reset").setDescription("Reset all settings to defaults"));
 
-    // Dynamic settings (reuse first three from old builder for brevity)
-    if (guildConfigSettings.length > 0) {
-      // maxMessagesCleared example numeric
-      builder.addSubcommand((opt) =>
-        opt
-          .setName(kebabCase(guildConfigSettings[0]))
-          .setDescription(guildConfigDescriptions[guildConfigSettings[0]])
-          .addIntegerOption((so) => so.setName("new-value").setDescription("New value").setRequired(true))
-      );
-    }
+    // ----------------------------------------------------------------
+    // Dynamically generate grouped subcommands for each setting
+    // ----------------------------------------------------------------
+    // Iterate over logical setting groups (excluding moderation which is handled manually)
+    Object.entries(settingGroups).forEach(([grpName, keys]) => {
+      if (grpName === "moderation") return; // skip, already defined
+
+      builder.addSubcommandGroup((group) => {
+        group.setName(grpName).setDescription(`${grpName.replace(/-/g, " ")} settings`);
+
+        keys.forEach((key) => {
+          const subName = kebabCase(key);
+          const defaultVal = (guildConfigDefaults as Record<string, unknown>)[key];
+
+          group.addSubcommand((sub) => {
+            sub.setName(subName).setDescription(guildConfigDescriptions[key] ?? "Update setting");
+
+            if (typeof defaultVal === "boolean") {
+              sub.addBooleanOption((opt) => opt.setName("new-value").setDescription("New value").setRequired(true));
+            } else if (typeof defaultVal === "number") {
+              sub.addIntegerOption((opt) => opt.setName("new-value").setDescription("New value").setRequired(true));
+            } else {
+              sub.addStringOption((opt) => opt.setName("new-value").setDescription("New value").setRequired(true));
+            }
+
+            return sub;
+          });
+        });
+
+        return group;
+      });
+    });
 
     return builder;
   })(),
@@ -171,24 +216,38 @@ export default new Command(
         return;
     }
 
-    // Check dynamic setting change
-    const settingName = camelCase(subcommand);
-    if (guildConfigSettings.includes(settingName)) {
-      const newVal = options.get("new-value")?.value ?? "";
-      await changeSetting(interaction, settingName, newVal);
-      return;
-    }
+    // Generic group-based handler (new system)
+    if (subcommandGroup) {
+      const groupSettings = settingGroups[subcommandGroup];
+      const settingKey = camelCase(subcommand);
+      if (groupSettings.includes(settingKey)) {
+        const defaultVal = (guildConfigDefaults as Record<string, unknown>)[settingKey];
 
-    // Handle music-channel-id group
-    if (subcommandGroup === "music-channel-id") {
-      const settingKey = "musicChannelId";
-      if (subcommand === "overwrite") {
-        const channelId = options.getChannel("new-value", true).id;
-        await changeSetting(interaction, settingKey, channelId);
-      } else if (subcommand === "disable") {
-        await changeSetting(interaction, settingKey, "");
+        let newVal: unknown;
+
+        if (typeof defaultVal === "boolean") {
+          newVal = options.getBoolean("new-value", true);
+        } else if (typeof defaultVal === "number") {
+          newVal = options.getInteger("new-value", true);
+        } else {
+          // Attempt to fetch as channel / role / string
+          newVal = options.getString("new-value", true);
+
+          const channelOption = options.getChannel("new-value");
+          if (channelOption) {
+            // When a channel option exists we prefer its ID
+            newVal = channelOption.id;
+          }
+
+          const roleOption = options.getRole("new-value");
+          if (roleOption) {
+            newVal = roleOption.id;
+          }
+        }
+
+        await changeSetting(interaction, settingKey, newVal);
+        return;
       }
-      return;
     }
 
     // reset command

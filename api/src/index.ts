@@ -5,6 +5,9 @@ import session from 'express-session';
 import { createServer } from 'http';
 import { createLogger } from './types/shared.js';
 import { config } from './config/index.js';
+import { applySecureRouterPatch } from './utils/secureRouterPatch.js';
+applySecureRouterPatch();
+
 import apiRoutes from './routes/index.js';
 import queueManager from './queue/manager.js';
 import { wsManager } from './websocket/manager.js';

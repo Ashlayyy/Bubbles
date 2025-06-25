@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { addRoute } from '../utils/secureRoute.js';
 import {
 	getModerationCases,
 	createModerationCase,
@@ -25,9 +26,7 @@ import {
 	updateModeratorNote,
 	deleteModeratorNote,
 } from '../controllers/moderationController.js';
-import { authenticateToken } from '../middleware/auth.js';
 import {
-	validateGuildAccess,
 	validateModerationCase,
 	validatePagination,
 	validateUserId,
@@ -36,97 +35,238 @@ import {
 	moderationRateLimit,
 	guildModerationRateLimit,
 } from '../middleware/rateLimiting.js';
-import { requireModerationPermissions } from '../middleware/permissions.js';
 
 const router = Router({ mergeParams: true });
 
-router.use(
-	authenticateToken,
-	validateGuildAccess,
-	requireModerationPermissions
-);
-
-router.get(
+// Moderation cases
+addRoute(
+	router,
+	'get',
 	'/cases',
+	{ discordPermissions: ['VIEW_AUDIT_LOG'], permissionsOverride: true },
 	validatePagination,
 	guildModerationRateLimit,
 	getModerationCases
 );
 
-router.post(
+addRoute(
+	router,
+	'post',
 	'/cases',
+	{ discordPermissions: ['BAN_MEMBERS'], permissionsOverride: true },
 	validateModerationCase,
 	moderationRateLimit,
 	createModerationCase
 );
 
-router.get('/cases/:caseId', guildModerationRateLimit, getModerationCase);
+addRoute(
+	router,
+	'get',
+	'/cases/:caseId',
+	{ discordPermissions: ['VIEW_AUDIT_LOG'], permissionsOverride: true },
+	guildModerationRateLimit,
+	getModerationCase
+);
 
-router.put('/cases/:caseId', moderationRateLimit, updateModerationCase);
+addRoute(
+	router,
+	'put',
+	'/cases/:caseId',
+	{ discordPermissions: ['MANAGE_GUILD'], permissionsOverride: true },
+	moderationRateLimit,
+	updateModerationCase
+);
 
-router.delete('/cases/:caseId', moderationRateLimit, deleteModerationCase);
+addRoute(
+	router,
+	'delete',
+	'/cases/:caseId',
+	{ discordPermissions: ['MANAGE_GUILD'], permissionsOverride: true },
+	moderationRateLimit,
+	deleteModerationCase
+);
 
-router.get(
+// Bans
+addRoute(
+	router,
+	'get',
 	'/bans',
+	{ discordPermissions: ['BAN_MEMBERS'], permissionsOverride: true },
 	validatePagination,
 	guildModerationRateLimit,
 	getBannedUsers
 );
 
-router.post('/bans', moderationRateLimit, banUser);
+addRoute(
+	router,
+	'post',
+	'/bans',
+	{ discordPermissions: ['BAN_MEMBERS'], permissionsOverride: true },
+	moderationRateLimit,
+	banUser
+);
 
-router.delete('/bans/:userId', validateUserId, moderationRateLimit, unbanUser);
+addRoute(
+	router,
+	'delete',
+	'/bans/:userId',
+	{ discordPermissions: ['BAN_MEMBERS'], permissionsOverride: true },
+	validateUserId,
+	moderationRateLimit,
+	unbanUser
+);
 
-router.get(
+// Mutes/Timeouts
+addRoute(
+	router,
+	'get',
 	'/mutes',
+	{ discordPermissions: ['MODERATE_MEMBERS'], permissionsOverride: true },
 	validatePagination,
 	guildModerationRateLimit,
 	getMutedUsers
 );
 
-router.post('/mutes', moderationRateLimit, muteUser);
+addRoute(
+	router,
+	'post',
+	'/mutes',
+	{ discordPermissions: ['MODERATE_MEMBERS'], permissionsOverride: true },
+	moderationRateLimit,
+	muteUser
+);
 
-router.delete(
+addRoute(
+	router,
+	'delete',
 	'/mutes/:userId',
+	{ discordPermissions: ['MODERATE_MEMBERS'], permissionsOverride: true },
 	validateUserId,
 	moderationRateLimit,
 	unmuteUser
 );
 
-router.get(
+// Warnings
+addRoute(
+	router,
+	'get',
 	'/warnings',
+	{ discordPermissions: ['MANAGE_MESSAGES'], permissionsOverride: true },
 	validatePagination,
 	guildModerationRateLimit,
 	getUserWarnings
 );
 
-router.post('/warnings', moderationRateLimit, addWarning);
+addRoute(
+	router,
+	'post',
+	'/warnings',
+	{ discordPermissions: ['MANAGE_MESSAGES'], permissionsOverride: true },
+	moderationRateLimit,
+	addWarning
+);
 
-router.delete('/warnings/:warningId', moderationRateLimit, removeWarning);
+addRoute(
+	router,
+	'delete',
+	'/warnings/:warningId',
+	{ discordPermissions: ['MANAGE_MESSAGES'], permissionsOverride: true },
+	moderationRateLimit,
+	removeWarning
+);
 
-router.get('/settings', guildModerationRateLimit, getModerationSettings);
+// Settings
+addRoute(
+	router,
+	'get',
+	'/settings',
+	{ discordPermissions: ['MANAGE_GUILD'], permissionsOverride: true },
+	guildModerationRateLimit,
+	getModerationSettings
+);
 
-router.put('/settings', moderationRateLimit, updateModerationSettings);
+addRoute(
+	router,
+	'put',
+	'/settings',
+	{ discordPermissions: ['MANAGE_GUILD'], permissionsOverride: true },
+	moderationRateLimit,
+	updateModerationSettings
+);
 
-router.get('/automod', guildModerationRateLimit, getAutomodRules);
+// Automod rules
+addRoute(
+	router,
+	'get',
+	'/automod',
+	{ discordPermissions: ['MANAGE_GUILD'], permissionsOverride: true },
+	guildModerationRateLimit,
+	getAutomodRules
+);
 
-router.post('/automod', moderationRateLimit, createAutomodRule);
+addRoute(
+	router,
+	'post',
+	'/automod',
+	{ discordPermissions: ['MANAGE_GUILD'], permissionsOverride: true },
+	moderationRateLimit,
+	createAutomodRule
+);
 
-router.put('/automod/:ruleId', moderationRateLimit, updateAutomodRule);
+addRoute(
+	router,
+	'put',
+	'/automod/:ruleId',
+	{ discordPermissions: ['MANAGE_GUILD'], permissionsOverride: true },
+	moderationRateLimit,
+	updateAutomodRule
+);
 
-router.delete('/automod/:ruleId', moderationRateLimit, deleteAutomodRule);
+addRoute(
+	router,
+	'delete',
+	'/automod/:ruleId',
+	{ discordPermissions: ['MANAGE_GUILD'], permissionsOverride: true },
+	moderationRateLimit,
+	deleteAutomodRule
+);
 
-router.get(
+// Moderator notes
+addRoute(
+	router,
+	'get',
 	'/notes',
+	{ discordPermissions: ['MANAGE_MESSAGES'], permissionsOverride: true },
 	validatePagination,
 	guildModerationRateLimit,
 	getModeratorNotes
 );
 
-router.post('/notes', moderationRateLimit, addModeratorNote);
+addRoute(
+	router,
+	'post',
+	'/notes',
+	{ discordPermissions: ['MANAGE_MESSAGES'], permissionsOverride: true },
+	moderationRateLimit,
+	addModeratorNote
+);
 
-router.put('/notes/:noteId', moderationRateLimit, updateModeratorNote);
+addRoute(
+	router,
+	'put',
+	'/notes/:noteId',
+	{ discordPermissions: ['MANAGE_MESSAGES'], permissionsOverride: true },
+	moderationRateLimit,
+	updateModeratorNote
+);
 
-router.delete('/notes/:noteId', moderationRateLimit, deleteModeratorNote);
+addRoute(
+	router,
+	'delete',
+	'/notes/:noteId',
+	{ discordPermissions: ['MANAGE_MESSAGES'], permissionsOverride: true },
+	moderationRateLimit,
+	deleteModeratorNote
+);
 
 export default router;
