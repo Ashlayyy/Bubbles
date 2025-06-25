@@ -281,3 +281,86 @@ export const requireMusicPermissions = requirePermissions([
 export const requireAdminPermissions = requirePermissions([
 	DiscordPermissions.ADMINISTRATOR,
 ]);
+
+// -----------------------------------------------------------------------------
+// UNIVERSAL PERMISSION CHECKER
+// -----------------------------------------------------------------------------
+
+type PermissionIdentifier = string;
+
+// Placeholder for a custom permission system (e.g. database-stored). Returns true if
+// the user possesses the custom permission in the relevant guild context.
+async function hasCustomPermission(
+	userId: string,
+	permission: string,
+	guildId?: string
+): Promise<boolean> {
+	// TODO: Integrate with real permission storage layer
+	return false;
+}
+
+export async function checkUniversalPermissions(
+	req: AuthRequest,
+	required: PermissionIdentifier[]
+): Promise<{ success: boolean; missing?: PermissionIdentifier[] }> {
+	const { user } = req;
+	const guildId = req.params.guildId;
+
+	if (!required || required.length === 0) return { success: true };
+
+	const missing: PermissionIdentifier[] = [];
+
+	// Pre-fetch discord perms if any permission starts with "discord:" to avoid
+	// multiple API calls.
+	let userGuildPerms: string | null = null;
+	if (required.some((p) => p.startsWith('discord:')) && user && guildId) {
+		userGuildPerms = await getUserGuildPermissions(guildId, user.id);
+	}
+
+	for (const perm of required) {
+		if (perm === 'token') {
+			if (!user) missing.push('token');
+			continue;
+		}
+		if (perm.startsWith('discord:')) {
+			const discordPerm = perm.replace('discord:', '').toUpperCase();
+			const flag =
+				discordPerm in DiscordPermissions
+					? (DiscordPermissions as any)[discordPerm]
+					: undefined;
+			if (!flag || !userGuildPerms) {
+				missing.push(perm);
+				continue;
+			}
+			if (!hasPermission(userGuildPerms, [flag])) missing.push(perm);
+			continue;
+		}
+		if (perm.startsWith('custom:')) {
+			const customPerm = perm.replace('custom:', '');
+			if (!user || !(await hasCustomPermission(user.id, customPerm, guildId))) {
+				missing.push(perm);
+			}
+			continue;
+		}
+		// Unknown prefix, treat as custom
+		if (!user || !(await hasCustomPermission(user.id, perm, guildId))) {
+			missing.push(perm);
+		}
+	}
+
+	return { success: missing.length === 0, missing };
+}
+
+export const requireUniversalPermissions = (
+	permissions: PermissionIdentifier[]
+) => {
+	return async (req: AuthRequest, res: Response, next: NextFunction) => {
+		const result = await checkUniversalPermissions(req, permissions);
+		if (result.success) return next();
+		return res.status(403).json({
+			success: false,
+			error: 'Insufficient permissions',
+			missing: result.missing,
+		} as ApiResponse);
+	};
+};

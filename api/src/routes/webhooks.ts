@@ -28,124 +28,85 @@ import {
 } from '../middleware/rateLimiting.js';
 import { requireAdminPermissions } from '../middleware/permissions.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
-// All webhooks routes require authentication and guild access
-router.use(
-	'/guilds/:guildId/webhooks',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess
-);
+router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-// Get all webhooks
 router.get(
-	'/guilds/:guildId/webhooks',
+	'/',
 	validatePagination,
 	guildWebhooksRateLimit,
 	requireAdminPermissions,
 	getWebhooks
 );
-
-// Get webhook statistics
 router.get(
-	'/guilds/:guildId/webhooks/statistics',
+	'/statistics',
 	guildWebhooksRateLimit,
 	requireAdminPermissions,
 	getWebhookStatistics
 );
-
-// Get single webhook
 router.get(
-	'/guilds/:guildId/webhooks/:webhookId',
+	'/:webhookId',
 	guildWebhooksRateLimit,
 	requireAdminPermissions,
 	getWebhook
 );
-
-// Get webhook logs
 router.get(
-	'/guilds/:guildId/webhooks/:webhookId/logs',
+	'/:webhookId/logs',
 	validatePagination,
 	guildWebhooksRateLimit,
 	requireAdminPermissions,
 	getWebhookLogs
 );
-
-// Create webhook
 router.post(
-	'/guilds/:guildId/webhooks',
+	'/',
 	validateWebhook,
 	webhooksRateLimit,
 	requireAdminPermissions,
 	createWebhook
 );
-
-// Update webhook
 router.put(
-	'/guilds/:guildId/webhooks/:webhookId',
+	'/:webhookId',
 	validateWebhook,
 	webhooksRateLimit,
 	requireAdminPermissions,
 	updateWebhook
 );
-
-// Delete webhook
 router.delete(
-	'/guilds/:guildId/webhooks/:webhookId',
+	'/:webhookId',
 	webhooksRateLimit,
 	requireAdminPermissions,
 	deleteWebhook
 );
-
-// Test webhook
 router.post(
-	'/guilds/:guildId/webhooks/:webhookId/test',
+	'/:webhookId/test',
 	webhooksRateLimit,
 	requireAdminPermissions,
 	testWebhook
 );
 
-// === Discord Bot Webhook Routes ===
-
-// Handle Discord webhook events from bot instances (no auth required for bot webhooks)
-router.post('/discord/webhook', handleDiscordWebhook);
-
-// Send command to bot instances
 router.post(
-	'/guilds/:guildId/bot/command',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess,
+	'/bot/command',
 	webhooksRateLimit,
 	requireAdminPermissions,
 	sendBotCommand
 );
-
-// Get Discord event history
 router.get(
-	'/guilds/:guildId/discord/events',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess,
+	'/discord/events',
 	validatePagination,
 	guildWebhooksRateLimit,
 	requireAdminPermissions,
 	getDiscordEventHistory
 );
-
-// Get Discord event statistics
 router.get(
-	'/guilds/:guildId/discord/stats',
-	validateGuildId,
-	authenticateToken,
-	validateGuildAccess,
+	'/discord/stats',
 	guildWebhooksRateLimit,
 	requireAdminPermissions,
 	getDiscordEventStats
 );
 
-// Get shard status (global endpoint)
+// Global endpoints
+router.post('/discord/webhook', handleDiscordWebhook);
 router.get(
 	'/bot/shards',
 	authenticateToken,
@@ -153,8 +114,6 @@ router.get(
 	requireAdminPermissions,
 	getShardStatus
 );
-
-// Get WebSocket connection statistics (global endpoint)
 router.get(
 	'/websocket/stats',
 	authenticateToken,

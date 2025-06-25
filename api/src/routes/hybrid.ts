@@ -10,7 +10,6 @@ import type { Response } from 'express';
 const router = Router();
 const logger = createLogger('hybrid-routes');
 
-// Get system health status
 router.get(
 	'/system/health',
 	authenticateToken,
@@ -32,7 +31,6 @@ router.get(
 	}
 );
 
-// Get queue statistics
 router.get(
 	'/queue/stats',
 	authenticateToken,
@@ -55,7 +53,6 @@ router.get(
 	}
 );
 
-// Get job status
 router.get(
 	'/queue/:queueName/job/:jobId',
 	authenticateToken,
@@ -82,7 +79,6 @@ router.get(
 	}
 );
 
-// Execute bulk operations
 router.post(
 	'/bulk/execute',
 	authenticateToken,
@@ -98,7 +94,6 @@ router.post(
 				} as ApiResponse);
 			}
 
-			// Validate operations
 			for (const op of operations) {
 				if (!op.operation || !op.data) {
 					return res.status(400).json({
@@ -144,7 +139,6 @@ router.post(
 	}
 );
 
-// Schedule a delayed operation
 router.post(
 	'/schedule',
 	authenticateToken,
@@ -200,7 +194,6 @@ router.post(
 	}
 );
 
-// Execute a single operation with hybrid routing
 router.post(
 	'/execute',
 	authenticateToken,
@@ -247,7 +240,6 @@ router.post(
 	}
 );
 
-// Get operation classification information
 router.get(
 	'/operations/classification',
 	authenticateToken,

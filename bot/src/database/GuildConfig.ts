@@ -4,7 +4,7 @@ import { GuildConfigCacheManager } from "./GuildConfigCache.js";
 import logger from "../logger.js";
 import { prisma } from "./index.js";
 
-export const defaults: Omit<GuildConfig, "guildId" | "id"> = {
+export const defaults: Omit<GuildConfig, "guildId" | "id"> & { notify_user: boolean } = {
   maxMessagesCleared: 100,
   musicChannelId: "",
   defaultRepeatMode: 0,
@@ -27,6 +27,7 @@ export const defaults: Omit<GuildConfig, "guildId" | "id"> = {
   ticketLogChannelId: null,
   logSettingsId: null,
   appealSettingsId: null,
+  notify_user: false,
 };
 export const descriptions: Record<string, string> = {
   maxMessagesCleared: "Maximum number of messages `/clear` can delete in one command.",
@@ -35,6 +36,7 @@ export const descriptions: Record<string, string> = {
   reactionRoleChannels: "Channels where reaction roles are allowed to be created.",
   logReactionRoles:
     "Enable database logging of reaction role activities. Use /logging command for channel-based logging.",
+  notify_user: "Send direct messages to users for moderation actions by default.",
 };
 
 /**

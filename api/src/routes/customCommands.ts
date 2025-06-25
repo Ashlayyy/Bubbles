@@ -22,10 +22,8 @@ import { requireAdminPermissions } from '../middleware/permissions.js';
 
 const router = Router({ mergeParams: true });
 
-// All custom commands routes require authentication and admin permissions
 router.use(authenticateToken, validateGuildAccess, requireAdminPermissions);
 
-// Get all custom commands
 router.get(
 	'/',
 	validatePagination,
@@ -33,13 +31,10 @@ router.get(
 	getCustomCommands
 );
 
-// Get command statistics
 router.get('/statistics', guildCustomCommandsRateLimit, getCommandStatistics);
 
-// Get single custom command
 router.get('/:commandId', guildCustomCommandsRateLimit, getCustomCommand);
 
-// Create custom command
 router.post(
 	'/',
 	validateCustomCommand,
@@ -47,7 +42,6 @@ router.post(
 	createCustomCommand
 );
 
-// Update custom command
 router.put(
 	'/:commandId',
 	validateCustomCommand,
@@ -55,10 +49,8 @@ router.put(
 	updateCustomCommand
 );
 
-// Delete custom command
 router.delete('/:commandId', customCommandsRateLimit, deleteCustomCommand);
 
-// Execute custom command (for testing)
 router.post(
 	'/:commandId/execute',
 	customCommandsRateLimit,

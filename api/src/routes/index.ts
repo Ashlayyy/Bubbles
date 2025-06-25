@@ -25,19 +25,23 @@ import auditRoutes from './audit.js';
 import hybridRoutes from './hybrid.js';
 import devRoutes from './dev.js';
 import healthRoutes from './health.js';
+import { authenticateToken } from '../middleware/auth.js';
+import { requireUniversalPermissions } from '../middleware/permissions.js';
 
 const router = Router();
 
-// API Routes
 router.use('/auth', authRoutes);
 router.use('/guilds', guildRoutes);
-router.use('/:guildId/moderation', moderationRoutes);
-router.use('/:guildId/logging', loggingRoutes);
-router.use('/:guildId/reaction-roles', reactionRolesRoutes);
-router.use('/:guildId/custom-commands', customCommandsRoutes);
-router.use('/:guildId/leveling', levelingRoutes);
-router.use('/:guildId/tickets', ticketsRoutes);
-router.use('/:guildId/welcome', welcomeRoutes);
+router.use('/guilds/:guildId/moderation', moderationRoutes);
+router.use('/guilds/:guildId/logging', loggingRoutes);
+router.use('/guilds/:guildId/reaction-roles', reactionRolesRoutes);
+router.use('/guilds/:guildId/custom-commands', customCommandsRoutes);
+router.use('/guilds/:guildId/leveling', levelingRoutes);
+router.use('/guilds/:guildId/tickets', ticketsRoutes);
+router.use('/guilds/:guildId/welcome', welcomeRoutes);
+router.use('/guilds/:guildId/channels', channelsRoutes);
+router.use('/guilds/:guildId/roles', rolesRoutes);
+router.use('/guilds/:guildId/invites', invitesRoutes);
 router.use('/guilds/:guildId/music', musicRoutes);
 router.use('/guilds/:guildId/analytics', analyticsRoutes);
 router.use('/guilds/:guildId/starboard', starboardRoutes);
@@ -46,16 +50,19 @@ router.use('/guilds/:guildId/reminders', remindersRoutes);
 router.use('/guilds/:guildId/applications', applicationsRoutes);
 router.use('/guilds/:guildId/automation', automationRoutes);
 router.use('/guilds/:guildId/entertainment', entertainmentRoutes);
-router.use('/webhooks', webhooksRoutes);
-router.use('/messages', messagesRoutes);
-router.use('/channels', channelsRoutes);
-router.use('/roles', rolesRoutes);
-router.use('/invites', invitesRoutes);
-router.use('/audit', auditRoutes);
+router.use('/guilds/:guildId/webhooks', webhooksRoutes);
+router.use('/guilds/:guildId/messages', messagesRoutes);
+router.use('/guilds/:guildId/audit', auditRoutes);
 router.use('/hybrid', hybridRoutes);
 router.use('/health', healthRoutes);
 
-// Development routes (only in development)
+// Global security: every /guilds/:guildId/... request requires token & MANAGE_GUILD
+router.use(
+	'/guilds/:guildId',
+	authenticateToken,
+	requireUniversalPermissions(['token', 'discord:MANAGE_GUILD'])
+);
+
 if (process.env.NODE_ENV === 'development') {
 	router.use('/dev', devRoutes);
 }

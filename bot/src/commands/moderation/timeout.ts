@@ -91,12 +91,9 @@ export default new Command(
         interaction.user.id,
         duration,
         reason,
-        evidence.length > 0 ? evidence : undefined
+        evidence.length > 0 ? evidence : undefined,
+        !silent
       );
-
-      if (silent) {
-        await client.moderationManager.updateCaseNotification(case_.id, false);
-      }
 
       // Use shared formatting utility
       await interaction.reply({

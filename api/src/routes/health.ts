@@ -7,7 +7,6 @@ import { requireAdminPermissions } from '../middleware/permissions.js';
 const router = Router();
 const logger = createLogger('health-routes');
 
-// Public health check endpoint (basic)
 router.get('/', async (req, res: Response) => {
 	try {
 		const health = await healthService.getSystemHealth();
@@ -42,7 +41,6 @@ router.get('/', async (req, res: Response) => {
 	}
 });
 
-// Detailed system health (authenticated)
 router.get(
 	'/system',
 	authenticateToken,
@@ -64,7 +62,6 @@ router.get(
 	}
 );
 
-// Component-specific health checks
 router.get(
 	'/components/:component',
 	authenticateToken,
@@ -103,7 +100,6 @@ router.get(
 	}
 );
 
-// Integration metrics (admin only)
 router.get(
 	'/integration',
 	authenticateToken,
@@ -131,7 +127,6 @@ router.get(
 	}
 );
 
-// Moderation system health
 router.get(
 	'/moderation',
 	authenticateToken,
@@ -159,7 +154,6 @@ router.get(
 	}
 );
 
-// Live metrics endpoint (updates every 30 seconds)
 router.get(
 	'/live',
 	authenticateToken,
@@ -168,7 +162,6 @@ router.get(
 		try {
 			const health = await healthService.getSystemHealth();
 
-			// Set headers for real-time updates
 			res.setHeader('Content-Type', 'application/json');
 			res.setHeader('Cache-Control', 'no-cache');
 			res.setHeader('Access-Control-Allow-Origin', '*');
@@ -200,7 +193,6 @@ router.get(
 	}
 );
 
-// Health check with ping test to bot
 router.get(
 	'/ping',
 	authenticateToken,
@@ -209,8 +201,6 @@ router.get(
 			const { guildId } = req.query;
 			const startTime = Date.now();
 
-			// This would send a ping to bot via WebSocket and measure response time
-			// For now, we'll simulate it
 			const pingTime = Date.now() - startTime;
 
 			res.json({

@@ -21,10 +21,8 @@ import { requireAdminPermissions } from '../middleware/permissions.js';
 
 const router = Router({ mergeParams: true });
 
-// All logging routes require authentication and admin permissions
 router.use(authenticateToken, validateGuildAccess, requireAdminPermissions);
 
-// Logging settings
 router.get('/settings', generalRateLimit, getLoggingSettings);
 
 router.put(
@@ -34,12 +32,10 @@ router.put(
 	updateLoggingSettings
 );
 
-// Audit logs
 router.get('/audit', validatePagination, analyticsRateLimit, getAuditLogs);
 
 router.post('/audit/export', analyticsRateLimit, exportAuditLogs);
 
-// Statistics
 router.get('/statistics', analyticsRateLimit, getLogStatistics);
 
 export default router;

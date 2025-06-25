@@ -53,13 +53,9 @@ export default new Command(
         targetUser.id,
         interaction.user.id,
         content,
-        isInternal
+        isInternal,
+        !silent
       );
-
-      // If silent option is provided, update the case
-      if (silent) {
-        await client.moderationManager.updateCaseNotification(case_.id, false);
-      }
 
       const noteType = isInternal ? "internal" : "public";
       const notificationStatus = silent ? " (silent)" : "";

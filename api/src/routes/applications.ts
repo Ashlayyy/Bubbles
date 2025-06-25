@@ -23,10 +23,8 @@ import {
 
 const router = Router({ mergeParams: true });
 
-// All application routes require authentication and guild access
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-// Applications
 router.get(
 	'/',
 	validatePagination,
@@ -51,7 +49,6 @@ router.put(
 	updateApplicationStatus
 );
 
-// Application forms
 router.get(
 	'/forms',
 	generalRateLimit,

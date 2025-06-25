@@ -21,10 +21,8 @@ import { requireAdminPermissions } from '../middleware/permissions.js';
 
 const router = Router({ mergeParams: true });
 
-// All reminder routes require authentication and guild access
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-// Reminders
 router.get(
 	'/',
 	validatePagination,
@@ -77,7 +75,6 @@ router.post(
 	testReminder
 );
 
-// Statistics
 router.get(
 	'/statistics',
 	generalRateLimit,

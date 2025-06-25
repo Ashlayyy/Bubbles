@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import Joi from 'joi';
 import type { ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from './auth.js';
+import { discordApi } from '../services/discordApiService.js';
 
 // Common validation schemas
 const schemas = {
@@ -376,7 +377,7 @@ const webhookSchema = Joi.object({
 
 export const validateWebhook = validate(webhookSchema);
 
-// Guild access validation
+// Guild access validation – ensures the authenticated user is a member of the guild
 export const validateGuildAccess = async (
 	req: AuthRequest,
 	res: Response,
@@ -393,12 +394,18 @@ export const validateGuildAccess = async (
 			} as ApiResponse);
 		}
 
-		// TODO: Implement actual guild access check
-		// This would check if the user has access to the guild
-		// For now, we'll just pass through
+		// Attempt to fetch the guild member; if not found the API will throw / 404
+		try {
+			await discordApi.getGuildMember(guildId, user.id);
+		} catch (err) {
+			return res.status(403).json({
+				success: false,
+				error: 'You do not have access to this guild',
+			} as ApiResponse);
+		}
 
 		next();
-	} catch (error) {
+	} catch {
 		return res.status(500).json({
 			success: false,
 			error: 'Failed to validate guild access',

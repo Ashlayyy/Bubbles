@@ -22,10 +22,8 @@ import { requireAdminPermissions } from '../middleware/permissions.js';
 
 const router = Router({ mergeParams: true });
 
-// All reaction role routes require authentication and admin permissions
 router.use(authenticateToken, validateGuildAccess, requireAdminPermissions);
 
-// Get all reaction roles
 router.get(
 	'/',
 	validatePagination,
@@ -33,7 +31,6 @@ router.get(
 	getReactionRoles
 );
 
-// Statistics & Logs (placing before :reactionRoleId to avoid conflict)
 router.get(
 	'/logs',
 	validatePagination,
@@ -47,10 +44,8 @@ router.get(
 	getReactionRoleStatistics
 );
 
-// Get single reaction role
 router.get('/:reactionRoleId', guildReactionRolesRateLimit, getReactionRole);
 
-// Create reaction role
 router.post(
 	'/',
 	validateReactionRole,
@@ -58,7 +53,6 @@ router.post(
 	createReactionRole
 );
 
-// Update reaction role
 router.put(
 	'/:reactionRoleId',
 	validateReactionRole,
@@ -66,7 +60,6 @@ router.put(
 	updateReactionRole
 );
 
-// Delete reaction role
 router.delete('/:reactionRoleId', reactionRolesRateLimit, deleteReactionRole);
 
 export default router;

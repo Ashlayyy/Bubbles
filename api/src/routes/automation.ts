@@ -19,10 +19,8 @@ import { requireAdminPermissions } from '../middleware/permissions.js';
 
 const router = Router({ mergeParams: true });
 
-// All automation routes require authentication and guild access
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-// Automation rules
 router.get(
 	'/rules',
 	validatePagination,
@@ -59,7 +57,6 @@ router.delete(
 	deleteAutomationRule
 );
 
-// Available triggers and actions
 router.get(
 	'/triggers',
 	automationRateLimit,

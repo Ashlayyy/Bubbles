@@ -167,6 +167,13 @@ export const LOG_CATEGORIES = {
     "MOD_ESCALATION_TRIGGERED",
     "MOD_SCHEDULED_ACTION",
     "MOD_MANUAL_ACTION",
+    "MOD_BAN",
+    "MOD_KICK",
+    "MOD_WARN",
+    "MOD_NOTE",
+    "MOD_TIMEOUT",
+    "MOD_UNBAN",
+    "MOD_UNTIMEOUT",
   ],
   INVITE: ["INVITE_CREATE", "INVITE_DELETE", "INVITE_USE", "INVITE_EXPIRE", "INVITE_VANITY_UPDATE", "INVITE_TRACKING"],
   EMOJI: [
@@ -323,8 +330,8 @@ export default class LogManager {
    */
   async log(guildId: string, logType: string, data: Partial<LogEvent> = {}): Promise<void> {
     try {
-      // Validate log type
-      if (!ALL_LOG_TYPES.includes(logType as (typeof ALL_LOG_TYPES)[number])) {
+      const isModerationLog = /^MOD_[A-Z_]+$/.test(logType);
+      if (!ALL_LOG_TYPES.includes(logType as (typeof ALL_LOG_TYPES)[number]) && !isModerationLog) {
         logger.warn(`Invalid log type: ${logType}`);
         return;
       }

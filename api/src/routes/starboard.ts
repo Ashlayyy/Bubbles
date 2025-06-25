@@ -19,10 +19,8 @@ import { requireAdminPermissions } from '../middleware/permissions.js';
 
 const router = Router({ mergeParams: true });
 
-// All starboard routes require authentication and guild access
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-// Settings
 router.get(
 	'/settings',
 	guildStarboardRateLimit,
@@ -37,7 +35,6 @@ router.put(
 	updateStarboardSettings
 );
 
-// Messages
 router.get(
 	'/messages',
 	validatePagination,
@@ -46,7 +43,6 @@ router.get(
 	getStarboardMessages
 );
 
-// Statistics
 router.get(
 	'/statistics',
 	guildStarboardRateLimit,

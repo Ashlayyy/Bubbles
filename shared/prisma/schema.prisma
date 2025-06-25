@@ -42,6 +42,8 @@ model GuildConfig {
   // New fields
   moderatorRoleIds       String[]        @default([])
   welcomeStats           Json?
+  /// Send DMs to users when a moderation action is taken by default
+  notify_user            Boolean         @default(false)
 }
 
 model LogSettings {

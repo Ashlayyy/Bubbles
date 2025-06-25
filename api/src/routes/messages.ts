@@ -26,140 +26,47 @@ import {
 	crosspostMessage,
 } from '../controllers/messageController.js';
 import { authenticateToken } from '../middleware/auth.js';
-// Validation is handled at the controller level
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
-// ============================================================================
-// CHANNEL OPERATIONS
-// ============================================================================
+router.use(authenticateToken);
 
-// GET /api/messages/channels/:guildId - Get channels for a guild
-router.get('/channels/:guildId', authenticateToken, getChannels);
+// Guild channels list
+router.get('/channels', getChannels);
 
-// ============================================================================
-// MESSAGE OPERATIONS
-// ============================================================================
+// Send message to a channel (expects channelId in body)
+router.post('/send', sendMessage);
 
-// POST /api/messages/send - Send a message to a channel
-router.post('/send', authenticateToken, sendMessage);
+// Channel message operations (require :channelId)
+router.get('/:channelId', getMessages);
+router.get('/:channelId/:messageId', getMessage);
+router.patch('/:channelId/:messageId', editMessage);
+router.delete('/:channelId/:messageId', deleteMessage);
+router.post('/:channelId/bulk-delete', bulkDeleteMessages);
 
-// GET /api/messages/:channelId - Get messages from a channel
-router.get('/:channelId', authenticateToken, getMessages);
+// Reactions
+router.put('/:channelId/:messageId/reactions', addReaction);
+router.delete('/:channelId/:messageId/reactions', removeReaction);
+router.get('/:channelId/:messageId/reactions/:emoji', getReactions);
+router.delete('/:channelId/:messageId/reactions/all', deleteAllReactions);
 
-// GET /api/messages/:channelId/:messageId - Get a specific message
-router.get('/:channelId/:messageId', authenticateToken, getMessage);
+// Pinning
+router.put('/:channelId/:messageId/pin', pinMessage);
+router.delete('/:channelId/:messageId/pin', unpinMessage);
+router.get('/:channelId/pins', getPinnedMessages);
 
-// PATCH /api/messages/:channelId/:messageId - Edit a message
-router.patch('/:channelId/:messageId', authenticateToken, editMessage);
+// Threads
+router.post('/:channelId/:messageId/threads', startThreadFromMessage);
+router.post('/:channelId/threads', startThread);
+router.put('/threads/:threadId/members/@me', joinThread);
+router.delete('/threads/:threadId/members/@me', leaveThread);
+router.put('/threads/:threadId/members/:userId', addThreadMember);
+router.delete('/threads/:threadId/members/:userId', removeThreadMember);
+router.get('/threads/:threadId/members', getThreadMembers);
+router.get('/threads/active', getActiveThreads);
+router.get('/:channelId/threads/archived', getArchivedThreads);
 
-// DELETE /api/messages/:channelId/:messageId - Delete a message
-router.delete('/:channelId/:messageId', authenticateToken, deleteMessage);
-
-// POST /api/messages/:channelId/bulk-delete - Bulk delete messages
-router.post('/:channelId/bulk-delete', authenticateToken, bulkDeleteMessages);
-
-// ============================================================================
-// REACTION OPERATIONS
-// ============================================================================
-
-// PUT /api/messages/:channelId/:messageId/reactions - Add reaction
-router.put('/:channelId/:messageId/reactions', authenticateToken, addReaction);
-
-// DELETE /api/messages/:channelId/:messageId/reactions - Remove reaction
-router.delete(
-	'/:channelId/:messageId/reactions',
-	authenticateToken,
-	removeReaction
-);
-
-// GET /api/messages/:channelId/:messageId/reactions/:emoji - Get reaction users
-router.get(
-	'/:channelId/:messageId/reactions/:emoji',
-	authenticateToken,
-	getReactions
-);
-
-// DELETE /api/messages/:channelId/:messageId/reactions/all - Delete all reactions
-router.delete(
-	'/:channelId/:messageId/reactions/all',
-	authenticateToken,
-	deleteAllReactions
-);
-
-// ============================================================================
-// PIN OPERATIONS
-// ============================================================================
-
-// PUT /api/messages/:channelId/:messageId/pin - Pin a message
-router.put('/:channelId/:messageId/pin', authenticateToken, pinMessage);
-
-// DELETE /api/messages/:channelId/:messageId/pin - Unpin a message
-router.delete('/:channelId/:messageId/pin', authenticateToken, unpinMessage);
-
-// GET /api/messages/:channelId/pins - Get pinned messages
-router.get('/:channelId/pins', authenticateToken, getPinnedMessages);
-
-// ============================================================================
-// THREAD OPERATIONS
-// ============================================================================
-
-// POST /api/messages/:channelId/:messageId/threads - Start thread from message
-router.post(
-	'/:channelId/:messageId/threads',
-	authenticateToken,
-	startThreadFromMessage
-);
-
-// POST /api/messages/:channelId/threads - Start thread in channel
-router.post('/:channelId/threads', authenticateToken, startThread);
-
-// PUT /api/messages/threads/:threadId/members/@me - Join thread
-router.put('/threads/:threadId/members/@me', authenticateToken, joinThread);
-
-// DELETE /api/messages/threads/:threadId/members/@me - Leave thread
-router.delete('/threads/:threadId/members/@me', authenticateToken, leaveThread);
-
-// PUT /api/messages/threads/:threadId/members/:userId - Add user to thread
-router.put(
-	'/threads/:threadId/members/:userId',
-	authenticateToken,
-	addThreadMember
-);
-
-// DELETE /api/messages/threads/:threadId/members/:userId - Remove user from thread
-router.delete(
-	'/threads/:threadId/members/:userId',
-	authenticateToken,
-	removeThreadMember
-);
-
-// GET /api/messages/threads/:threadId/members - Get thread members
-router.get('/threads/:threadId/members', authenticateToken, getThreadMembers);
-
-// GET /api/messages/guilds/:guildId/threads/active - Get active threads
-router.get(
-	'/guilds/:guildId/threads/active',
-	authenticateToken,
-	getActiveThreads
-);
-
-// GET /api/messages/:channelId/threads/archived - Get archived threads
-router.get(
-	'/:channelId/threads/archived',
-	authenticateToken,
-	getArchivedThreads
-);
-
-// ============================================================================
-// CROSSPOST OPERATIONS
-// ============================================================================
-
-// POST /api/messages/:channelId/:messageId/crosspost - Crosspost message
-router.post(
-	'/:channelId/:messageId/crosspost',
-	authenticateToken,
-	crosspostMessage
-);
+// Crosspost
+router.post('/:channelId/:messageId/crosspost', crosspostMessage);
 
 export default router;

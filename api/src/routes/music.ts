@@ -28,13 +28,10 @@ import { requireMusicPermissions } from '../middleware/permissions.js';
 
 const router = Router({ mergeParams: true });
 
-// All music routes require authentication and guild access
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-// Music player status
 router.get('/status', generalRateLimit, getMusicStatus);
 
-// Music playback controls
 router.post(
 	'/play',
 	validateMusicAction,
@@ -51,7 +48,6 @@ router.post('/skip', generalRateLimit, requireMusicPermissions, skipTrack);
 
 router.post('/stop', generalRateLimit, requireMusicPermissions, stopMusic);
 
-// Queue management
 router.get('/queue', generalRateLimit, getQueue);
 
 router.delete('/queue', generalRateLimit, requireMusicPermissions, clearQueue);
@@ -63,12 +59,10 @@ router.post(
 	shuffleQueue
 );
 
-// Player controls
 router.put('/volume', generalRateLimit, requireMusicPermissions, setVolume);
 
 router.put('/repeat', generalRateLimit, requireMusicPermissions, setRepeatMode);
 
-// Settings
 router.get('/settings', generalRateLimit, getMusicSettings);
 
 router.put(

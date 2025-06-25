@@ -62,13 +62,9 @@ export default new Command(
         targetUser.id,
         interaction.user.id,
         reason,
-        evidence.length > 0 ? evidence : undefined
+        evidence.length > 0 ? evidence : undefined,
+        !silent
       );
-
-      // If silent, update the case to not notify user
-      if (silent) {
-        await moderationManager.updateCaseNotification(case_.id, false);
-      }
 
       // Simple success response
       await interaction.editReply({

@@ -40,14 +40,12 @@ import { requireModerationPermissions } from '../middleware/permissions.js';
 
 const router = Router({ mergeParams: true });
 
-// All moderation routes require authentication and guild access
 router.use(
 	authenticateToken,
 	validateGuildAccess,
 	requireModerationPermissions
 );
 
-// Moderation cases
 router.get(
 	'/cases',
 	validatePagination,
@@ -68,7 +66,6 @@ router.put('/cases/:caseId', moderationRateLimit, updateModerationCase);
 
 router.delete('/cases/:caseId', moderationRateLimit, deleteModerationCase);
 
-// Bans
 router.get(
 	'/bans',
 	validatePagination,
@@ -80,7 +77,6 @@ router.post('/bans', moderationRateLimit, banUser);
 
 router.delete('/bans/:userId', validateUserId, moderationRateLimit, unbanUser);
 
-// Mutes/Timeouts
 router.get(
 	'/mutes',
 	validatePagination,
@@ -97,7 +93,6 @@ router.delete(
 	unmuteUser
 );
 
-// Warnings
 router.get(
 	'/warnings',
 	validatePagination,
@@ -109,12 +104,10 @@ router.post('/warnings', moderationRateLimit, addWarning);
 
 router.delete('/warnings/:warningId', moderationRateLimit, removeWarning);
 
-// Settings
 router.get('/settings', guildModerationRateLimit, getModerationSettings);
 
 router.put('/settings', moderationRateLimit, updateModerationSettings);
 
-// Automod rules
 router.get('/automod', guildModerationRateLimit, getAutomodRules);
 
 router.post('/automod', moderationRateLimit, createAutomodRule);
@@ -123,7 +116,6 @@ router.put('/automod/:ruleId', moderationRateLimit, updateAutomodRule);
 
 router.delete('/automod/:ruleId', moderationRateLimit, deleteAutomodRule);
 
-// Moderator notes
 router.get(
 	'/notes',
 	validatePagination,

@@ -11,7 +11,6 @@ import { authRateLimit } from '../middleware/rateLimiting.js';
 
 const router = Router();
 
-// Authentication routes
 router.get('/discord', authRateLimit, discordLogin);
 router.get('/discord/callback', authRateLimit, discordCallback);
 router.post('/logout', authenticateToken, logout);

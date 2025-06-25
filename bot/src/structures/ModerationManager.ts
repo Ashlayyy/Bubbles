@@ -2,6 +2,7 @@ import type { Guild } from "discord.js";
 import { EmbedBuilder } from "discord.js";
 
 import { APPEALS_OAUTH_CONFIG } from "../config/appeals.js";
+import { getGuildConfig } from "../database/GuildConfig.js";
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import { cacheService } from "../services/cacheService.js";
@@ -71,8 +72,12 @@ export default class ModerationManager {
       // Queue the Discord action instead of executing directly
       await this.queueDiscordAction(guild, action, moderationCase);
 
-      // Send DM to user if requested
-      if (action.notifyUser !== false) {
+      // Determine whether to notify the user (guild default can be overridden per command)
+      const guildConfig = await getGuildConfig(guild.id);
+      const guildNotifyDefault = (guildConfig as unknown as { notify_user?: boolean }).notify_user ?? false;
+      const shouldNotify = action.notifyUser ?? guildNotifyDefault;
+
+      if (shouldNotify) {
         await this.notifyUser(action.userId, moderationCase, guild);
       }
 
@@ -117,7 +122,8 @@ export default class ModerationManager {
     userId: string,
     moderatorId: string,
     reason?: string,
-    evidence?: string[]
+    evidence?: string[],
+    notifyUser?: boolean
   ): Promise<ModerationCase> {
     return this.moderate(guild, {
       type: "KICK",
@@ -127,6 +133,7 @@ export default class ModerationManager {
       evidence,
       severity: "MEDIUM",
       points: 3,
+      notifyUser,
     });
   }
 
@@ -136,7 +143,8 @@ export default class ModerationManager {
     moderatorId: string,
     reason?: string,
     duration?: number,
-    evidence?: string[]
+    evidence?: string[],
+    notifyUser?: boolean
   ): Promise<ModerationCase> {
     return this.moderate(guild, {
       type: "BAN",
@@ -147,6 +155,7 @@ export default class ModerationManager {
       evidence,
       severity: duration ? "HIGH" : "CRITICAL",
       points: duration ? 5 : 10,
+      notifyUser,
     });
   }
 
@@ -156,7 +165,8 @@ export default class ModerationManager {
     moderatorId: string,
     reason: string,
     evidence?: string[],
-    points = 1
+    points = 1,
+    notifyUser?: boolean
   ): Promise<ModerationCase> {
     return this.moderate(guild, {
       type: "WARN",
@@ -166,6 +176,7 @@ export default class ModerationManager {
       evidence,
       severity: "LOW",
       points,
+      notifyUser,
     });
   }
 
@@ -175,7 +186,8 @@ export default class ModerationManager {
     moderatorId: string,
     duration: number,
     reason?: string,
-    evidence?: string[]
+    evidence?: string[],
+    notifyUser?: boolean
   ): Promise<ModerationCase> {
     return this.moderate(guild, {
       type: "TIMEOUT",
@@ -186,6 +198,7 @@ export default class ModerationManager {
       evidence,
       severity: "MEDIUM",
       points: 2,
+      notifyUser,
     });
   }
 
@@ -194,7 +207,8 @@ export default class ModerationManager {
     userId: string,
     moderatorId: string,
     note: string,
-    isInternal = false
+    isInternal = false,
+    notifyUser?: boolean
   ): Promise<ModerationCase> {
     return this.moderate(guild, {
       type: "NOTE",
@@ -205,7 +219,7 @@ export default class ModerationManager {
       points: 0,
       staffNote: isInternal ? note : undefined,
       publicNote: !isInternal ? note : undefined,
-      notifyUser: !isInternal,
+      notifyUser: notifyUser ?? !isInternal,
     });
   }
 

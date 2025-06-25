@@ -17,10 +17,8 @@ import { requireAdminPermissions } from '../middleware/permissions.js';
 
 const router = Router({ mergeParams: true });
 
-// All welcome routes require authentication and admin permissions
 router.use(authenticateToken, validateGuildAccess, requireAdminPermissions);
 
-// Settings
 router.get('/settings', generalRateLimit, getWelcomeSettings);
 router.put(
 	'/settings',
@@ -29,13 +27,10 @@ router.put(
 	updateWelcomeSettings
 );
 
-// Test message
 router.post('/test', generalRateLimit, testWelcomeMessage);
 
-// Logs
 router.get('/logs', validatePagination, generalRateLimit, getWelcomeLogs);
 
-// Statistics
 router.get('/statistics', generalRateLimit, getWelcomeStatistics);
 
 export default router;

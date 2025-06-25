@@ -27,10 +27,8 @@ import {
 
 const router = Router({ mergeParams: true });
 
-// All ticket routes require authentication and guild access
 router.use(authenticateToken, validateGuildAccess);
 
-// Settings (Admin)
 router.get(
 	'/settings',
 	guildTicketsRateLimit,
@@ -46,7 +44,6 @@ router.put(
 	updateTicketSettings
 );
 
-// Statistics (Admin)
 router.get(
 	'/statistics',
 	guildTicketsRateLimit,
@@ -54,7 +51,6 @@ router.get(
 	getTicketStatistics
 );
 
-// All tickets (Moderator)
 router.get(
 	'/',
 	validatePagination,
@@ -63,10 +59,8 @@ router.get(
 	getTickets
 );
 
-// Create a ticket (Any authenticated user)
 router.post('/', ticketsRateLimit, createTicket);
 
-// Individual ticket routes (Moderator)
 const ticketRouter = Router({ mergeParams: true });
 router.use('/:ticketId', requireModerationPermissions, ticketRouter);
 

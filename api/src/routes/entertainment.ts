@@ -18,10 +18,8 @@ import { requireAdminPermissions } from '../middleware/permissions.js';
 
 const router = Router({ mergeParams: true });
 
-// All entertainment routes require authentication and guild access
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-// Game configurations
 router.get('/games', generalRateLimit, requireAdminPermissions, getGameConfigs);
 
 router.put(
@@ -31,7 +29,6 @@ router.put(
 	updateGameSettings
 );
 
-// Economy settings
 router.get(
 	'/economy',
 	generalRateLimit,
@@ -46,7 +43,6 @@ router.put(
 	updateEconomySettings
 );
 
-// Trivia questions
 router.get(
 	'/trivia',
 	validatePagination,

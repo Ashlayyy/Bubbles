@@ -75,12 +75,9 @@ export default new Command(
         interaction.user.id,
         reason,
         evidence.length > 0 ? evidence : undefined,
-        points
+        points,
+        !silent
       );
-
-      if (silent) {
-        await client.moderationManager.updateCaseNotification(case_.id, false);
-      }
 
       // Get user's total points for display
       const totalPoints = await client.moderationManager.getInfractionPoints(interaction.guild.id, targetUser.id);

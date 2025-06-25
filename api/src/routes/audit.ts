@@ -9,48 +9,15 @@ import {
 } from '../controllers/auditController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
-// ============================================================================
-// GUILD AUDIT LOG OPERATIONS
-// ============================================================================
+router.use(authenticateToken);
 
-// GET /api/audit/guilds/:guildId - Get guild audit log
-router.get('/guilds/:guildId', authenticateToken, getGuildAuditLog);
-
-// GET /api/audit/guilds/:guildId/analytics - Get audit log analytics
-router.get(
-	'/guilds/:guildId/analytics',
-	authenticateToken,
-	getAuditLogAnalytics
-);
-
-// GET /api/audit/guilds/:guildId/users/:userId - Get audit logs by user
-router.get(
-	'/guilds/:guildId/users/:userId',
-	authenticateToken,
-	getAuditLogsByUser
-);
-
-// GET /api/audit/guilds/:guildId/actions/:actionType - Get audit logs by action type
-router.get(
-	'/guilds/:guildId/actions/:actionType',
-	authenticateToken,
-	getAuditLogsByAction
-);
-
-// ============================================================================
-// SECURITY & MONITORING
-// ============================================================================
-
-// GET /api/audit/guilds/:guildId/security - Get security alerts
-router.get('/guilds/:guildId/security', authenticateToken, getSecurityAlerts);
-
-// GET /api/audit/guilds/:guildId/moderation - Get moderation history
-router.get(
-	'/guilds/:guildId/moderation',
-	authenticateToken,
-	getModerationHistory
-);
+router.get('/', getGuildAuditLog);
+router.get('/analytics', getAuditLogAnalytics);
+router.get('/users/:userId', getAuditLogsByUser);
+router.get('/actions/:actionType', getAuditLogsByAction);
+router.get('/security', getSecurityAlerts);
+router.get('/moderation', getModerationHistory);
 
 export default router;

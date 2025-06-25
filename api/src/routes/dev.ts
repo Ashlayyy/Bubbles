@@ -2,7 +2,6 @@ import { Router } from 'express';
 import queueManager from '../queue/manager.js';
 import { deadLetterQueryService } from '../services/deadLetterQueryService.js';
 
-// Queue names enum
 export const QUEUE_NAMES = {
 	BOT_COMMANDS: 'bot-commands',
 	MODERATION: 'moderation',
@@ -12,7 +11,6 @@ export const QUEUE_NAMES = {
 
 const router = Router();
 
-// Test route to add a job to the queue
 router.post('/test-queue', async (req, res) => {
 	try {
 		const testJob = {
@@ -41,7 +39,6 @@ router.post('/test-queue', async (req, res) => {
 	}
 });
 
-// Get queue stats
 router.get('/queue-stats', async (req, res) => {
 	try {
 		const stats = await queueManager.getQueueStatus(QUEUE_NAMES.BOT_COMMANDS);
@@ -59,7 +56,6 @@ router.get('/queue-stats', async (req, res) => {
 	}
 });
 
-// Dead letter queue endpoints
 router.get('/dead-letter-stats', async (req, res) => {
 	try {
 		const response = await deadLetterQueryService.getDeadLetterStats();

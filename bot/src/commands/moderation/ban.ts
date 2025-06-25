@@ -82,12 +82,9 @@ export default new Command(
         interaction.user.id,
         reason,
         duration,
-        evidence.length > 0 ? evidence : undefined
+        evidence.length > 0 ? evidence : undefined,
+        !silent
       );
-
-      if (silent) {
-        await client.moderationManager.updateCaseNotification(case_.id, false);
-      }
 
       const durationText = duration ? ` for ${formatDuration(duration)}` : " permanently";
 

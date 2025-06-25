@@ -23,10 +23,8 @@ import {
 
 const router = Router({ mergeParams: true });
 
-// All appeal routes require authentication and guild access
 router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
-// Settings
 router.get(
 	'/settings',
 	generalRateLimit,
@@ -41,7 +39,6 @@ router.put(
 	updateAppealSettings
 );
 
-// Appeals
 router.get(
 	'/',
 	validatePagination,
@@ -66,7 +63,6 @@ router.post(
 	reviewAppeal
 );
 
-// Statistics
 router.get(
 	'/statistics',
 	generalRateLimit,
