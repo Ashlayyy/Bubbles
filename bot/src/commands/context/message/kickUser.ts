@@ -13,60 +13,87 @@ import {
   type ModalSubmitInteraction,
 } from "discord.js";
 
-import { prisma } from "../../../database/index.js";
-import Command from "../../../structures/Command.js";
 import { PermissionLevel } from "../../../structures/PermissionTypes.js";
+import { parseEvidence, type CommandConfig, type CommandResponse } from "../../_core/index.js";
+import { ModerationCommand } from "../../_core/specialized/ModerationCommand.js";
 
-export default new Command(
-  new ContextMenuCommandBuilder()
-    .setName("Kick User")
-    .setType(ApplicationCommandType.Message)
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.KickMembers),
+/**
+ * Kick User Context Menu Command - Kick a user from a message context menu
+ */
+export class KickUserContextCommand extends ModerationCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "Kick User",
+      description: "Kick a user from the server",
+      category: "moderation",
+      permissions: {
+        level: PermissionLevel.MODERATOR,
+        discordPermissions: [PermissionsBitField.Flags.KickMembers],
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    if (!interaction.isMessageContextMenuCommand() || !interaction.guild) return;
+    super(config);
+  }
 
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isMessageContextMenu()) {
+      throw new Error("This command only works as a message context menu");
+    }
+
+    const interaction = this.interaction as import("discord.js").MessageContextMenuCommandInteraction;
     const targetMessage = interaction.targetMessage;
     const targetUser = targetMessage.author;
 
-    // Don't allow kicking bots or the user themselves
+    // Validate the target user
     if (targetUser.bot) {
-      await interaction.reply({
-        content: "❌ You cannot kick bots using this command.",
-        ephemeral: true,
-      });
-      return;
+      return this.createModerationError("kick", targetUser, "You cannot kick bots using this command.");
     }
 
-    if (targetUser.id === interaction.user.id) {
-      await interaction.reply({
-        content: "❌ You cannot kick yourself.",
-        ephemeral: true,
-      });
-      return;
+    if (targetUser.id === this.user.id) {
+      return this.createModerationError("kick", targetUser, "You cannot kick yourself.");
     }
 
     // Check if user is kickable
-    const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+    const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
     if (!member) {
-      await interaction.reply({
-        content: "❌ This user is not in the server.",
-        ephemeral: true,
-      });
-      return;
+      return this.createModerationError("kick", targetUser, "This user is not in the server.");
+    }
+
+    try {
+      this.validateModerationTarget(member);
+    } catch (error) {
+      return this.createModerationError(
+        "kick",
+        targetUser,
+        error instanceof Error ? error.message : "Cannot kick this user"
+      );
     }
 
     if (!member.kickable) {
-      await interaction.reply({
-        content: "❌ I cannot kick this user. They may have higher permissions than me.",
-        ephemeral: true,
-      });
-      return;
+      return this.createModerationError(
+        "kick",
+        targetUser,
+        "I cannot kick this user. They may have higher permissions than me."
+      );
     }
 
-    // Create evidence link
-    const messageLink = `https://discord.com/channels/${interaction.guild.id}/${targetMessage.channel.id}/${targetMessage.id}`;
+    // Create evidence link and content preview
+    const messageLink = `https://discord.com/channels/${this.guild.id}/${targetMessage.channel.id}/${targetMessage.id}`;
+    const truncatedContent =
+      targetMessage.content.length > 100 ? targetMessage.content.substring(0, 100) + "..." : targetMessage.content;
 
+    return this.showKickConfirmation(targetUser, targetMessage, messageLink, truncatedContent);
+  }
+
+  private showKickConfirmation(
+    targetUser: import("discord.js").User,
+    targetMessage: import("discord.js").Message,
+    messageLink: string,
+    truncatedContent: string
+  ): CommandResponse {
     const embed = new EmbedBuilder()
       .setColor(0xf39c12)
       .setTitle("👢 Kick User")
@@ -89,7 +116,7 @@ export default new Command(
         }
       )
       .setTimestamp()
-      .setFooter({ text: `Requested by ${interaction.user.tag}` });
+      .setFooter({ text: `Requested by ${this.user.tag}` });
 
     const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -105,16 +132,26 @@ export default new Command(
       new ButtonBuilder().setCustomId("kick_cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary).setEmoji("❌")
     );
 
-    await interaction.reply({
+    // Set up interaction handlers
+    this.setupInteractionHandlers(targetUser, targetMessage, messageLink, truncatedContent);
+
+    return {
       embeds: [embed],
       components: [buttons],
       ephemeral: true,
-    });
+    };
+  }
 
+  private setupInteractionHandlers(
+    targetUser: import("discord.js").User,
+    targetMessage: import("discord.js").Message,
+    messageLink: string,
+    truncatedContent: string
+  ): void {
     // Handle button interactions
-    const collector = interaction.channel?.createMessageComponentCollector({
+    const collector = this.interaction.channel?.createMessageComponentCollector({
       time: 300000, // 5 minutes
-      filter: (i) => i.user.id === interaction.user.id,
+      filter: (i) => i.user.id === this.user.id,
     });
 
     collector?.on("collect", (buttonInteraction: ButtonInteraction) => {
@@ -130,80 +167,11 @@ export default new Command(
           }
 
           if (buttonInteraction.customId.startsWith("kick_quick_")) {
-            const [, , userId] = buttonInteraction.customId.split("_");
-
-            await buttonInteraction.deferUpdate();
-
-            // Quick kick with default reason
-            const truncatedContent =
-              targetMessage.content.length > 100
-                ? targetMessage.content.substring(0, 100) + "..."
-                : targetMessage.content;
-            const reason = truncatedContent
-              ? `Inappropriate message: "${truncatedContent}"`
-              : "Inappropriate behavior (via context menu)";
-
-            try {
-              if (!interaction.guild) return;
-              const case_ = await client.moderationManager.kick(
-                interaction.guild,
-                userId,
-                interaction.user.id,
-                reason,
-                [messageLink] // Evidence
-              );
-
-              await buttonInteraction.editReply({
-                content: `✅ **${targetUser.tag}** has been kicked.\n📋 **Case #${case_.caseNumber}** created.`,
-                embeds: [],
-                components: [],
-              });
-            } catch (error) {
-              await buttonInteraction.editReply({
-                content: `❌ Failed to kick **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-                embeds: [],
-                components: [],
-              });
-            }
+            await this.handleQuickKick(buttonInteraction, targetUser, truncatedContent, messageLink);
           }
 
           if (buttonInteraction.customId.startsWith("kick_custom_")) {
-            const [, , userId, messageId] = buttonInteraction.customId.split("_");
-
-            // Show modal for custom kick details
-            const modal = new ModalBuilder()
-              .setCustomId(`kick_modal_${userId}_${messageId}`)
-              .setTitle("Custom Kick Details");
-
-            const truncatedContent =
-              targetMessage.content.length > 100
-                ? targetMessage.content.substring(0, 100) + "..."
-                : targetMessage.content;
-
-            const reasonInput = new TextInputBuilder()
-              .setCustomId("kick_reason")
-              .setLabel("Reason for kick")
-              .setStyle(TextInputStyle.Paragraph)
-              .setPlaceholder("Enter the reason for this kick...")
-              .setValue(truncatedContent ? `Inappropriate message: "${truncatedContent}"` : "")
-              .setRequired(true)
-              .setMaxLength(1000);
-
-            const evidenceInput = new TextInputBuilder()
-              .setCustomId("kick_evidence")
-              .setLabel("Additional Evidence (optional)")
-              .setStyle(TextInputStyle.Paragraph)
-              .setPlaceholder("Additional evidence links, comma-separated...")
-              .setValue(messageLink)
-              .setRequired(false)
-              .setMaxLength(1000);
-
-            const reasonRow = new ActionRowBuilder<TextInputBuilder>().addComponents(reasonInput);
-            const evidenceRow = new ActionRowBuilder<TextInputBuilder>().addComponents(evidenceInput);
-
-            modal.addComponents(reasonRow, evidenceRow);
-
-            await buttonInteraction.showModal(modal);
+            await this.handleCustomKick(buttonInteraction, targetUser, targetMessage, messageLink, truncatedContent);
           }
         } catch (error) {
           console.error("Error handling kick context menu button:", error);
@@ -217,107 +185,159 @@ export default new Command(
       })();
     });
 
-    // Handle modal submissions
-    const modalCollector = interaction.channel?.createMessageComponentCollector({
-      time: 300000, // 5 minutes
-      filter: (i) => i.user.id === interaction.user.id && i.isModalSubmit(),
+    collector?.on("end", () => {
+      // Disable buttons after timeout
+      void this.interaction
+        .editReply({
+          components: [
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+              new ButtonBuilder()
+                .setCustomId("expired")
+                .setLabel("Expired")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true)
+            ),
+          ],
+        })
+        .catch(() => {
+          // Do nothing
+        });
+    });
+  }
+
+  private async handleQuickKick(
+    buttonInteraction: ButtonInteraction,
+    targetUser: import("discord.js").User,
+    truncatedContent: string,
+    messageLink: string
+  ): Promise<void> {
+    await buttonInteraction.deferUpdate();
+
+    const reason = truncatedContent
+      ? `Inappropriate message: "${truncatedContent}"`
+      : "Inappropriate behavior (via context menu)";
+
+    try {
+      const case_ = await this.client.moderationManager.kick(
+        this.guild,
+        targetUser.id,
+        this.user.id,
+        reason,
+        [messageLink] // Evidence
+      );
+
+      await buttonInteraction.editReply({
+        content: `✅ **${targetUser.tag}** has been kicked.\n📋 **Case #${case_.caseNumber}** created.`,
+        embeds: [],
+        components: [],
+      });
+    } catch (error) {
+      await buttonInteraction.editReply({
+        content: `❌ Failed to kick **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
+        embeds: [],
+        components: [],
+      });
+    }
+  }
+
+  private async handleCustomKick(
+    buttonInteraction: ButtonInteraction,
+    targetUser: import("discord.js").User,
+    targetMessage: import("discord.js").Message,
+    messageLink: string,
+    truncatedContent: string
+  ): Promise<void> {
+    // Create and show modal for custom kick details
+    const modal = new ModalBuilder()
+      .setCustomId(`kick_modal_${targetUser.id}_${targetMessage.id}`)
+      .setTitle("Custom Kick Details");
+
+    const reasonInput = new TextInputBuilder()
+      .setCustomId("kick_reason")
+      .setLabel("Reason for kick")
+      .setStyle(TextInputStyle.Paragraph)
+      .setPlaceholder("Enter the reason for this kick...")
+      .setValue(truncatedContent ? `Inappropriate message: "${truncatedContent}"` : "")
+      .setRequired(true)
+      .setMaxLength(1000);
+
+    const evidenceInput = new TextInputBuilder()
+      .setCustomId("kick_evidence")
+      .setLabel("Additional Evidence (optional)")
+      .setStyle(TextInputStyle.Paragraph)
+      .setPlaceholder("Additional evidence links, comma-separated...")
+      .setValue(messageLink)
+      .setRequired(false)
+      .setMaxLength(1000);
+
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(reasonInput),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(evidenceInput)
+    );
+
+    await buttonInteraction.showModal(modal);
+
+    // Handle modal submission
+    this.setupModalHandler(targetUser, messageLink);
+  }
+
+  private setupModalHandler(targetUser: import("discord.js").User, messageLink: string): void {
+    // Note: In a production implementation, you'd want a more robust way to handle this
+    // This is a simplified approach for the conversion
+    const modalCollector = this.interaction.channel?.createMessageComponentCollector({
+      time: 300000,
+      filter: (i) => i.user.id === this.user.id && i.isModalSubmit(),
     });
 
     modalCollector?.on("collect", (modalInteraction: ModalSubmitInteraction) => {
       void (async () => {
+        if (!modalInteraction.customId.startsWith("kick_modal_")) return;
+
+        await modalInteraction.deferReply({ ephemeral: true });
+
         try {
-          if (modalInteraction.customId.startsWith("kick_modal_")) {
-            const [, , userId] = modalInteraction.customId.split("_");
+          const reasonInput = modalInteraction.fields.getTextInputValue("kick_reason");
+          const evidenceStr = modalInteraction.fields.getTextInputValue("kick_evidence");
 
-            await modalInteraction.deferReply({ ephemeral: true });
+          // Expand reason alias
+          const reason = await this.expandReasonAlias(reasonInput, targetUser);
 
-            let reason = modalInteraction.fields.getTextInputValue("kick_reason");
-            const evidenceStr = modalInteraction.fields.getTextInputValue("kick_evidence");
+          // Parse evidence
+          const evidence = parseEvidence(evidenceStr);
 
-            // Check if reason is an alias and expand it
-            if (reason && reason !== "No reason provided" && interaction.guild) {
-              const aliasName = reason.toUpperCase();
-              const alias = await prisma.alias.findUnique({
-                where: { guildId_name: { guildId: interaction.guild.id, name: aliasName } },
-              });
+          const case_ = await this.client.moderationManager.kick(
+            this.guild,
+            targetUser.id,
+            this.user.id,
+            reason,
+            evidence.all.length > 0 ? evidence.all : [messageLink]
+          );
 
-              if (alias) {
-                // Expand alias content with variables
-                reason = alias.content;
-                reason = reason.replace(/\{user\}/g, `<@${targetUser.id}>`);
-                reason = reason.replace(/\{server\}/g, interaction.guild.name);
-                reason = reason.replace(/\{moderator\}/g, `<@${interaction.user.id}>`);
+          await modalInteraction.editReply({
+            content: `✅ **${targetUser.tag}** has been kicked.\n📋 **Case #${case_.caseNumber}** created.`,
+          });
 
-                // Update usage count
-                await prisma.alias.update({
-                  where: { id: alias.id },
-                  data: { usageCount: { increment: 1 } },
-                });
-              }
-            }
-
-            // Parse evidence
-            const evidence = evidenceStr
-              .split(",")
-              .map((s) => s.trim())
-              .filter((s) => s.length > 0);
-
-            try {
-              if (!interaction.guild) return;
-              const case_ = await client.moderationManager.kick(
-                interaction.guild,
-                userId,
-                interaction.user.id,
-                reason,
-                evidence.length > 0 ? evidence : undefined
-              );
-
-              await modalInteraction.editReply({
-                content: `✅ **${targetUser.tag}** has been kicked.\n📋 **Case #${case_.caseNumber}** created.`,
-              });
-
-              // Update the original interaction
-              await interaction.editReply({
-                content: `✅ **${targetUser.tag}** has been kicked.\n📋 **Case #${case_.caseNumber}** created.`,
-                embeds: [],
-                components: [],
-              });
-            } catch (error) {
-              await modalInteraction.editReply({
-                content: `❌ Failed to kick **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-              });
-            }
-          }
+          // Update the original interaction
+          await this.interaction.editReply({
+            content: `✅ **${targetUser.tag}** has been kicked.\n📋 **Case #${case_.caseNumber}** created.`,
+            embeds: [],
+            components: [],
+          });
         } catch (error) {
-          console.error("Error handling kick modal:", error);
-          if (!modalInteraction.replied && !modalInteraction.deferred) {
-            await modalInteraction.reply({
-              content: "❌ An error occurred. Please try again.",
-              ephemeral: true,
-            });
-          }
+          await modalInteraction.editReply({
+            content: `❌ Failed to kick **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
+          });
         }
       })();
     });
-
-    collector?.on("end", () => {
-      // Disable buttons after timeout
-      const disabledButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        ...buttons.components.map((button) => ButtonBuilder.from(button).setDisabled(true))
-      );
-
-      void interaction.editReply({ components: [disabledButtons] }).catch(() => {
-        // Ignore errors if message was deleted
-      });
-    });
-  },
-  {
-    ephemeral: true,
-    enabledOnDev: true,
-    permissions: {
-      level: PermissionLevel.MODERATOR,
-      discordPermissions: [PermissionsBitField.Flags.KickMembers],
-      isConfigurable: true,
-    },
   }
-);
+}
+
+// Export the command instance
+export default new KickUserContextCommand();
+
+// Export the Discord command builder for registration
+export const builder = new ContextMenuCommandBuilder()
+  .setName("Kick User")
+  .setType(ApplicationCommandType.Message)
+  .setDefaultMemberPermissions(0);

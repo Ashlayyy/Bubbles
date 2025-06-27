@@ -1,40 +1,54 @@
 import type { TextChannel } from "discord.js";
 import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
-
 import { getGuildConfig } from "../../database/GuildConfig.js";
 import { isInRange } from "../../functions/general/math.js";
 import logger from "../../logger.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("clear")
-    .setDescription("ADMIN ONLY: Clear messages from the text channel! (Cannot clear older than 2 weeks)")
-    .addIntegerOption((option) =>
-      option.setName("quantity").setDescription("Number of messages to delete").setRequired(true).setMinValue(1)
-    ),
+/**
+ * Clear Command - Clear messages from the text channel
+ */
+export class ClearCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "clear",
+      description: "ADMIN ONLY: Clear messages from the text channel! (Cannot clear older than 2 weeks)",
+      category: "admin",
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        discordPermissions: [PermissionsBitField.Flags.ManageMessages],
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (_client, interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    await interaction.deferReply({ flags: 64 /* MessageFlags.Ephemeral */ });
-    const quantity = interaction.options.getInteger("quantity", true);
+    super(config);
+  }
 
-    const { maxMessagesCleared } = await getGuildConfig(interaction.guildId);
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
+
+    const quantity = this.getIntegerOption("quantity", true);
+    const { maxMessagesCleared } = await getGuildConfig(this.guild.id);
 
     // Check if desired number is within allowed range
     if (!isInRange(quantity, 1, maxMessagesCleared)) {
-      await interaction.followUp({
-        content: `You can not clear ${quantity.toString()} messages! Allowed range is from 1 to ${maxMessagesCleared.toString()}.`,
-      });
-      return;
+      return {
+        content: `You can not clear ${quantity} messages! Allowed range is from 1 to ${maxMessagesCleared}.`,
+        ephemeral: true,
+      };
     }
 
-    const channel = interaction.channel as TextChannel;
+    const channel = this.interaction.channel as TextChannel;
 
     const messagesToDelete = await channel.messages.fetch({
       limit: quantity,
-      before: interaction.id,
+      before: this.interaction.id,
     });
 
     try {
@@ -43,24 +57,28 @@ export default new Command(
     } catch (err) {
       logger.error("Errored while trying to bulkDelete messages", err);
 
-      await interaction.followUp({
+      return {
         content: `Errored while trying to bulkDelete messages! Make sure you are not 
         (1) deleting more than are in the channel or (2) trying to delete messages made +2 weeks ago.`,
-      });
-      return;
+        ephemeral: true,
+      };
     }
 
     // Confirmation message
-    await interaction.followUp({
-      content: `Cleared \`${quantity.toString()}\` message${quantity === 1 ? "" : "s"}`,
-    });
-  },
-  {
-    ephemeral: true,
-    permissions: {
-      level: PermissionLevel.ADMIN,
-      discordPermissions: [PermissionsBitField.Flags.ManageMessages],
-      isConfigurable: true,
-    },
+    return {
+      content: `Cleared \`${quantity}\` message${quantity === 1 ? "" : "s"}`,
+      ephemeral: true,
+    };
   }
-);
+}
+
+// Export the command instance
+export default new ClearCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("clear")
+  .setDescription("ADMIN ONLY: Clear messages from the text channel! (Cannot clear older than 2 weeks)")
+  .addIntegerOption((option) =>
+    option.setName("quantity").setDescription("Number of messages to delete").setRequired(true).setMinValue(1)
+  );

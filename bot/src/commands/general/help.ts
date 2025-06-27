@@ -1,65 +1,140 @@
-import {
-  ActionRowBuilder,
-  SlashCommandBuilder,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
-} from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
 
-import logger from "../../logger.js";
-import Command from "../../structures/Command.js";
+/**
+ * Help Command - Display help information about commands and features
+ */
+export class HelpCommand extends GeneralCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "help",
+      description: "Get help with commands and features",
+      category: "general",
+      ephemeral: false,
+      guildOnly: false, // Help can work in DMs too
+    };
 
-// TODO: standardize this normalization of components similar to `Client.genEmbed` (i.e. `Client.genComponents`)
-const truncatedMessage =
-  "`/help` tried to generate a menu with more than 25 options! You have too many command categories to display in a singular help menu. Truncating output to 25.";
-
-export default new Command(
-  new SlashCommandBuilder().setName("help").setDescription("Show a list of available commands."),
-
-  async (client, interaction) => {
-    if (!(client.commandCategories.length > 0)) {
-      await interaction.followUp({
-        content: "No command categories exist!",
-      });
-      return;
-    }
-
-    const [commandCategories, isTruncated] = normalizeSelectMenuOptions(client.commandCategories);
-
-    const options = commandCategories.map((category) => {
-      return new StringSelectMenuOptionBuilder()
-        .setLabel(category[0].toUpperCase() + category.slice(1).toLowerCase())
-        .setValue(category);
-    });
-
-    if (isTruncated) {
-      logger.warn(new RangeError(truncatedMessage));
-    }
-
-    const helpEmbed = client.genEmbed({
-      title: "Select a command category below!",
-    });
-
-    await interaction.followUp({
-      content: isTruncated ? truncatedMessage : undefined,
-      embeds: [helpEmbed],
-      components: [
-        new ActionRowBuilder<StringSelectMenuBuilder>().setComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId(`${client.config.name}-help-select-menu`)
-            .setPlaceholder("Select a Command category")
-            .setMinValues(1)
-            .setMaxValues(1)
-            .setOptions(options)
-        ),
-      ],
-    });
+    super(config);
   }
-);
 
-function normalizeSelectMenuOptions(options: string[]): [string[], boolean] {
-  if (options.length > 25) {
-    return [options.slice(0, 25), true];
-  } else {
-    return [options, false];
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
+
+    const commandName = this.getStringOption("command");
+    const category = this.getStringOption("category");
+
+    if (commandName) {
+      return await Promise.resolve(this.handleSpecificCommand(commandName));
+    } else if (category) {
+      return await Promise.resolve(this.handleCategory(category));
+    } else {
+      return await Promise.resolve(this.handleGeneralHelp());
+    }
+  }
+
+  private handleSpecificCommand(commandName: string): CommandResponse {
+    try {
+      const command = this.client.commands.get(commandName);
+
+      if (!command) {
+        return this.createGeneralError("Command Not Found", `No command found with the name \`${commandName}\`.`);
+      }
+
+      // Build detailed command help
+      const commandData = command.builder.toJSON();
+      const description =
+        `**Description:** ${"description" in commandData ? commandData.description || "No description available" : "No description available"}\n\n` +
+        `**Category:** ${command.category || "Unknown"}\n` +
+        `**Usage:** \`/${commandName}\``;
+
+      return this.createGeneralInfo(`Help: ${commandName}`, description);
+    } catch (error) {
+      throw new Error(`Failed to get command help: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  private handleCategory(category: string): CommandResponse {
+    try {
+      const commands = this.client.commands.filter((cmd) => cmd.category === category);
+
+      if (commands.size === 0) {
+        return this.createGeneralError("Category Not Found", `No commands found in category \`${category}\`.`);
+      }
+
+      const commandList = commands.map((cmd) => {
+        const cmdData = cmd.builder.toJSON();
+        return `• \`/${cmdData.name}\` - ${"description" in cmdData ? cmdData.description || "No description" : "No description"}`;
+      });
+
+      return this.createGeneralInfo(`Help: ${category} Commands`, commandList.join("\n"));
+    } catch (error) {
+      throw new Error(`Failed to get category help: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  private handleGeneralHelp(): CommandResponse {
+    try {
+      const helpText = [
+        "**🤖 Bubbles Discord Bot**",
+        "",
+        "Welcome to Bubbles! Here are the main command categories:",
+        "",
+        "📋 **General Commands**",
+        "• `/help` - Show this help message",
+        "• `/userinfo` - Get information about a user",
+        "• `/serverinfo` - Get information about the server",
+        "",
+        "⚡ **Moderation Commands**",
+        "• `/ban` - Ban a user from the server",
+        "• `/kick` - Kick a user from the server",
+        "• `/warn` - Warn a user",
+        "• `/case` - View moderation case details",
+        "",
+        "🎵 **Music Commands**",
+        "• `/play` - Play music in a voice channel",
+        "• `/pause` - Pause the current track",
+        "• `/skip` - Skip the current track",
+        "",
+        "⚙️ **Admin Commands**",
+        "• `/config` - Configure server settings",
+        "• `/automod` - Manage automod settings",
+        "• `/appeals` - Manage appeals system",
+        "",
+        "Use `/help command:<command-name>` for detailed help on a specific command.",
+        "Use `/help category:<category-name>` to see all commands in a category.",
+      ];
+
+      return this.createGeneralInfo("Bot Help", helpText.join("\n"));
+    } catch (error) {
+      throw new Error(`Failed to generate help: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
   }
 }
+
+// Export the command instance
+export default new HelpCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("help")
+  .setDescription("Get help with commands and features")
+  .setDefaultMemberPermissions(0)
+  .addStringOption((option) =>
+    option.setName("command").setDescription("Get help for a specific command").setRequired(false)
+  )
+  .addStringOption((option) =>
+    option
+      .setName("category")
+      .setDescription("Get help for a command category")
+      .setRequired(false)
+      .addChoices(
+        { name: "General", value: "general" },
+        { name: "Moderation", value: "moderation" },
+        { name: "Music", value: "music" },
+        { name: "Admin", value: "admin" },
+        { name: "Developer", value: "dev" }
+      )
+  );

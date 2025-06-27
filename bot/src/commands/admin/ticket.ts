@@ -17,17 +17,13 @@ import {
 import type { Ticket as DbTicket } from "@shared/database";
 import camelCaseFn from "lodash/camelCase.js";
 import kebabCaseFn from "lodash/kebabCase.js";
-import {
-  getGuildConfig,
-  defaults as guildConfigDefaults,
-  descriptions as guildConfigDescriptions,
-} from "../../database/GuildConfig.js";
+import { getGuildConfig } from "../../database/GuildConfig.js";
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
-import { changeSetting, resetSettings } from "../../subCommandHandlers/config/configHandler.js";
+import type { CommandConfig, CommandResponse, SlashCommandInteraction } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
 // Helper function to sanitize username for channel/thread names
 function sanitizeUsername(username: string): string {
@@ -884,219 +880,484 @@ const ticketSettings = [
 const kebabCase = kebabCaseFn;
 const camelCase = camelCaseFn;
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("ticket")
-    .setDescription("Ticket system management")
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("create")
-        .setDescription("Create a new support ticket")
-        .addStringOption((option) =>
-          option
-            .setName("category")
-            .setDescription("Ticket category")
-            .setRequired(true)
-            .addChoices(
-              { name: "General Support", value: "general" },
-              { name: "Technical Issue", value: "technical" },
-              { name: "Report User", value: "report" },
-              { name: "Suggestion", value: "suggestion" }
-            )
-        )
-        .addStringOption((option) =>
-          option.setName("title").setDescription("Brief description of your issue").setRequired(true).setMaxLength(100)
-        )
-        .addStringOption((option) =>
-          option.setName("description").setDescription("Detailed description of your issue").setMaxLength(1000)
-        )
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("close")
-        .setDescription("Close a ticket")
-        .addStringOption((option) => option.setName("reason").setDescription("Reason for closing").setMaxLength(500))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("claim")
-        .setDescription("Claim/assign a ticket to yourself")
-        .addIntegerOption((option) =>
-          option.setName("ticket").setDescription("Ticket number to claim (auto-detect if not specified)")
-        )
-        .addBooleanOption((option) => option.setName("silent").setDescription("Claim silently without notification"))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("assign")
-        .setDescription("Assign a ticket to a staff member")
-        .addIntegerOption((option) => option.setName("ticket").setDescription("Ticket number").setRequired(true))
-        .addUserOption((option) => option.setName("staff").setDescription("Staff member to assign").setRequired(true))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("list")
-        .setDescription("List tickets")
-        .addStringOption((option) =>
-          option
-            .setName("status")
-            .setDescription("Filter by status")
-            .addChoices(
-              { name: "Open", value: "OPEN" },
-              { name: "Pending", value: "PENDING" },
-              { name: "Closed", value: "CLOSED" }
-            )
-        )
-        .addUserOption((option) => option.setName("user").setDescription("Filter by user"))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("info")
-        .setDescription("Get ticket information")
-        .addIntegerOption((option) => option.setName("ticket").setDescription("Ticket number").setRequired(true))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("add")
-        .setDescription("Add user to ticket")
-        .addUserOption((option) => option.setName("user").setDescription("User to add").setRequired(true))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("remove")
-        .setDescription("Remove user from ticket")
-        .addUserOption((option) => option.setName("user").setDescription("User to remove").setRequired(true))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("transcript")
-        .setDescription("Generate a transcript of a ticket")
-        .addStringOption((option) =>
-          option.setName("ticket-id").setDescription("Ticket ID or number (auto-detect if not provided)")
-        )
-        .addStringOption((option) =>
-          option
-            .setName("format")
-            .setDescription("Transcript format")
-            .addChoices(
-              { name: "HTML (Formatted)", value: "html" },
-              { name: "Text (Plain)", value: "txt" },
-              { name: "Both", value: "both" }
-            )
-        )
-        .addStringOption((option) =>
-          option
-            .setName("theme")
-            .setDescription("HTML theme (for HTML format)")
-            .addChoices({ name: "Light", value: "light" }, { name: "Dark", value: "dark" })
-        )
-    )
-    .addSubcommandGroup((g) => {
-      g.setName("settings").setDescription("Ticket system configuration");
+/**
+ * Ticket Command - Manage support tickets
+ */
+export class TicketCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "ticket",
+      description: "ADMIN ONLY: Manage support tickets",
+      category: "admin",
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        discordPermissions: [PermissionFlagsBits.Administrator],
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-      // reset subcommand first
-      g.addSubcommand((s) => s.setName("reset").setDescription("Reset ticket settings to defaults"));
+    super(config);
+  }
 
-      ticketSettings.forEach((key) => {
-        const subName = kebabCase(key);
-        const defVal = (guildConfigDefaults as Record<string, unknown>)[key];
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
 
-        g.addSubcommand((s) => {
-          s.setName(subName).setDescription(guildConfigDescriptions[key] ?? "Update setting");
+    const subcommand = (this.interaction as SlashCommandInteraction).options.getSubcommand();
 
-          if (typeof defVal === "boolean") {
-            s.addBooleanOption((o) => o.setName("new-value").setDescription("New value").setRequired(true));
-          } else if (typeof defVal === "number") {
-            s.addIntegerOption((o) => o.setName("new-value").setDescription("New value").setRequired(true));
-          } else if (key.endsWith("ChannelId")) {
-            s.addChannelOption((o) =>
-              o
-                .setName("channel")
-                .setDescription("Channel")
-                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
-                .setRequired(true)
-            );
-          } else if (key.endsWith("RoleId")) {
-            s.addRoleOption((o) => o.setName("role").setDescription("Role").setRequired(true));
-          } else {
-            s.addStringOption((o) => o.setName("new-value").setDescription("New value").setRequired(true));
-          }
-          return s;
-        });
+    try {
+      switch (subcommand) {
+        case "close":
+          return await this.handleClose();
+        case "add":
+          return await this.handleAdd();
+        case "remove":
+          return await this.handleRemove();
+        case "list":
+          return await this.handleList();
+        case "transcript":
+          return await this.handleTranscript();
+        default:
+          return {
+            content: "❌ Unknown subcommand",
+            ephemeral: true,
+          };
+      }
+    } catch (error) {
+      logger.error("Error in ticket command:", error);
+      return {
+        content: `❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleClose(): Promise<CommandResponse> {
+    const reason = this.getStringOption("reason") ?? "No reason provided";
+    const channel = this.interaction.channel as TextChannel;
+
+    try {
+      // Check if this is a ticket channel
+      const ticket = await prisma.ticket.findFirst({
+        where: {
+          guildId: this.guild.id,
+          channelId: channel.id,
+          status: "OPEN",
+        },
       });
 
-      return g;
-    }),
-
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-
-    const subcommand = interaction.options.getSubcommand();
-    const subcommandGroup = interaction.options.getSubcommandGroup(false);
-
-    // Handle settings group
-    if (subcommandGroup === "settings") {
-      if (subcommand === "reset") {
-        await resetSettings(interaction);
-        return;
+      if (!ticket) {
+        return {
+          content: "❌ This is not an active ticket channel.",
+          ephemeral: true,
+        };
       }
 
-      const settingKey = camelCase(subcommand);
-      if ((ticketSettings as readonly string[]).includes(settingKey)) {
-        let newVal: unknown;
-        const defVal = (guildConfigDefaults as Record<string, unknown>)[settingKey];
+      // Update ticket status
+      await prisma.ticket.update({
+        where: { id: ticket.id },
+        data: {
+          status: "CLOSED",
+          closedAt: new Date(),
+          closedBy: this.user.id,
+          closeReason: reason,
+        },
+      });
 
-        if (typeof defVal === "boolean") {
-          newVal = interaction.options.getBoolean("new-value", true);
-        } else if (typeof defVal === "number") {
-          newVal = interaction.options.getInteger("new-value", true);
-        } else if (settingKey.endsWith("ChannelId")) {
-          newVal = interaction.options.getChannel("channel", true).id;
-        } else if (settingKey.endsWith("RoleId")) {
-          newVal = interaction.options.getRole("role", true).id;
-        } else {
-          newVal = interaction.options.getString("new-value", true);
+      // Create transcript if configured
+      const guildConfig = await prisma.guildConfig.findUnique({
+        where: { guildId: this.guild.id },
+      });
+
+      let transcriptSent = false;
+      if (guildConfig?.ticketLogChannelId) {
+        const logChannel = this.guild.channels.cache.get(guildConfig.ticketLogChannelId) as TextChannel;
+        if (logChannel) {
+          try {
+            const messages = await channel.messages.fetch({ limit: 100 });
+            const transcript = Array.from(messages.values())
+              .reverse()
+              .map((msg) => `[${msg.createdAt.toISOString()}] ${msg.author.tag}: ${msg.content}`)
+              .join("\n");
+
+            const transcriptEmbed = new EmbedBuilder()
+              .setColor(0x95a5a6)
+              .setTitle("🎫 Ticket Closed")
+              .setDescription(`Ticket in <#${channel.id}> has been closed.`)
+              .addFields(
+                { name: "Ticket ID", value: ticket.id, inline: true },
+                { name: "Opened By", value: `<@${ticket.userId}>`, inline: true },
+                { name: "Closed By", value: `<@${this.user.id}>`, inline: true },
+                { name: "Reason", value: reason, inline: false }
+              )
+              .setTimestamp();
+
+            await logChannel.send({ embeds: [transcriptEmbed] });
+            transcriptSent = true;
+          } catch (error) {
+            logger.error("Failed to send transcript:", error);
+          }
         }
-
-        await changeSetting(interaction, settingKey, newVal);
-        return;
       }
-    }
 
-    switch (subcommand) {
-      case "create":
-        await createTicket(client, interaction);
-        break;
-      case "close":
-        await closeTicket(client, interaction);
-        break;
-      case "claim":
-        await claimTicket(client, interaction);
-        break;
-      case "assign":
-        await assignTicket(client, interaction);
-        break;
-      case "list":
-        await listTickets(client, interaction);
-        break;
-      case "info":
-        await getTicketInfo(client, interaction);
-        break;
-      case "add":
-        await addUserToTicket(client, interaction);
-        break;
-      case "remove":
-        await removeUserFromTicket(client, interaction);
-        break;
-      case "transcript":
-        await generateTranscript(client, interaction);
-        break;
+      // Send closure message
+      const embed = new EmbedBuilder()
+        .setColor(0x95a5a6)
+        .setTitle("🎫 Ticket Closed")
+        .setDescription("This ticket has been closed and will be deleted in 10 seconds.")
+        .addFields(
+          { name: "Closed By", value: this.user.toString(), inline: true },
+          { name: "Reason", value: reason, inline: true },
+          { name: "Transcript", value: transcriptSent ? "✅ Saved to logs" : "❌ Not available", inline: true }
+        )
+        .setTimestamp();
+
+      await channel.send({ embeds: [embed] });
+
+      // Delete the channel after 10 seconds
+      setTimeout(async () => {
+        try {
+          await channel.delete();
+        } catch (error) {
+          logger.error("Failed to delete ticket channel:", error);
+        }
+      }, 10000);
+
+      // Log ticket closure
+      await this.client.logManager.log(this.guild.id, "TICKET_CLOSED", {
+        userId: this.user.id,
+        metadata: {
+          ticketId: ticket.id,
+          channelId: channel.id,
+          reason,
+          openedBy: ticket.userId,
+        },
+      });
+
+      return {
+        content: "✅ Ticket closed successfully. Channel will be deleted in 10 seconds.",
+        ephemeral: true,
+      };
+    } catch (error) {
+      logger.error("Error closing ticket:", error);
+      return {
+        content: `❌ Failed to close ticket: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.ADMIN,
-      isConfigurable: true,
-    },
   }
-);
+
+  private async handleAdd(): Promise<CommandResponse> {
+    const user = this.getUserOption("user", true);
+    const channel = this.interaction.channel as TextChannel;
+
+    try {
+      // Check if this is a ticket channel
+      const ticket = await prisma.ticket.findFirst({
+        where: {
+          guildId: this.guild.id,
+          channelId: channel.id,
+          status: "OPEN",
+        },
+      });
+
+      if (!ticket) {
+        return {
+          content: "❌ This is not an active ticket channel.",
+          ephemeral: true,
+        };
+      }
+
+      // Add user to ticket channel
+      await channel.permissionOverwrites.create(user, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+      });
+
+      const embed = new EmbedBuilder()
+        .setColor(0x2ecc71)
+        .setTitle("✅ User Added to Ticket")
+        .setDescription(`${user} has been added to this ticket.`)
+        .setTimestamp();
+
+      await channel.send({ embeds: [embed] });
+
+      // Log user addition
+      await this.client.logManager.log(this.guild.id, "TICKET_USER_ADDED", {
+        userId: this.user.id,
+        metadata: {
+          ticketId: ticket.id,
+          channelId: channel.id,
+          addedUser: user.id,
+        },
+      });
+
+      return {
+        content: `✅ Successfully added ${user} to the ticket.`,
+        ephemeral: true,
+      };
+    } catch (error) {
+      logger.error("Error adding user to ticket:", error);
+      return {
+        content: `❌ Failed to add user to ticket: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleRemove(): Promise<CommandResponse> {
+    const user = this.getUserOption("user", true);
+    const channel = this.interaction.channel as TextChannel;
+
+    try {
+      // Check if this is a ticket channel
+      const ticket = await prisma.ticket.findFirst({
+        where: {
+          guildId: this.guild.id,
+          channelId: channel.id,
+          status: "OPEN",
+        },
+      });
+
+      if (!ticket) {
+        return {
+          content: "❌ This is not an active ticket channel.",
+          ephemeral: true,
+        };
+      }
+
+      // Don't remove the ticket owner
+      if (user.id === ticket.userId) {
+        return {
+          content: "❌ Cannot remove the ticket owner from their own ticket.",
+          ephemeral: true,
+        };
+      }
+
+      // Remove user from ticket channel
+      await channel.permissionOverwrites.delete(user);
+
+      const embed = new EmbedBuilder()
+        .setColor(0xe74c3c)
+        .setTitle("❌ User Removed from Ticket")
+        .setDescription(`${user} has been removed from this ticket.`)
+        .setTimestamp();
+
+      await channel.send({ embeds: [embed] });
+
+      // Log user removal
+      await this.client.logManager.log(this.guild.id, "TICKET_USER_REMOVED", {
+        userId: this.user.id,
+        metadata: {
+          ticketId: ticket.id,
+          channelId: channel.id,
+          removedUser: user.id,
+        },
+      });
+
+      return {
+        content: `✅ Successfully removed ${user} from the ticket.`,
+        ephemeral: true,
+      };
+    } catch (error) {
+      logger.error("Error removing user from ticket:", error);
+      return {
+        content: `❌ Failed to remove user from ticket: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleList(): Promise<CommandResponse> {
+    try {
+      const tickets = await prisma.ticket.findMany({
+        where: { guildId: this.guild.id },
+        orderBy: { createdAt: "desc" },
+        take: 25, // Discord embed field limit
+      });
+
+      const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle("🎫 Support Tickets")
+        .setTimestamp()
+        .setFooter({ text: `Server: ${this.guild.name}` });
+
+      if (tickets.length === 0) {
+        embed.setDescription("❌ No tickets found for this server.");
+        return { embeds: [embed], ephemeral: true };
+      }
+
+      const openTickets = tickets.filter((t) => t.status === "OPEN");
+      const closedTickets = tickets.filter((t) => t.status === "CLOSED");
+
+      embed.setDescription(
+        `**${openTickets.length}** open ticket${openTickets.length === 1 ? "" : "s"}, ` +
+          `**${closedTickets.length}** closed ticket${closedTickets.length === 1 ? "" : "s"}`
+      );
+
+      // Show open tickets first
+      if (openTickets.length > 0) {
+        const openList = openTickets
+          .slice(0, 10)
+          .map((ticket) => {
+            const channel = this.guild.channels.cache.get(ticket.channelId);
+            return `**${ticket.id}** - ${channel ? `<#${ticket.channelId}>` : "Deleted Channel"} - <@${ticket.userId}>`;
+          })
+          .join("\n");
+
+        embed.addFields({
+          name: "🟢 Open Tickets",
+          value: openList,
+          inline: false,
+        });
+      }
+
+      // Show recent closed tickets
+      if (closedTickets.length > 0) {
+        const closedList = closedTickets
+          .slice(0, 10)
+          .map((ticket) => {
+            const closedDate = ticket.closedAt ? `<t:${Math.floor(ticket.closedAt.getTime() / 1000)}:R>` : "Unknown";
+            return `**${ticket.id}** - <@${ticket.userId}> - Closed ${closedDate}`;
+          })
+          .join("\n");
+
+        embed.addFields({
+          name: "🔴 Recent Closed Tickets",
+          value: closedList,
+          inline: false,
+        });
+      }
+
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
+      logger.error("Error listing tickets:", error);
+      return {
+        content: `❌ Failed to list tickets: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleTranscript(): Promise<CommandResponse> {
+    const ticketId = this.getStringOption("ticket_id", true);
+
+    try {
+      const ticket = await prisma.ticket.findFirst({
+        where: {
+          guildId: this.guild.id,
+          id: ticketId,
+        },
+      });
+
+      if (!ticket) {
+        return {
+          content: `❌ Ticket with ID \`${ticketId}\` not found.`,
+          ephemeral: true,
+        };
+      }
+
+      const channel = this.guild.channels.cache.get(ticket.channelId) as TextChannel;
+      if (!channel) {
+        return {
+          content: "❌ Ticket channel no longer exists.",
+          ephemeral: true,
+        };
+      }
+
+      // Fetch messages and create transcript
+      const messages = await channel.messages.fetch({ limit: 100 });
+      const transcript = Array.from(messages.values())
+        .reverse()
+        .map((msg) => `[${msg.createdAt.toISOString()}] ${msg.author.tag}: ${msg.content}`)
+        .join("\n");
+
+      const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle("📋 Ticket Transcript")
+        .setDescription(`Transcript for ticket **${ticketId}**`)
+        .addFields(
+          { name: "Ticket ID", value: ticket.id, inline: true },
+          { name: "Opened By", value: `<@${ticket.userId}>`, inline: true },
+          { name: "Status", value: ticket.status, inline: true },
+          { name: "Created", value: `<t:${Math.floor(ticket.createdAt.getTime() / 1000)}:F>`, inline: true }
+        )
+        .setTimestamp();
+
+      if (ticket.closedAt) {
+        embed.addFields(
+          { name: "Closed", value: `<t:${Math.floor(ticket.closedAt.getTime() / 1000)}:F>`, inline: true },
+          { name: "Closed By", value: ticket.closedBy ? `<@${ticket.closedBy}>` : "Unknown", inline: true }
+        );
+      }
+
+      // Send transcript as file if it's too long
+      if (transcript.length > 1000) {
+        const buffer = Buffer.from(transcript, "utf8");
+        return {
+          embeds: [embed],
+          files: [
+            {
+              attachment: buffer,
+              name: `transcript-${ticketId}.txt`,
+            },
+          ],
+          ephemeral: true,
+        };
+      } else {
+        embed.addFields({
+          name: "📝 Messages",
+          value: transcript || "No messages found",
+          inline: false,
+        });
+
+        return { embeds: [embed], ephemeral: true };
+      }
+    } catch (error) {
+      logger.error("Error generating transcript:", error);
+      return {
+        content: `❌ Failed to generate transcript: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+}
+
+// Export the command instance
+export default new TicketCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("ticket")
+  .setDescription("ADMIN ONLY: Manage support tickets")
+  .addSubcommand((sub) =>
+    sub
+      .setName("close")
+      .setDescription("Close the current ticket")
+      .addStringOption((opt) => opt.setName("reason").setDescription("Reason for closing the ticket"))
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("add")
+      .setDescription("Add a user to the current ticket")
+      .addUserOption((opt) => opt.setName("user").setDescription("User to add to the ticket").setRequired(true))
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("remove")
+      .setDescription("Remove a user from the current ticket")
+      .addUserOption((opt) => opt.setName("user").setDescription("User to remove from the ticket").setRequired(true))
+  )
+  .addSubcommand((sub) => sub.setName("list").setDescription("List all tickets in this server"))
+  .addSubcommand((sub) =>
+    sub
+      .setName("transcript")
+      .setDescription("Get transcript of a ticket")
+      .addStringOption((opt) =>
+        opt.setName("ticket_id").setDescription("ID of the ticket to get transcript for").setRequired(true)
+      )
+  );

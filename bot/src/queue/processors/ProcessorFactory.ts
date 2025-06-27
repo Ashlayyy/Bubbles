@@ -6,7 +6,6 @@ import { ConfigProcessor } from "./ConfigProcessor.js";
 import { GiveawayProcessor } from "./GiveawayProcessor.js";
 import { MessageProcessor } from "./MessageProcessor.js";
 import { ModerationProcessor } from "./ModerationProcessor.js";
-import { MusicProcessor } from "./MusicProcessor.js";
 
 export interface ProcessorStats {
   processorName: string;
@@ -33,7 +32,6 @@ export class ProcessorFactory {
   private initializeProcessors(): void {
     const processorInstances = [
       new ModerationProcessor(this.client),
-      new MusicProcessor(this.client),
       new MessageProcessor(this.client),
       new ConfigProcessor(this.client),
       new GiveawayProcessor(this.client),

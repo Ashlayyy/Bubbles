@@ -13,54 +13,91 @@ import {
   type ModalSubmitInteraction,
 } from "discord.js";
 
-import { prisma } from "../../../database/index.js";
-import Command from "../../../structures/Command.js";
 import { PermissionLevel } from "../../../structures/PermissionTypes.js";
+import {
+  formatDuration,
+  parseDuration,
+  parseEvidence,
+  type CommandConfig,
+  type CommandResponse,
+} from "../../_core/index.js";
+import { ModerationCommand } from "../../_core/specialized/ModerationCommand.js";
 
-export default new Command(
-  new ContextMenuCommandBuilder()
-    .setName("Ban User")
-    .setType(ApplicationCommandType.Message)
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers),
+/**
+ * Ban User Context Menu Command - Ban a user from a message context menu
+ */
+export class BanUserContextCommand extends ModerationCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "Ban User",
+      description: "Ban a user from the server",
+      category: "moderation",
+      permissions: {
+        level: PermissionLevel.MODERATOR,
+        discordPermissions: [PermissionsBitField.Flags.BanMembers],
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    if (!interaction.isMessageContextMenuCommand() || !interaction.guild) return;
+    super(config);
+  }
 
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isMessageContextMenu()) {
+      throw new Error("This command only works as a message context menu");
+    }
+
+    const interaction = this.interaction as import("discord.js").MessageContextMenuCommandInteraction;
     const targetMessage = interaction.targetMessage;
     const targetUser = targetMessage.author;
 
-    // Don't allow banning bots or the user themselves
+    // Validate the target user
     if (targetUser.bot) {
-      await interaction.reply({
-        content: "❌ You cannot ban bots using this command.",
-        ephemeral: true,
-      });
-      return;
+      return this.createModerationError("ban", targetUser, "You cannot ban bots using this command.");
     }
 
-    if (targetUser.id === interaction.user.id) {
-      await interaction.reply({
-        content: "❌ You cannot ban yourself.",
-        ephemeral: true,
-      });
-      return;
+    if (targetUser.id === this.user.id) {
+      return this.createModerationError("ban", targetUser, "You cannot ban yourself.");
     }
 
     // Check if user is bannable
-    const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
-    if (member && !member.bannable) {
-      await interaction.reply({
-        content: "❌ I cannot ban this user. They may have higher permissions than me.",
-        ephemeral: true,
-      });
-      return;
+    const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
+    if (member) {
+      try {
+        this.validateModerationTarget(member);
+      } catch (error) {
+        return this.createModerationError(
+          "ban",
+          targetUser,
+          error instanceof Error ? error.message : "Cannot ban this user"
+        );
+      }
+
+      if (!member.bannable) {
+        return this.createModerationError(
+          "ban",
+          targetUser,
+          "I cannot ban this user. They may have higher permissions than me."
+        );
+      }
     }
 
-    // Create evidence link
-    const messageLink = `https://discord.com/channels/${interaction.guild.id}/${targetMessage.channel.id}/${targetMessage.id}`;
+    // Create evidence link and content preview
+    const messageLink = `https://discord.com/channels/${this.guild.id}/${targetMessage.channel.id}/${targetMessage.id}`;
     const truncatedContent =
       targetMessage.content.length > 100 ? targetMessage.content.substring(0, 100) + "..." : targetMessage.content;
 
+    return this.showBanConfirmation(targetUser, targetMessage, messageLink, truncatedContent);
+  }
+
+  private showBanConfirmation(
+    targetUser: import("discord.js").User,
+    targetMessage: import("discord.js").Message,
+    messageLink: string,
+    truncatedContent: string
+  ): CommandResponse {
     const embed = new EmbedBuilder()
       .setColor(0xe74c3c)
       .setTitle("🔨 Ban User")
@@ -83,7 +120,7 @@ export default new Command(
         }
       )
       .setTimestamp()
-      .setFooter({ text: `Requested by ${interaction.user.tag}` });
+      .setFooter({ text: `Requested by ${this.user.tag}` });
 
     const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -99,16 +136,26 @@ export default new Command(
       new ButtonBuilder().setCustomId("ban_cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary).setEmoji("❌")
     );
 
-    await interaction.reply({
+    // Set up interaction handlers (this is a simplified approach)
+    this.setupInteractionHandlers(targetUser, targetMessage, messageLink, truncatedContent);
+
+    return {
       embeds: [embed],
       components: [buttons],
       ephemeral: true,
-    });
+    };
+  }
 
+  private setupInteractionHandlers(
+    targetUser: import("discord.js").User,
+    targetMessage: import("discord.js").Message,
+    messageLink: string,
+    truncatedContent: string
+  ): void {
     // Handle button interactions
-    const collector = interaction.channel?.createMessageComponentCollector({
+    const collector = this.interaction.channel?.createMessageComponentCollector({
       time: 300000, // 5 minutes
-      filter: (i) => i.user.id === interaction.user.id,
+      filter: (i) => i.user.id === this.user.id,
     });
 
     collector?.on("collect", (buttonInteraction: ButtonInteraction) => {
@@ -124,81 +171,11 @@ export default new Command(
           }
 
           if (buttonInteraction.customId.startsWith("ban_quick_")) {
-            const [, , userId, messageId] = buttonInteraction.customId.split("_");
-
-            await buttonInteraction.deferUpdate();
-
-            // Quick ban with default reason
-            const reason = truncatedContent
-              ? `Inappropriate message: "${truncatedContent}"`
-              : "Inappropriate behavior (via context menu)";
-
-            try {
-              if (!interaction.guild) return;
-              const case_ = await client.moderationManager.ban(
-                interaction.guild,
-                userId,
-                interaction.user.id,
-                reason,
-                undefined, // No duration (permanent)
-                [messageLink] // Evidence
-              );
-
-              await buttonInteraction.editReply({
-                content: `✅ **${targetUser.tag}** has been banned permanently.\n📋 **Case #${case_.caseNumber}** created.`,
-                embeds: [],
-                components: [],
-              });
-            } catch (error) {
-              await buttonInteraction.editReply({
-                content: `❌ Failed to ban **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-                embeds: [],
-                components: [],
-              });
-            }
+            await this.handleQuickBan(buttonInteraction, targetUser, truncatedContent, messageLink);
           }
 
           if (buttonInteraction.customId.startsWith("ban_custom_")) {
-            const [, , userId, messageId] = buttonInteraction.customId.split("_");
-
-            // Show modal for custom ban details
-            const modal = new ModalBuilder()
-              .setCustomId(`ban_modal_${userId}_${messageId}`)
-              .setTitle("Custom Ban Details");
-
-            const reasonInput = new TextInputBuilder()
-              .setCustomId("ban_reason")
-              .setLabel("Reason for ban")
-              .setStyle(TextInputStyle.Paragraph)
-              .setPlaceholder("Enter the reason for this ban...")
-              .setValue(truncatedContent ? `Inappropriate message: "${truncatedContent}"` : "")
-              .setRequired(true)
-              .setMaxLength(1000);
-
-            const durationInput = new TextInputBuilder()
-              .setCustomId("ban_duration")
-              .setLabel("Duration (optional)")
-              .setStyle(TextInputStyle.Short)
-              .setPlaceholder("e.g., 7d, 3h, 30m (leave empty for permanent)")
-              .setRequired(false)
-              .setMaxLength(10);
-
-            const evidenceInput = new TextInputBuilder()
-              .setCustomId("ban_evidence")
-              .setLabel("Additional Evidence (optional)")
-              .setStyle(TextInputStyle.Paragraph)
-              .setPlaceholder("Additional evidence links, comma-separated...")
-              .setValue(messageLink)
-              .setRequired(false)
-              .setMaxLength(1000);
-
-            const reasonRow = new ActionRowBuilder<TextInputBuilder>().addComponents(reasonInput);
-            const durationRow = new ActionRowBuilder<TextInputBuilder>().addComponents(durationInput);
-            const evidenceRow = new ActionRowBuilder<TextInputBuilder>().addComponents(evidenceInput);
-
-            modal.addComponents(reasonRow, durationRow, evidenceRow);
-
-            await buttonInteraction.showModal(modal);
+            await this.handleCustomBan(buttonInteraction, targetUser, targetMessage, messageLink, truncatedContent);
           }
         } catch (error) {
           console.error("Error handling ban context menu button:", error);
@@ -212,161 +189,186 @@ export default new Command(
       })();
     });
 
-    // Handle modal submissions
-    const modalCollector = interaction.channel?.createMessageComponentCollector({
-      time: 300000, // 5 minutes
-      filter: (i) => i.user.id === interaction.user.id && i.isModalSubmit(),
+    collector?.on("end", () => {
+      // Disable buttons after timeout
+      void this.interaction
+        .editReply({
+          components: [
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+              new ButtonBuilder()
+                .setCustomId("expired")
+                .setLabel("Expired")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true)
+            ),
+          ],
+        })
+        .catch(() => {
+          // Do nothing
+        });
+    });
+  }
+
+  private async handleQuickBan(
+    buttonInteraction: ButtonInteraction,
+    targetUser: import("discord.js").User,
+    truncatedContent: string,
+    messageLink: string
+  ): Promise<void> {
+    await buttonInteraction.deferUpdate();
+
+    const reason = truncatedContent
+      ? `Inappropriate message: "${truncatedContent}"`
+      : "Inappropriate behavior (via context menu)";
+
+    try {
+      const case_ = await this.client.moderationManager.ban(
+        this.guild,
+        targetUser.id,
+        this.user.id,
+        reason,
+        undefined, // No duration (permanent)
+        [messageLink] // Evidence
+      );
+
+      await buttonInteraction.editReply({
+        content: `✅ **${targetUser.tag}** has been banned permanently.\n📋 **Case #${case_.caseNumber}** created.`,
+        embeds: [],
+        components: [],
+      });
+    } catch (error) {
+      await buttonInteraction.editReply({
+        content: `❌ Failed to ban **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
+        embeds: [],
+        components: [],
+      });
+    }
+  }
+
+  private async handleCustomBan(
+    buttonInteraction: ButtonInteraction,
+    targetUser: import("discord.js").User,
+    targetMessage: import("discord.js").Message,
+    messageLink: string,
+    truncatedContent: string
+  ): Promise<void> {
+    // Create and show modal for custom ban details
+    const modal = new ModalBuilder()
+      .setCustomId(`ban_modal_${targetUser.id}_${targetMessage.id}`)
+      .setTitle("Custom Ban Details");
+
+    const reasonInput = new TextInputBuilder()
+      .setCustomId("ban_reason")
+      .setLabel("Reason for ban")
+      .setStyle(TextInputStyle.Paragraph)
+      .setPlaceholder("Enter the reason for this ban...")
+      .setValue(truncatedContent ? `Inappropriate message: "${truncatedContent}"` : "")
+      .setRequired(true)
+      .setMaxLength(1000);
+
+    const durationInput = new TextInputBuilder()
+      .setCustomId("ban_duration")
+      .setLabel("Duration (optional)")
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder("e.g., 7d, 3h, 30m (leave empty for permanent)")
+      .setRequired(false)
+      .setMaxLength(10);
+
+    const evidenceInput = new TextInputBuilder()
+      .setCustomId("ban_evidence")
+      .setLabel("Additional Evidence (optional)")
+      .setStyle(TextInputStyle.Paragraph)
+      .setPlaceholder("Additional evidence links, comma-separated...")
+      .setValue(messageLink)
+      .setRequired(false)
+      .setMaxLength(1000);
+
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(reasonInput),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(durationInput),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(evidenceInput)
+    );
+
+    await buttonInteraction.showModal(modal);
+
+    // Handle modal submission
+    this.setupModalHandler(targetUser, messageLink);
+  }
+
+  private setupModalHandler(targetUser: import("discord.js").User, messageLink: string): void {
+    // Note: In a production implementation, you'd want a more robust way to handle this
+    // This is a simplified approach for the conversion
+    const modalCollector = this.interaction.channel?.createMessageComponentCollector({
+      time: 300000,
+      filter: (i) => i.user.id === this.user.id && i.isModalSubmit(),
     });
 
     modalCollector?.on("collect", (modalInteraction: ModalSubmitInteraction) => {
       void (async () => {
+        if (!modalInteraction.customId.startsWith("ban_modal_")) return;
+
+        await modalInteraction.deferReply({ ephemeral: true });
+
         try {
-          if (modalInteraction.customId.startsWith("ban_modal_")) {
-            const [, , userId] = modalInteraction.customId.split("_");
+          const reasonInput = modalInteraction.fields.getTextInputValue("ban_reason");
+          const durationStr = modalInteraction.fields.getTextInputValue("ban_duration");
+          const evidenceStr = modalInteraction.fields.getTextInputValue("ban_evidence");
 
-            await modalInteraction.deferReply({ ephemeral: true });
+          // Expand reason alias
+          const reason = await this.expandReasonAlias(reasonInput, targetUser);
 
-            let reason = modalInteraction.fields.getTextInputValue("ban_reason");
-            const durationStr = modalInteraction.fields.getTextInputValue("ban_duration");
-            const evidenceStr = modalInteraction.fields.getTextInputValue("ban_evidence");
-
-            // Check if reason is an alias and expand it
-            if (reason && reason !== "No reason provided" && interaction.guild) {
-              const aliasName = reason.toUpperCase();
-              const alias = await prisma.alias.findUnique({
-                where: { guildId_name: { guildId: interaction.guild.id, name: aliasName } },
-              });
-
-              if (alias) {
-                // Expand alias content with variables
-                reason = alias.content;
-                reason = reason.replace(/\{user\}/g, `<@${targetUser.id}>`);
-                reason = reason.replace(/\{server\}/g, interaction.guild.name);
-                reason = reason.replace(/\{moderator\}/g, `<@${interaction.user.id}>`);
-
-                // Update usage count
-                await prisma.alias.update({
-                  where: { id: alias.id },
-                  data: { usageCount: { increment: 1 } },
-                });
-              }
-            }
-
-            // Parse duration
-            let duration: number | undefined;
-            if (durationStr) {
-              const parsedDuration = parseDuration(durationStr);
-              if (parsedDuration === null) {
-                await modalInteraction.editReply({
-                  content: "❌ Invalid duration format. Use format like: 1d, 3h, 30m",
-                });
-                return;
-              }
-              duration = parsedDuration;
-            }
-
-            // Parse evidence
-            const evidence = evidenceStr
-              .split(",")
-              .map((s) => s.trim())
-              .filter((s) => s.length > 0);
-
-            try {
-              if (!interaction.guild) return;
-              const case_ = await client.moderationManager.ban(
-                interaction.guild,
-                userId,
-                interaction.user.id,
-                reason,
-                duration,
-                evidence.length > 0 ? evidence : undefined
-              );
-
-              const durationText = duration ? ` for ${formatDuration(duration)}` : " permanently";
-
+          // Parse duration
+          let duration: number | undefined;
+          if (durationStr) {
+            const parsedDuration = parseDuration(durationStr);
+            if (parsedDuration === null) {
               await modalInteraction.editReply({
-                content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber}** created.`,
+                content: "❌ Invalid duration format. Use format like: 1d, 3h, 30m",
               });
-
-              // Update the original interaction
-              await interaction.editReply({
-                content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber}** created.`,
-                embeds: [],
-                components: [],
-              });
-            } catch (error) {
-              await modalInteraction.editReply({
-                content: `❌ Failed to ban **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-              });
+              return;
             }
+            duration = parsedDuration;
           }
+
+          // Parse evidence
+          const evidence = parseEvidence(evidenceStr);
+
+          const case_ = await this.client.moderationManager.ban(
+            this.guild,
+            targetUser.id,
+            this.user.id,
+            reason,
+            duration,
+            evidence.all.length > 0 ? evidence.all : [messageLink]
+          );
+
+          const durationText = duration ? ` for ${formatDuration(duration)}` : " permanently";
+
+          await modalInteraction.editReply({
+            content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber}** created.`,
+          });
+
+          // Update the original interaction
+          await this.interaction.editReply({
+            content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber}** created.`,
+            embeds: [],
+            components: [],
+          });
         } catch (error) {
-          console.error("Error handling ban modal:", error);
-          if (!modalInteraction.replied && !modalInteraction.deferred) {
-            await modalInteraction.reply({
-              content: "❌ An error occurred. Please try again.",
-              ephemeral: true,
-            });
-          }
+          await modalInteraction.editReply({
+            content: `❌ Failed to ban **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
+          });
         }
       })();
     });
-
-    collector?.on("end", () => {
-      // Disable buttons after timeout
-      const disabledButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        ...buttons.components.map((button) => ButtonBuilder.from(button).setDisabled(true))
-      );
-
-      void interaction.editReply({ components: [disabledButtons] }).catch(() => {
-        // Ignore errors if message was deleted
-      });
-    });
-  },
-  {
-    ephemeral: true,
-    enabledOnDev: true,
-    permissions: {
-      level: PermissionLevel.MODERATOR,
-      discordPermissions: [PermissionsBitField.Flags.BanMembers],
-      isConfigurable: true,
-    },
   }
-);
-
-function parseDuration(durationStr: string): number | null {
-  const regex = /^(\d+)([smhdw])$/;
-  const match = regex.exec(durationStr);
-  if (!match) return null;
-
-  const value = parseInt(match[1]);
-  const unit = match[2];
-
-  const multipliers = {
-    s: 1,
-    m: 60,
-    h: 60 * 60,
-    d: 60 * 60 * 24,
-    w: 60 * 60 * 24 * 7,
-  };
-
-  return value * multipliers[unit as keyof typeof multipliers];
 }
 
-function formatDuration(seconds: number): string {
-  const units = [
-    { name: "week", seconds: 604800 },
-    { name: "day", seconds: 86400 },
-    { name: "hour", seconds: 3600 },
-    { name: "minute", seconds: 60 },
-  ];
+// Export the command instance
+export default new BanUserContextCommand();
 
-  for (const unit of units) {
-    const count = Math.floor(seconds / unit.seconds);
-    if (count > 0) {
-      return `${count} ${unit.name}${count !== 1 ? "s" : ""}`;
-    }
-  }
-
-  return `${seconds} second${seconds !== 1 ? "s" : ""}`;
-}
+// Export the Discord command builder for registration
+export const builder = new ContextMenuCommandBuilder()
+  .setName("Ban User")
+  .setType(ApplicationCommandType.Message)
+  .setDefaultMemberPermissions(0);

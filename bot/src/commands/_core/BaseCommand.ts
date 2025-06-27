@@ -1,0 +1,316 @@
+import type {
+  Attachment,
+  CategoryChannel,
+  ForumChannel,
+  GuildChannel,
+  GuildMember,
+  MediaChannel,
+  NewsChannel,
+  Role,
+  StageChannel,
+  TextChannel,
+  User,
+  VoiceChannel,
+} from "discord.js";
+
+import logger from "../../logger.js";
+import type Client from "../../structures/Client.js";
+import { ResponseBuilder } from "../_shared/responses/ResponseBuilder.js";
+import { CommandError, handleCommandError } from "./errors.js";
+import type {
+  CommandConfig,
+  CommandContext,
+  CommandInteraction,
+  CommandResponse,
+  CommandResult,
+  SlashCommandInteraction,
+} from "./types.js";
+
+export abstract class BaseCommand {
+  protected readonly config: CommandConfig;
+  protected context!: CommandContext;
+  protected responseBuilder: ResponseBuilder;
+
+  constructor(config: CommandConfig) {
+    this.config = config;
+    this.responseBuilder = new ResponseBuilder();
+  }
+
+  // Abstract method that must be implemented by subclasses
+  protected abstract execute(...args: any[]): Promise<CommandResult | CommandResponse>;
+
+  // Main execution method called by the command handler
+  async run(client: Client, interaction: CommandInteraction): Promise<void> {
+    try {
+      // Build command context
+      this.context = this.buildContext(client, interaction);
+
+      // Run middleware chain
+      this.runMiddleware();
+
+      // Auto-defer if configured
+      if (this.shouldAutoDefer() && !interaction.deferred && !interaction.replied) {
+        await interaction.deferReply({
+          ephemeral: this.config.ephemeral ?? false,
+        });
+      }
+
+      // Execute the command
+      const result = await this.execute();
+
+      // Handle the result
+      await this.handleResult(result);
+    } catch (error) {
+      await this.handleError(error as Error);
+    }
+  }
+
+  // Context building
+  protected buildContext(client: Client, interaction: CommandInteraction): CommandContext {
+    if (!interaction.guild) {
+      throw new CommandError("This command can only be used in a server.", "GUILD_ONLY");
+    }
+
+    const channel = interaction.channel;
+    if (!channel) {
+      throw new CommandError("This command cannot be used in this type of channel.", "INVALID_CHANNEL");
+    }
+
+    // Properly type the member and channel
+    const member = interaction.member as GuildMember;
+    const typedChannel = channel as
+      | TextChannel
+      | VoiceChannel
+      | CategoryChannel
+      | NewsChannel
+      | StageChannel
+      | ForumChannel
+      | MediaChannel;
+
+    return {
+      client,
+      interaction,
+      guild: interaction.guild,
+      member,
+      user: interaction.user,
+      channel: typedChannel,
+    };
+  }
+
+  // Middleware execution
+  protected runMiddleware(): void {
+    // Permission checking
+    this.checkPermissions();
+
+    // Owner-only validation
+    if (this.config.ownerOnly && this.context.user.id !== process.env.OWNER_ID) {
+      throw new CommandError("This command is restricted to the bot owner.", "OWNER_ONLY");
+    }
+
+    // Cooldown checking
+    this.checkCooldown();
+  }
+
+  // Permission checking
+  protected checkPermissions(): void {
+    if (!this.config.permissions?.discordPermissions) return;
+
+    const member = this.context.member;
+    const hasPermissions = this.config.permissions.discordPermissions.every((permission) =>
+      member.permissions.has(permission)
+    );
+
+    if (!hasPermissions) {
+      throw new CommandError("You don't have permission to use this command.", "INSUFFICIENT_PERMISSIONS", true);
+    }
+  }
+
+  // Cooldown checking (placeholder - implement based on your cooldown system)
+  protected checkCooldown(): void {
+    if (!this.config.cooldown) return;
+    // TODO: Implement cooldown checking logic
+  }
+
+  // Auto-defer logic
+  protected shouldAutoDefer(): boolean {
+    // Can be overridden by subclasses or decorators
+    return true;
+  }
+
+  // Result handling
+  protected async handleResult(result: CommandResult | CommandResponse): Promise<void> {
+    let response: CommandResponse;
+
+    if ("success" in result) {
+      // CommandResult
+      if (!result.success && result.error) {
+        throw result.error;
+      }
+      if (!result.response) return;
+      response = result.response;
+    } else {
+      // CommandResponse
+      response = result;
+    }
+
+    await this.sendResponse(response);
+  }
+
+  // Response sending
+  protected async sendResponse(response: CommandResponse): Promise<void> {
+    const interaction = this.context.interaction;
+
+    const replyOptions = {
+      content: response.content,
+      embeds: response.embeds,
+      components: response.components,
+      files: response.files,
+      ephemeral: response.ephemeral ?? this.config.ephemeral ?? false,
+    };
+
+    try {
+      if (interaction.deferred) {
+        await interaction.editReply(replyOptions);
+      } else if (!interaction.replied) {
+        await interaction.reply(replyOptions);
+      } else {
+        await interaction.followUp(replyOptions);
+      }
+    } catch (error) {
+      logger.error(`Failed to send response for command ${this.config.name}:`, error);
+
+      // Try to send a simple error message
+      try {
+        const errorMessage = {
+          content: "❌ An error occurred while processing your command.",
+          ephemeral: true,
+        };
+
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply(errorMessage);
+        } else if (interaction.deferred) {
+          await interaction.editReply(errorMessage);
+        } else {
+          await interaction.followUp(errorMessage);
+        }
+      } catch (secondaryError) {
+        logger.error(`Failed to send error message for command ${this.config.name}:`, secondaryError);
+      }
+    }
+  }
+
+  // Error handling
+  protected async handleError(error: Error): Promise<void> {
+    const commandError = handleCommandError(error, this.config.name);
+
+    const response = new ResponseBuilder().error("Command Error", commandError.message).ephemeral(true).build();
+
+    try {
+      await this.sendResponse(response);
+    } catch (sendError) {
+      logger.error(`Failed to send error response for command ${this.config.name}:`, sendError);
+    }
+  }
+
+  // Getters for easy access to context properties
+  get client(): Client {
+    return this.context.client;
+  }
+
+  get interaction(): CommandInteraction {
+    return this.context.interaction;
+  }
+
+  get guild() {
+    return this.context.guild;
+  }
+
+  get member() {
+    return this.context.member;
+  }
+
+  get user() {
+    return this.context.user;
+  }
+
+  get channel() {
+    return this.context.channel;
+  }
+
+  // Utility methods for slash command options
+  protected isSlashCommand(): boolean {
+    return this.interaction.isChatInputCommand();
+  }
+
+  protected isMessageContextMenu(): boolean {
+    return this.interaction.isMessageContextMenuCommand();
+  }
+
+  protected isUserContextMenu(): boolean {
+    return this.interaction.isUserContextMenuCommand();
+  }
+
+  // Helper methods for getting slash command options with proper typing
+  protected getStringOption(name: string, required: true): string;
+  protected getStringOption(name: string, required?: false): string | null;
+  protected getStringOption(name: string, required = false): string | null {
+    if (!this.isSlashCommand()) return null;
+    return (this.interaction as SlashCommandInteraction).options.getString(name, required);
+  }
+
+  protected getUserOption(name: string, required: true): User;
+  protected getUserOption(name: string, required?: false): User | null;
+  protected getUserOption(name: string, required = false): User | null {
+    if (!this.isSlashCommand()) return null;
+    return (this.interaction as SlashCommandInteraction).options.getUser(name, required);
+  }
+
+  protected getBooleanOption(name: string, required: true): boolean;
+  protected getBooleanOption(name: string, required?: false): boolean | null;
+  protected getBooleanOption(name: string, required = false): boolean | null {
+    if (!this.isSlashCommand()) return null;
+    return (this.interaction as SlashCommandInteraction).options.getBoolean(name, required);
+  }
+
+  protected getNumberOption(name: string, required: true): number;
+  protected getNumberOption(name: string, required?: false): number | null;
+  protected getNumberOption(name: string, required = false): number | null {
+    if (!this.isSlashCommand()) return null;
+    return (this.interaction as SlashCommandInteraction).options.getNumber(name, required);
+  }
+
+  protected getIntegerOption(name: string, required: true): number;
+  protected getIntegerOption(name: string, required?: false): number | null;
+  protected getIntegerOption(name: string, required = false): number | null {
+    if (!this.isSlashCommand()) return null;
+    return (this.interaction as SlashCommandInteraction).options.getInteger(name, required);
+  }
+
+  protected getRoleOption(name: string, required: true): Role;
+  protected getRoleOption(name: string, required?: false): Role | null;
+  protected getRoleOption(name: string, required = false): Role | null {
+    if (!this.isSlashCommand()) return null;
+    return (this.interaction as SlashCommandInteraction).options.getRole(name, required) as Role | null;
+  }
+
+  protected getChannelOption(name: string, required: true): GuildChannel;
+  protected getChannelOption(name: string, required?: false): GuildChannel | null;
+  protected getChannelOption(name: string, required = false): GuildChannel | null {
+    if (!this.isSlashCommand()) return null;
+    return (this.interaction as SlashCommandInteraction).options.getChannel(name, required) as GuildChannel | null;
+  }
+
+  protected getMemberOption(name: string, required: true): GuildMember;
+  protected getMemberOption(name: string, required?: false): GuildMember | null;
+  protected getMemberOption(name: string, required = false): GuildMember | null {
+    if (!this.isSlashCommand()) return null;
+    return (this.interaction as SlashCommandInteraction).options.getMember(name) as GuildMember | null;
+  }
+
+  protected getAttachmentOption(name: string, required: true): Attachment;
+  protected getAttachmentOption(name: string, required?: false): Attachment | null;
+  protected getAttachmentOption(name: string, required = false): Attachment | null {
+    if (!this.isSlashCommand()) return null;
+    return (this.interaction as SlashCommandInteraction).options.getAttachment(name, required);
+  }
+}

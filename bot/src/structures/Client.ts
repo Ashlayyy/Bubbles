@@ -1,6 +1,3 @@
-import { DefaultExtractors } from "@discord-player/extractor";
-import { Player, useMainPlayer } from "discord-player";
-import { YoutubeiExtractor } from "discord-player-youtubei";
 import type {
   ChatInputCommandInteraction,
   EmbedData,
@@ -159,9 +156,6 @@ export default class Client extends DiscordClient {
         "Note that environment variable *values* can NOT be verified. They may still error at first use if the value(s) are invalid!"
       );
 
-      logger.info("Initializing discord player");
-      new Player(this);
-
       logger.info("Loading config file");
       this.config = getConfigFile();
       logger.info(`Loaded config for "${this.config.name}"`);
@@ -203,11 +197,6 @@ export default class Client extends DiscordClient {
         logger.info(`Warming up cache for ${guildIds.length} guilds...`);
         cacheService.warmup(guildIds);
       }
-
-      logger.info("Loading discord player extractors");
-      const player = useMainPlayer();
-      await player.extractors.register(YoutubeiExtractor, {});
-      await player.extractors.loadMulti(DefaultExtractors);
 
       logger.info("Logging into Discord... ");
       await this.login(process.env.DISCORD_TOKEN);
@@ -384,14 +373,18 @@ export default class Client extends DiscordClient {
     const rest = new REST().setToken(process.env.DISCORD_TOKEN);
 
     try {
+      // Environment variables are validated in constructor, so they're guaranteed to exist
+      const clientId = process.env.DISCORD_CLIENT_ID;
+      const testGuildId = process.env.TEST_GUILD_ID;
+
+      if (!clientId || !testGuildId) {
+        throw new Error("DISCORD_CLIENT_ID and TEST_GUILD_ID must be set in the environment variables");
+      }
+
       if (this.devMode) {
         logger.info(`\tDEVELOPMENT MODE. Only working in guild with "TEST_GUILD_ID" environment variable`);
 
-        // `TEST_GUILD_ID` is validated in the constructor; convert to string for type safety
-        const fullRoute = Routes.applicationGuildCommands(
-          `${process.env.DISCORD_CLIENT_ID}`,
-          `${process.env.TEST_GUILD_ID}`
-        );
+        const fullRoute = Routes.applicationGuildCommands(clientId, testGuildId);
 
         await rest.put(fullRoute, {
           body: commandDataArr,
@@ -401,7 +394,7 @@ export default class Client extends DiscordClient {
           "\tPRODUCTION MODE. Working on all server(s) this bot is in. Can take up to one hour to register changes"
         );
 
-        const fullRoute = Routes.applicationCommands(`${process.env.DISCORD_CLIENT_ID}`);
+        const fullRoute = Routes.applicationCommands(clientId);
 
         await rest.put(fullRoute, {
           body: commandDataArr,
@@ -423,8 +416,6 @@ export default class Client extends DiscordClient {
   private async loadEvents(): Promise<void> {
     logger.info("Loading events");
 
-    const player = useMainPlayer();
-
     const eventsDir = this.devMode ? "./src/events" : "./build/bot/src/events";
     console.log(eventsDir);
     const eventEmitterTypes: EventEmitterType[] = [];
@@ -443,11 +434,6 @@ export default class Client extends DiscordClient {
       // Bind event to its corresponding event emitter
       if (eventEmitterType === EventEmitterType.Client && event.isClient()) {
         event.bindToEventEmitter(this);
-      } else if (eventEmitterType === EventEmitterType.MusicPlayer && event.isMusicPlayer()) {
-        event.bindToEventEmitter(player);
-      } else if (eventEmitterType === EventEmitterType.MusicPlayerGuildQueue && event.isMusicPlayerGuildQueue()) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        event.bindToEventEmitter(player.events);
       } else if (eventEmitterType === EventEmitterType.Prisma && event.isPrisma()) {
         event.bindToEventEmitter();
       } else {

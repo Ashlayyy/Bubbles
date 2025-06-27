@@ -1,39 +1,50 @@
 import { GuildMember, SlashCommandBuilder, time, TimestampStyles, User } from "discord.js";
-
-import Command from "../../structures/Command.js";
 import type { ModerationCase } from "../../structures/ModerationManager.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import { type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("lookup")
-    .setDescription("Get comprehensive information about a user")
-    .addUserOption((option) => option.setName("user").setDescription("The user to look up").setRequired(true))
-    .addBooleanOption((option) =>
-      option.setName("detailed").setDescription("Show detailed case information").setRequired(false)
-    ),
+/**
+ * Lookup Command - Get comprehensive information about a user
+ */
+export class LookupCommand extends ModerationCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "lookup",
+      description: "Get comprehensive information about a user",
+      category: "moderation",
+      permissions: {
+        level: PermissionLevel.MODERATOR,
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
+    super(config);
+  }
 
-    const targetUser = interaction.options.getUser("user", true);
-    const detailed = interaction.options.getBoolean("detailed") ?? false;
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
 
-    await interaction.deferReply({ ephemeral: true });
+    const targetUser = this.getUserOption("user", true);
+    const detailed = this.getBooleanOption("detailed") ?? false;
 
     try {
       // Get member information (if in server)
-      const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+      const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
 
       // Get moderation data
-      const cases = await client.moderationManager.getUserHistory(interaction.guild.id, targetUser.id, 50);
-      const totalPoints = await client.moderationManager.getInfractionPoints(interaction.guild.id, targetUser.id);
+      const cases = await this.client.moderationManager.getUserHistory(this.guild.id, targetUser.id, 50);
+      const totalPoints = await this.client.moderationManager.getInfractionPoints(this.guild.id, targetUser.id);
 
       // Calculate risk assessment
       const riskAssessment = calculateRiskLevel(targetUser, member, cases, totalPoints);
 
       // Build main embed
-      const embed = client.genEmbed({
+      const embed = this.client.genEmbed({
         title: `🔍 User Lookup - ${targetUser.tag}`,
         thumbnail: { url: targetUser.displayAvatarURL({ size: 256 }) },
         color: getRiskColor(riskAssessment.level),
@@ -65,9 +76,9 @@ export default new Command(
           {
             name: "⚖️ Moderation Summary",
             value: [
-              `**Total Cases:** ${cases.length.toString()}`,
-              `**Total Points:** ${totalPoints.toString()}`,
-              `**Active Cases:** ${cases.filter((c) => c.isActive).length.toString()}`,
+              `**Total Cases:** ${cases.length}`,
+              `**Total Points:** ${totalPoints}`,
+              `**Active Cases:** ${cases.filter((c) => c.isActive).length}`,
               `**Last Incident:** ${cases[0] ? time(cases[0].createdAt, TimestampStyles.RelativeTime) : "None"}`,
             ].join("\n"),
             inline: true,
@@ -84,20 +95,20 @@ export default new Command(
             inline: true,
           },
         ],
-        footer: { text: `Lookup performed by ${interaction.user.tag}` },
+        footer: { text: `Lookup performed by ${this.user.tag}` },
         timestamp: new Date(),
       });
 
       // Add role information if member exists
       if (member && member.roles.cache.size > 1) {
         const roles = member.roles.cache
-          .filter((role) => role.id !== interaction.guild?.id) // Exclude @everyone
+          .filter((role) => role.id !== this.guild.id) // Exclude @everyone
           .sort((a, b) => b.position - a.position)
           .map((role) => role.name)
           .slice(0, 10); // Limit to 10 roles
 
         embed.addFields({
-          name: `🎭 Roles (${(member.roles.cache.size - 1).toString()})`,
+          name: `🎭 Roles (${member.roles.cache.size - 1})`,
           value: roles.join(", ") + (member.roles.cache.size > 11 ? "..." : ""),
           inline: false,
         });
@@ -109,7 +120,7 @@ export default new Command(
         embed.addFields({
           name: "📊 Case Breakdown",
           value: Object.entries(caseBreakdown)
-            .map(([type, count]) => `**${type}:** ${count.toString()}`)
+            .map(([type, count]) => `**${type}:** ${count}`)
             .join(" | "),
           inline: false,
         });
@@ -122,7 +133,7 @@ export default new Command(
             value: recentCases
               .map(
                 (c) =>
-                  `**#${c.caseNumber.toString()}** - ${c.type} (${c.points.toString()}pts) - ${time(c.createdAt, TimestampStyles.ShortDate)}\n${c.reason ?? "No reason"}`
+                  `**#${c.caseNumber}** - ${c.type} (${c.points}pts) - ${time(c.createdAt, TimestampStyles.ShortDate)}\n${c.reason ?? "No reason"}`
               )
               .join("\n\n"),
             inline: false,
@@ -130,20 +141,29 @@ export default new Command(
         }
       }
 
-      await interaction.editReply({ embeds: [embed] });
+      return { embeds: [embed], ephemeral: true };
     } catch (error) {
-      await interaction.editReply({
-        content: `❌ Failed to lookup **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
+      return this.createModerationError(
+        "user lookup",
+        targetUser,
+        error instanceof Error ? error.message : "Unknown error"
+      );
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.MODERATOR,
-      isConfigurable: true,
-    },
   }
-);
+}
+
+// Export the command instance
+export default new LookupCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("lookup")
+  .setDescription("Get comprehensive information about a user")
+  .setDefaultMemberPermissions(0) // Hide from all regular users
+  .addUserOption((option) => option.setName("user").setDescription("The user to look up").setRequired(true))
+  .addBooleanOption((option) =>
+    option.setName("detailed").setDescription("Show detailed case information").setRequired(false)
+  );
 
 interface RiskAssessment {
   level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -198,56 +218,66 @@ function calculateRiskLevel(
 
   // Active bans/timeouts
   const activeCases = cases.filter((c) => c.isActive);
-  if (activeCases.some((c) => c.type === "BAN")) {
-    factors.push("Currently banned");
-    riskScore += 4;
-  }
-  if (member?.isCommunicationDisabled()) {
-    factors.push("Currently timed out");
+  if (activeCases.length > 0) {
+    factors.push("Active punishments");
     riskScore += 1;
   }
 
-  // Default username pattern (common bot pattern)
-  if (/^[a-z]+\d+$/.test(user.username.toLowerCase())) {
-    factors.push("Suspicious username pattern");
+  // Severity of recent cases
+  const severeCases = cases.filter((c) => c.severity === "HIGH" || c.severity === "CRITICAL");
+  if (severeCases.length > 0) {
+    factors.push("Previous severe infractions");
     riskScore += 1;
   }
 
   // Determine risk level
   let level: RiskAssessment["level"];
-  if (riskScore >= 8) level = "CRITICAL";
-  else if (riskScore >= 5) level = "HIGH";
-  else if (riskScore >= 2) level = "MEDIUM";
-  else level = "LOW";
+  if (riskScore >= 7) {
+    level = "CRITICAL";
+  } else if (riskScore >= 5) {
+    level = "HIGH";
+  } else if (riskScore >= 3) {
+    level = "MEDIUM";
+  } else {
+    level = "LOW";
+  }
 
   return { level, factors };
 }
 
 function getRiskColor(level: string): number {
-  const colors = {
-    LOW: 0x2ecc71, // Green
-    MEDIUM: 0xf1c40f, // Yellow
-    HIGH: 0xe67e22, // Orange
-    CRITICAL: 0xe74c3c, // Red
-  };
-  return colors[level as keyof typeof colors] || 0x95a5a6;
+  switch (level) {
+    case "CRITICAL":
+      return 0x8b0000; // Dark red
+    case "HIGH":
+      return 0xff0000; // Red
+    case "MEDIUM":
+      return 0xff8c00; // Orange
+    case "LOW":
+    default:
+      return 0x00ff00; // Green
+  }
 }
 
 function getRiskEmoji(level: string): string {
-  const emojis = {
-    LOW: "🟢",
-    MEDIUM: "🟡",
-    HIGH: "🟠",
-    CRITICAL: "🔴",
-  };
-  return emojis[level as keyof typeof emojis] || "⚪";
+  switch (level) {
+    case "CRITICAL":
+      return "🚨";
+    case "HIGH":
+      return "🔴";
+    case "MEDIUM":
+      return "🟡";
+    case "LOW":
+    default:
+      return "🟢";
+  }
 }
 
 function getCaseBreakdown(cases: ModerationCase[]): Record<string, number> {
   const breakdown: Record<string, number> = {};
 
   for (const case_ of cases) {
-    breakdown[case_.type] = (breakdown[case_.type] ?? 0) + 1;
+    breakdown[case_.type] = (breakdown[case_.type] || 0) + 1;
   }
 
   return breakdown;

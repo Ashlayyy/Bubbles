@@ -5,20 +5,21 @@ import {
   ChannelType,
   EmbedBuilder,
   ModalBuilder,
-  PermissionsBitField,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
 } from "discord.js";
+import type { SlashCommandInteraction } from "../_core/types.js";
 
 import logger from "../../logger.js";
 import Client from "../../structures/Client.js";
-import Command, { GuildChatInputCommandInteraction } from "../../structures/Command.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import { GuildChatInputCommandInteraction } from "../../structures/Command.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
 // Setup Wizard Handler
-async function handleSetupWizard(client: Client, interaction: GuildChatInputCommandInteraction) {
+async function _handleSetupWizard(client: Client, interaction: GuildChatInputCommandInteraction) {
   const state = {
     step: 1,
     config: {
@@ -67,7 +68,7 @@ async function handleSetupWizard(client: Client, interaction: GuildChatInputComm
             inline: true,
           },
           { name: "⏰ Cooldown", value: `${state.config.cooldown} hours`, inline: true },
-          { name: "🔢 Max Appeals", value: `${state.config.maxAppeals} per user`, inline: true }
+          { name: "🔢 Max Appeals", value: `${String(state.config.maxAppeals)} per user`, inline: true }
         );
         break;
     }
@@ -245,7 +246,7 @@ async function handleSetupWizard(client: Client, interaction: GuildChatInputComm
               .setCustomId("cooldown")
               .setLabel("Appeal Cooldown (hours)")
               .setPlaceholder("24")
-              .setValue(state.config.cooldown.toString())
+              .setValue(String(state.config.cooldown))
               .setStyle(TextInputStyle.Short)
               .setRequired(true);
 
@@ -253,7 +254,7 @@ async function handleSetupWizard(client: Client, interaction: GuildChatInputComm
               .setCustomId("max_appeals")
               .setLabel("Max Appeals Per User")
               .setPlaceholder("3")
-              .setValue(state.config.maxAppeals.toString())
+              .setValue(String(state.config.maxAppeals))
               .setStyle(TextInputStyle.Short)
               .setRequired(true);
 
@@ -304,7 +305,7 @@ async function handleSetupWizard(client: Client, interaction: GuildChatInputComm
                     inline: true,
                   },
                   { name: "⏰ Cooldown", value: `${state.config.cooldown} hours`, inline: true },
-                  { name: "🔢 Max Appeals", value: `${state.config.maxAppeals} per user`, inline: true }
+                  { name: "🔢 Max Appeals", value: `${String(state.config.maxAppeals)} per user`, inline: true }
                 )
                 .setTimestamp();
 
@@ -365,7 +366,7 @@ async function handleSetupWizard(client: Client, interaction: GuildChatInputComm
 }
 
 // Quick Setup Handler
-async function handleQuickSetup(client: Client, interaction: GuildChatInputCommandInteraction) {
+async function _handleQuickSetup(client: Client, interaction: GuildChatInputCommandInteraction) {
   const website = interaction.options.getString("website");
   const channel = interaction.options.getChannel("channel");
   const cooldown = interaction.options.getInteger("cooldown") ?? 24;
@@ -394,7 +395,7 @@ async function handleQuickSetup(client: Client, interaction: GuildChatInputComma
         { name: "🌐 Website URL", value: website ?? "Using default from bot config", inline: false },
         { name: "📝 Review Channel", value: channel ? `<#${channel.id}>` : "Not set", inline: true },
         { name: "⏰ Cooldown", value: `${cooldown} hours`, inline: true },
-        { name: "🔢 Max Appeals", value: `${maxAppeals} per user`, inline: true }
+        { name: "🔢 Max Appeals", value: `${String(maxAppeals)} per user`, inline: true }
       )
       .setTimestamp();
 
@@ -421,7 +422,7 @@ async function handleQuickSetup(client: Client, interaction: GuildChatInputComma
 }
 
 // Status Handler with enhanced display
-async function handleStatus(client: Client, interaction: GuildChatInputCommandInteraction) {
+async function _handleStatus(client: Client, interaction: GuildChatInputCommandInteraction) {
   await interaction.deferReply({ ephemeral: true });
 
   if (!interaction.guild) {
@@ -447,7 +448,7 @@ async function handleStatus(client: Client, interaction: GuildChatInputCommandIn
           inline: true,
         },
         { name: "⏰ Cooldown", value: `${Math.floor(settings.appealCooldown / 3600)} hours`, inline: true },
-        { name: "🔢 Max Appeals", value: `${settings.maxAppealsPerUser} per user`, inline: true }
+        { name: "🔢 Max Appeals", value: `${String(settings.maxAppealsPerUser)} per user`, inline: true }
       )
       .setTimestamp();
 
@@ -498,7 +499,7 @@ async function handleStatus(client: Client, interaction: GuildChatInputCommandIn
 }
 
 // Toggle Handler
-async function handleToggle(client: Client, interaction: GuildChatInputCommandInteraction) {
+async function _handleToggle(client: Client, interaction: GuildChatInputCommandInteraction) {
   const enable = interaction.options.getBoolean("enable", true);
 
   await interaction.deferReply({ ephemeral: true });
@@ -536,7 +537,7 @@ async function handleToggle(client: Client, interaction: GuildChatInputCommandIn
 }
 
 // Messages Handler
-async function handleMessages(client: Client, interaction: GuildChatInputCommandInteraction) {
+async function _handleMessages(client: Client, interaction: GuildChatInputCommandInteraction) {
   const received = interaction.options.getString("received");
   const approved = interaction.options.getString("approved");
   const denied = interaction.options.getString("denied");
@@ -584,140 +585,118 @@ async function handleMessages(client: Client, interaction: GuildChatInputCommand
   }
 }
 
-// Main command
-export default new Command(
-  (() => {
-    const builder = new SlashCommandBuilder()
-      .setName("appeals")
-      .setDescription("⚖️ Manage user appeals for punishments")
-      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
+/**
+ * Appeals Command - Manage appeals configuration
+ */
+export class AppealsCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "appeals",
+      description: "Manage appeals configuration",
+      category: "admin",
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-      // Setup Group
-      .addSubcommandGroup((group) =>
-        group
-          .setName("setup")
-          .setDescription("Configure the appeals system")
-          .addSubcommand((sub) =>
-            sub.setName("wizard").setDescription("Interactive setup wizard for first-time configuration")
-          )
-          .addSubcommand((sub) =>
-            sub
-              .setName("quick")
-              .setDescription("Quick setup with basic options")
-              .addStringOption((opt) =>
-                opt.setName("website").setDescription("Your appeals website URL").setRequired(false)
-              )
-              .addChannelOption((opt) =>
-                opt
-                  .setName("channel")
-                  .setDescription("Channel for staff review")
-                  .addChannelTypes(ChannelType.GuildText)
-                  .setRequired(false)
-              )
-              .addIntegerOption((opt) =>
-                opt
-                  .setName("cooldown")
-                  .setDescription("Hours between appeals (default: 24)")
-                  .setMinValue(1)
-                  .setMaxValue(168)
-                  .setRequired(false)
-              )
-              .addIntegerOption((opt) =>
-                opt
-                  .setName("max_appeals")
-                  .setDescription("Maximum appeals per user (default: 3)")
-                  .setMinValue(1)
-                  .setMaxValue(10)
-                  .setRequired(false)
-              )
-          )
-      )
-
-      // Management Group
-      .addSubcommandGroup((group) =>
-        group
-          .setName("manage")
-          .setDescription("Manage appeals system settings")
-          .addSubcommand((sub) =>
-            sub.setName("status").setDescription("View current appeals configuration with quick actions")
-          )
-          .addSubcommand((sub) =>
-            sub
-              .setName("toggle")
-              .setDescription("Enable or disable the appeals system")
-              .addBooleanOption((opt) =>
-                opt.setName("enable").setDescription("Enable or disable appeals").setRequired(true)
-              )
-          )
-          .addSubcommand((sub) =>
-            sub
-              .setName("messages")
-              .setDescription("Configure custom appeal response messages")
-              .addStringOption((opt) =>
-                opt.setName("received").setDescription("Message sent when appeal is received").setRequired(false)
-              )
-              .addStringOption((opt) =>
-                opt.setName("approved").setDescription("Message sent when appeal is approved").setRequired(false)
-              )
-              .addStringOption((opt) =>
-                opt.setName("denied").setDescription("Message sent when appeal is denied").setRequired(false)
-              )
-          )
-      );
-
-    return builder;
-  })(),
-
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
-
-    const subcommandGroup = interaction.options.getSubcommandGroup();
-    const subcommand = interaction.options.getSubcommand();
-
-    try {
-      switch (subcommandGroup) {
-        case "setup":
-          switch (subcommand) {
-            case "wizard":
-              await handleSetupWizard(client, interaction);
-              break;
-            case "quick":
-              await handleQuickSetup(client, interaction);
-              break;
-          }
-          break;
-
-        case "manage":
-          switch (subcommand) {
-            case "status":
-              await handleStatus(client, interaction);
-              break;
-            case "toggle":
-              await handleToggle(client, interaction);
-              break;
-            case "messages":
-              await handleMessages(client, interaction);
-              break;
-          }
-          break;
-      }
-    } catch (error: unknown) {
-      logger.error("Error in appeals command:", error);
-      const errorMessage = `❌ Error configuring appeals: ${error instanceof Error ? error.message : "Unknown error"}`;
-
-      if (interaction.deferred) {
-        await interaction.followUp({ content: errorMessage, ephemeral: true });
-      } else {
-        await interaction.reply({ content: errorMessage, ephemeral: true });
-      }
-    }
-  },
-  {
-    ephemeral: true,
-    permissions: {
-      level: PermissionLevel.ADMIN,
-      discordPermissions: [PermissionsBitField.Flags.Administrator],
-      isConfigurable: true,
-    },
+    super(config);
   }
-);
+
+  protected async execute(): Promise<CommandResponse> {
+    // Validate admin permissions for server management
+    this.validateAdminPerms(["ManageGuild"]);
+
+    // Ensure this is a slash command interaction
+    if (!this.isSlashCommand()) {
+      throw new Error("This command must be used as a slash command.");
+    }
+
+    const subcommand = (this.interaction as SlashCommandInteraction).options.getSubcommand();
+
+    switch (subcommand) {
+      case "enable":
+        return await this.handleEnable();
+      case "disable":
+        return await this.handleDisable();
+      case "config":
+        return await this.handleConfig();
+      default:
+        throw new Error("Invalid subcommand");
+    }
+  }
+
+  private async handleEnable(): Promise<CommandResponse> {
+    try {
+      await this.client.moderationManager.configureAppealsSettings(this.guild.id, {
+        enabled: true,
+      });
+
+      return this.createAdminSuccess(
+        "Appeals System Enabled",
+        "The appeals system has been enabled for this server. Users can now submit appeals for their bans/mutes."
+      );
+    } catch (error) {
+      throw new Error(`Failed to enable appeals: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  private async handleDisable(): Promise<CommandResponse> {
+    try {
+      await this.client.moderationManager.configureAppealsSettings(this.guild.id, {
+        enabled: false,
+      });
+
+      return this.createAdminSuccess(
+        "Appeals System Disabled",
+        "The appeals system has been disabled for this server."
+      );
+    } catch (error) {
+      throw new Error(`Failed to disable appeals: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  private async handleConfig(): Promise<CommandResponse> {
+    try {
+      if (!this.isSlashCommand()) {
+        throw new Error("This command must be used as a slash command.");
+      }
+
+      const slash = this.interaction as SlashCommandInteraction;
+
+      const channelId = slash.options.getChannel("channel")?.id ?? undefined;
+
+      await this.client.moderationManager.configureAppealsSettings(this.guild.id, {
+        appealChannelId: channelId,
+      });
+
+      return this.createAdminSuccess(
+        "Appeals Configuration Updated",
+        "Appeals configuration has been updated successfully."
+      );
+    } catch (error) {
+      throw new Error(`Failed to update appeals config: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+}
+
+// Export the command instance
+export default new AppealsCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("appeals")
+  .setDescription("Manage appeals configuration")
+  .setDefaultMemberPermissions(0)
+  .addSubcommand((subcommand) =>
+    subcommand.setName("enable").setDescription("Enable the appeals system for this server")
+  )
+  .addSubcommand((subcommand) =>
+    subcommand.setName("disable").setDescription("Disable the appeals system for this server")
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("config")
+      .setDescription("Configure appeals settings")
+      .addChannelOption((option) =>
+        option.setName("channel").setDescription("Channel where appeals will be sent").setRequired(false)
+      )
+  );

@@ -1,145 +1,148 @@
 import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
-
-import { prisma } from "../../database/index.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import {
+  expandAlias,
+  parseDuration,
+  parseEvidence,
+  ResponseBuilder,
+  type CommandConfig,
+  type CommandResponse,
+} from "../_core/index.js";
+import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("ban")
-    .setDescription("Ban a user from the server")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers)
-    .addUserOption((option) => option.setName("user").setDescription("The user to ban").setRequired(true))
-    .addStringOption((option) =>
-      option.setName("reason").setDescription("Reason for the ban (or alias name)").setRequired(false)
-    )
-    .addStringOption((option) =>
-      option
-        .setName("duration")
-        .setDescription("Duration (e.g., 1d, 3h, 30m) - leave empty for permanent")
-        .setRequired(false)
-    )
-    .addStringOption((option) =>
-      option.setName("evidence").setDescription("Evidence links (comma-separated)").setRequired(false)
-    )
-    .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false)),
+/**
+ * Ban Command - Bans a user from the server
+ */
+export class BanCommand extends ModerationCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "ban",
+      description: "Ban a user from the server",
+      category: "moderation",
+      permissions: {
+        level: PermissionLevel.MODERATOR,
+        discordPermissions: [PermissionsBitField.Flags.BanMembers],
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
+    super(config);
+  }
 
-    await interaction.deferReply({ ephemeral: true });
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
 
-    const targetUser = interaction.options.getUser("user", true);
-    let reason = interaction.options.getString("reason") ?? "No reason provided";
-    const durationStr = interaction.options.getString("duration");
-    const evidence =
-      interaction.options
-        .getString("evidence")
-        ?.split(",")
-        .map((s) => s.trim()) ?? [];
-    const silent = interaction.options.getBoolean("silent") ?? false;
+    // Get command options using typed methods
+    const targetUser = this.getUserOption("user", true);
+    const reasonInput = this.getStringOption("reason", true);
+    const durationStr = this.getStringOption("duration");
+    const evidenceStr = this.getStringOption("evidence");
+    const _deleteDays = this.getIntegerOption("delete-days") ?? 1;
+    const silent = this.getBooleanOption("silent") ?? false;
+
+    // Parse duration if provided
+    let duration: number | undefined;
+    if (durationStr) {
+      const parsedDuration = parseDuration(durationStr);
+      if (!parsedDuration) {
+        throw new Error("Invalid duration format. Use format like: 1d, 3h, 30m");
+      }
+      duration = parsedDuration;
+    }
+
+    // Expand alias with automatic variable substitution
+    const reason = await expandAlias(reasonInput, {
+      guild: this.guild,
+      user: targetUser,
+      moderator: this.user,
+    });
+
+    // Parse evidence automatically
+    const evidence = parseEvidence(evidenceStr ?? undefined);
 
     try {
-      // Check if reason is an alias and expand it
-      if (reason !== "No reason provided") {
-        const aliasName = reason.toUpperCase();
-        const alias = await prisma.alias.findUnique({
-          where: { guildId_name: { guildId: interaction.guild.id, name: aliasName } },
-        });
+      // Check if user is in the server (for validation, but not required for bans)
+      const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
 
-        if (alias) {
-          // Expand alias content with variables
-          reason = alias.content;
-          reason = reason.replace(/\{user\}/g, `<@${targetUser.id}>`);
-          reason = reason.replace(/\{server\}/g, interaction.guild.name);
-          reason = reason.replace(/\{moderator\}/g, `<@${interaction.user.id}>`);
-
-          // Update usage count
-          await prisma.alias.update({
-            where: { id: alias.id },
-            data: { usageCount: { increment: 1 } },
-          });
-        }
+      if (member) {
+        // Validate moderation permissions against the member
+        this.validateModerationTarget(member);
       }
 
-      // Parse duration if provided
-      let duration: number | undefined;
-      if (durationStr) {
-        const parsedDuration = parseDuration(durationStr);
-        if (parsedDuration === null) {
-          await interaction.editReply({
-            content: "❌ Invalid duration format. Use format like: 1d, 3h, 30m",
-          });
-          return;
-        }
-        duration = parsedDuration;
-      }
-
-      // Execute the ban
-      const case_ = await client.moderationManager.ban(
-        interaction.guild,
+      // Execute the ban using existing moderation manager
+      const case_ = await this.client.moderationManager.ban(
+        this.guild,
         targetUser.id,
-        interaction.user.id,
+        this.user.id,
         reason,
         duration,
-        evidence.length > 0 ? evidence : undefined,
+        evidence.all.length > 0 ? evidence.all : undefined,
         !silent
       );
 
-      const durationText = duration ? ` for ${formatDuration(duration)}` : " permanently";
+      // Use the new ResponseBuilder for consistent formatting
+      const durationText = duration ? ` for ${this.formatDuration(duration)}` : "";
 
-      await interaction.editReply({
-        content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber.toString()}** created.`,
-      });
+      return new ResponseBuilder()
+        .success("Ban Applied")
+        .content(
+          `**${targetUser.username}** has been banned${durationText}.\n📋 **Case #${String(case_.caseNumber)}** created.`
+        )
+        .ephemeral()
+        .build();
     } catch (error) {
-      await interaction.editReply({
-        content: `❌ Failed to ban **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
-    }
-  },
-  {
-    ephemeral: true,
-    permissions: {
-      level: PermissionLevel.MODERATOR,
-      discordPermissions: [PermissionsBitField.Flags.BanMembers],
-      isConfigurable: true,
-    },
-  }
-);
-
-function parseDuration(durationStr: string): number | null {
-  const regex = /^(\d+)([smhdw])$/;
-  const match = regex.exec(durationStr);
-  if (!match) return null;
-
-  const value = parseInt(match[1]);
-  const unit = match[2];
-
-  const multipliers = {
-    s: 1,
-    m: 60,
-    h: 60 * 60,
-    d: 60 * 60 * 24,
-    w: 60 * 60 * 24 * 7,
-  };
-
-  return value * multipliers[unit as keyof typeof multipliers];
-}
-
-function formatDuration(seconds: number): string {
-  const units = [
-    { name: "week", seconds: 604800 },
-    { name: "day", seconds: 86400 },
-    { name: "hour", seconds: 3600 },
-    { name: "minute", seconds: 60 },
-  ];
-
-  for (const unit of units) {
-    const count = Math.floor(seconds / unit.seconds);
-    if (count > 0) {
-      return `${count} ${unit.name}${count !== 1 ? "s" : ""}`;
+      throw new Error(
+        `Failed to ban **${targetUser.username}**: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
   }
 
-  return `${seconds} second${seconds !== 1 ? "s" : ""}`;
+  private formatDuration(seconds: number): string {
+    const units = [
+      { name: "day", seconds: 86400 },
+      { name: "hour", seconds: 3600 },
+      { name: "minute", seconds: 60 },
+    ];
+
+    for (const unit of units) {
+      const count = Math.floor(seconds / unit.seconds);
+      if (count > 0) {
+        return `${String(count)} ${unit.name}${count !== 1 ? "s" : ""}`;
+      }
+    }
+
+    return `${String(seconds)} second${seconds !== 1 ? "s" : ""}`;
+  }
 }
+
+// Export the command instance
+export default new BanCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("ban")
+  .setDescription("Ban a user from the server")
+  .setDefaultMemberPermissions(0) // Hide from all regular users
+  .addUserOption((option) => option.setName("user").setDescription("The user to ban").setRequired(true))
+  .addStringOption((option) =>
+    option.setName("reason").setDescription("Reason for the ban (or alias name)").setRequired(true)
+  )
+  .addStringOption((option) =>
+    option.setName("duration").setDescription("Duration for temporary ban (e.g., 1d, 3h, 30m)").setRequired(false)
+  )
+  .addStringOption((option) =>
+    option.setName("evidence").setDescription("Evidence links (comma-separated)").setRequired(false)
+  )
+  .addIntegerOption((option) =>
+    option
+      .setName("delete-days")
+      .setDescription("Days of messages to delete (0-7, default: 1)")
+      .setMinValue(0)
+      .setMaxValue(7)
+      .setRequired(false)
+  )
+  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false));

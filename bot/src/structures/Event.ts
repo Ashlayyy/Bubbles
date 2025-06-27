@@ -1,16 +1,12 @@
 import type { Prisma } from "@shared/database";
-import type { GuildQueueEvents, Player, PlayerEvents, PlayerEventsEmitter } from "discord-player";
 import type { Awaitable, ClientEvents } from "discord.js";
 
 import type Client from "./Client.js";
-import QueueMetadata from "./QueueMetadata.js";
 
 /* --- BaseEvent --- */
 export enum EventEmitterType {
   Client,
   Prisma,
-  MusicPlayer,
-  MusicPlayerGuildQueue,
 }
 export function eventEmitterTypeFromDir(dirName: string): EventEmitterType {
   switch (dirName) {
@@ -19,12 +15,6 @@ export function eventEmitterTypeFromDir(dirName: string): EventEmitterType {
     }
     case "prisma": {
       return EventEmitterType.Prisma;
-    }
-    case "musicPlayer": {
-      return EventEmitterType.MusicPlayer;
-    }
-    case "musicPlayerGuildQueue": {
-      return EventEmitterType.MusicPlayerGuildQueue;
     }
 
     default: {
@@ -50,14 +40,6 @@ class BaseEvent<Ev extends string, EventRunFunc extends CallableFunction> {
     return this instanceof ClientEvent;
   }
 
-  isMusicPlayer<Ev extends keyof PlayerEvents>(): this is MusicPlayerEvent<Ev> {
-    return this instanceof MusicPlayerEvent;
-  }
-
-  isMusicPlayerGuildQueue<Ev extends keyof GuildQueueEvents<QueueMetadata>>(): this is MusicPlayerGuildQueueEvent<Ev> {
-    return this instanceof MusicPlayerGuildQueueEvent;
-  }
-
   isPrisma<Ev extends PrismaEvents>(): this is PrismaEvent<Ev> {
     return this instanceof PrismaEvent;
   }
@@ -81,31 +63,6 @@ export class ClientEvent<Ev extends keyof ClientEvents>
 {
   bindToEventEmitter(eventEmitter: Client): void {
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
-    eventEmitter.on(this.event, this.run);
-  }
-}
-
-/* --- Music Player --- */
-type MusicPlayerRunFunction<Ev extends keyof PlayerEvents> = PlayerEvents[Ev];
-
-export class MusicPlayerEvent<Ev extends keyof PlayerEvents>
-  extends BaseEvent<Ev, MusicPlayerRunFunction<Ev>>
-  implements IBindEvent<Player>
-{
-  bindToEventEmitter(eventEmitter: Player): void {
-    eventEmitter.on(this.event, this.run);
-  }
-}
-
-/* --- Music Player Guild Queue --- */
-type MusicPlayerGuildQueueRunFunction<Ev extends keyof GuildQueueEvents<QueueMetadata>> =
-  GuildQueueEvents<QueueMetadata>[Ev];
-
-export class MusicPlayerGuildQueueEvent<Ev extends keyof GuildQueueEvents<QueueMetadata>>
-  extends BaseEvent<Ev, MusicPlayerGuildQueueRunFunction<Ev>>
-  implements IBindEvent<PlayerEventsEmitter<GuildQueueEvents<QueueMetadata>>>
-{
-  bindToEventEmitter(eventEmitter: PlayerEventsEmitter<GuildQueueEvents<QueueMetadata>>): void {
     eventEmitter.on(this.event, this.run);
   }
 }

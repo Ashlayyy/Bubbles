@@ -1,77 +1,41 @@
-import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
-
-import { prisma } from "../../database/index.js";
-import Command from "../../structures/Command.js";
+import { PermissionsBitField, SlashCommandBuilder, User } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import { expandAlias, ResponseBuilder, type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("unban")
-    .setDescription("Unban a user from the server")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers)
-    .addStringOption((option) =>
-      option.setName("user").setDescription("User ID or username to unban").setRequired(true)
-    )
-    .addStringOption((option) => option.setName("reason").setDescription("Reason for the unban").setRequired(false))
-    .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false)),
+/**
+ * Unban Command - Removes a ban from a user
+ */
+export class UnbanCommand extends ModerationCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "unban",
+      description: "Remove a ban from a user",
+      category: "moderation",
+      permissions: {
+        level: PermissionLevel.MODERATOR,
+        discordPermissions: [PermissionsBitField.Flags.BanMembers],
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
+    super(config);
+  }
 
-    const userInput = interaction.options.getString("user", true);
-    let reason = interaction.options.getString("reason") ?? "No reason provided";
-    const silent = interaction.options.getBoolean("silent") ?? false;
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
+
+    // Get command options using typed methods
+    const userInput = this.getStringOption("user", true);
+    const reasonInput = this.getStringOption("reason") ?? "No reason provided";
+    const silent = this.getBooleanOption("silent") ?? false;
 
     try {
-      // Check if reason is an alias and expand it
-      if (reason !== "No reason provided") {
-        const aliasName = reason.toUpperCase();
-        const alias = await prisma.alias.findUnique({
-          where: { guildId_name: { guildId: interaction.guild.id, name: aliasName } },
-        });
-
-        if (alias) {
-          // For unban, we need to resolve user info first to use in alias variables
-          let userId: string;
-
-          // Check if it's a user ID (numeric)
-          if (/^\d{17,19}$/.test(userInput)) {
-            userId = userInput;
-          } else {
-            // Try to find by username in ban list
-            const bans = await interaction.guild.bans.fetch();
-            const bannedUser = bans.find(
-              (ban) =>
-                ban.user.username.toLowerCase() === userInput.toLowerCase() ||
-                ban.user.tag.toLowerCase() === userInput.toLowerCase()
-            );
-
-            if (!bannedUser) {
-              await interaction.reply({
-                content: `❌ Could not find banned user with username: **${userInput}**`,
-                ephemeral: true,
-              });
-              return;
-            }
-
-            userId = bannedUser.user.id;
-          }
-
-          // Expand alias content with variables
-          reason = alias.content;
-          reason = reason.replace(/\{user\}/g, `<@${userId}>`);
-          reason = reason.replace(/\{server\}/g, interaction.guild.name);
-          reason = reason.replace(/\{moderator\}/g, `<@${interaction.user.id}>`);
-
-          // Update usage count
-          await prisma.alias.update({
-            where: { id: alias.id },
-            data: { usageCount: { increment: 1 } },
-          });
-        }
-      }
-
-      // Try to resolve user ID (if not already done above)
+      // Resolve user ID and tag
       let userId: string;
       let userTag = userInput;
 
@@ -79,14 +43,14 @@ export default new Command(
       if (/^\d{17,19}$/.test(userInput)) {
         userId = userInput;
         try {
-          const user = await client.users.fetch(userId);
+          const user = await this.client.users.fetch(userId);
           userTag = user.tag;
         } catch {
           userTag = `Unknown User (${userId})`;
         }
       } else {
         // Try to find by username in ban list
-        const bans = await interaction.guild.bans.fetch();
+        const bans = await this.guild.bans.fetch();
         const bannedUser = bans.find(
           (ban) =>
             ban.user.username.toLowerCase() === userInput.toLowerCase() ||
@@ -94,11 +58,7 @@ export default new Command(
         );
 
         if (!bannedUser) {
-          await interaction.reply({
-            content: `❌ Could not find banned user with username: **${userInput}**`,
-            ephemeral: true,
-          });
-          return;
+          throw new Error(`Could not find banned user with username: **${userInput}**`);
         }
 
         userId = bannedUser.user.id;
@@ -107,42 +67,65 @@ export default new Command(
 
       // Check if user is actually banned
       try {
-        await interaction.guild.bans.fetch(userId);
+        await this.guild.bans.fetch(userId);
       } catch {
-        await interaction.reply({
-          content: `❌ **${userTag}** is not banned from this server.`,
-          ephemeral: true,
-        });
-        return;
+        throw new Error(`**${userTag}** is not banned from this server.`);
       }
 
-      // Execute the unban using the moderation system
-      const case_ = await client.moderationManager.moderate(interaction.guild, {
+      // Expand alias with automatic variable substitution (use resolved user)
+      // Try to get the real user object first, fallback to partial object
+      let userForAlias: User;
+      try {
+        userForAlias = await this.client.users.fetch(userId);
+      } catch {
+        // Create a minimal user-like object for alias expansion when user fetch fails
+        userForAlias = {
+          id: userId,
+          username: userTag.split("#")[0] || userTag,
+          discriminator: userTag.includes("#") ? userTag.split("#")[1] : "0000",
+          tag: userTag,
+        } as User;
+      }
+
+      const reason = await expandAlias(reasonInput, {
+        guild: this.guild,
+        user: userForAlias,
+        moderator: this.user,
+      });
+
+      // Execute the unban using existing moderation manager
+      const case_ = await this.client.moderationManager.moderate(this.guild, {
         type: "UNBAN",
         userId,
-        moderatorId: interaction.user.id,
+        moderatorId: this.user.id,
         reason,
         severity: "MEDIUM",
         points: 0, // No points for unbans
         notifyUser: !silent,
       });
 
-      await interaction.reply({
-        content: `✅ **${userTag}** has been unbanned.\n📋 **Case #${case_.caseNumber}** created.`,
-        ephemeral: true,
-      });
+      // Use the new ResponseBuilder for consistent formatting
+      return new ResponseBuilder()
+        .success("Unban Applied")
+        .content(`**${userTag}** has been unbanned from this server.\n📋 **Case #${case_.caseNumber}** created.`)
+        .ephemeral()
+        .build();
     } catch (error) {
-      await interaction.reply({
-        content: `❌ Failed to unban user: ${error instanceof Error ? error.message : "Unknown error"}`,
-        ephemeral: true,
-      });
+      throw new Error(`Failed to unban user: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.MODERATOR,
-      discordPermissions: [PermissionsBitField.Flags.BanMembers],
-      isConfigurable: true,
-    },
   }
-);
+}
+
+// Export the command instance
+export default new UnbanCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("unban")
+  .setDescription("Remove a ban from a user")
+  .setDefaultMemberPermissions(0) // Hide from all regular users
+  .addStringOption((option) => option.setName("user").setDescription("User ID or username to unban").setRequired(true))
+  .addStringOption((option) =>
+    option.setName("reason").setDescription("Reason for the unban (or alias name)").setRequired(false)
+  )
+  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false));

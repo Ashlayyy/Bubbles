@@ -1,96 +1,97 @@
 import { SlashCommandBuilder } from "discord.js";
-
-import { prisma } from "../../database/index.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import { expandAlias, type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("untimeout")
-    .setDescription("Remove timeout from a user")
-    .addUserOption((option) =>
-      option.setName("user").setDescription("The user to remove timeout from").setRequired(true)
-    )
-    .addStringOption((option) =>
-      option.setName("reason").setDescription("Reason for removing timeout").setRequired(false)
-    )
-    .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false)),
+/**
+ * Untimeout Command - Remove timeout from a user
+ */
+export class UntimeoutCommand extends ModerationCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "untimeout",
+      description: "Remove timeout from a user",
+      category: "moderation",
+      permissions: {
+        level: PermissionLevel.MODERATOR,
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
+    super(config);
+  }
 
-    const targetUser = interaction.options.getUser("user", true);
-    let reason = interaction.options.getString("reason") ?? "No reason provided";
-    const silent = interaction.options.getBoolean("silent") ?? false;
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
+
+    const targetUser = this.getUserOption("user", true);
+    let reason = this.getStringOption("reason") ?? "No reason provided";
+    const silent = this.getBooleanOption("silent") ?? false;
 
     try {
-      // Check if reason is an alias and expand it
+      // Expand alias if provided
       if (reason !== "No reason provided") {
-        const aliasName = reason.toUpperCase();
-        const alias = await prisma.alias.findUnique({
-          where: { guildId_name: { guildId: interaction.guild.id, name: aliasName } },
+        reason = await expandAlias(reason, {
+          guild: this.guild,
+          user: targetUser,
+          moderator: this.user,
         });
-
-        if (alias) {
-          // Expand alias content with variables
-          reason = alias.content;
-          reason = reason.replace(/\{user\}/g, `<@${targetUser.id}>`);
-          reason = reason.replace(/\{server\}/g, interaction.guild.name);
-          reason = reason.replace(/\{moderator\}/g, `<@${interaction.user.id}>`);
-
-          // Update usage count
-          await prisma.alias.update({
-            where: { id: alias.id },
-            data: { usageCount: { increment: 1 } },
-          });
-        }
       }
 
       // Check if user is in the server
-      const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+      const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
       if (!member) {
-        await interaction.reply({
+        return {
           content: `❌ **${targetUser.tag}** is not in this server.`,
           ephemeral: true,
-        });
-        return;
+        };
       }
 
       // Check if user is actually timed out
       if (!member.isCommunicationDisabled()) {
-        await interaction.reply({
+        return {
           content: `❌ **${targetUser.tag}** is not currently timed out.`,
           ephemeral: true,
-        });
-        return;
+        };
       }
 
       // Execute the untimeout using the moderation system
-      const case_ = await client.moderationManager.moderate(interaction.guild, {
+      const case_ = await this.client.moderationManager.moderate(this.guild, {
         type: "UNTIMEOUT",
         userId: targetUser.id,
-        moderatorId: interaction.user.id,
+        moderatorId: this.user.id,
         reason,
         severity: "LOW",
         points: 0, // No points for removing timeouts
         notifyUser: !silent,
       });
 
-      await interaction.reply({
+      return {
         content: `🔊 **${targetUser.tag}** timeout has been removed.\n📋 **Case #${case_.caseNumber}** created.`,
         ephemeral: true,
-      });
+      };
     } catch (error) {
-      await interaction.reply({
+      return {
         content: `❌ Failed to remove timeout from **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
         ephemeral: true,
-      });
+      };
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.MODERATOR,
-      isConfigurable: true,
-    },
   }
-);
+}
+
+// Export the command instance
+export default new UntimeoutCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("untimeout")
+  .setDescription("Remove timeout from a user")
+  .addUserOption((option) => option.setName("user").setDescription("The user to remove timeout from").setRequired(true))
+  .addStringOption((option) =>
+    option.setName("reason").setDescription("Reason for removing timeout").setRequired(false)
+  )
+  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false));

@@ -7,7 +7,6 @@ export { ConfigProcessor } from "./ConfigProcessor.js";
 export { GiveawayProcessor } from "./GiveawayProcessor.js";
 export { MessageProcessor } from "./MessageProcessor.js";
 export { ModerationProcessor } from "./ModerationProcessor.js";
-export { MusicProcessor } from "./MusicProcessor.js";
 
 // Processor factory
 export { ProcessorFactory } from "./ProcessorFactory.js";

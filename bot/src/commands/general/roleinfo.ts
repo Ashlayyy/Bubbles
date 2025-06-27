@@ -1,29 +1,42 @@
 import { EmbedBuilder, PermissionsBitField, Role, SlashCommandBuilder } from "discord.js";
-
 import logger from "../../logger.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("roleinfo")
-    .setDescription("Display detailed information about a role")
-    .addRoleOption((opt) => opt.setName("role").setDescription("Role to get information about").setRequired(true)),
+/**
+ * Roleinfo Command - Display detailed information about a role
+ */
+export class RoleinfoCommand extends GeneralCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "roleinfo",
+      description: "Display detailed information about a role",
+      category: "general",
+      permissions: {
+        level: PermissionLevel.PUBLIC,
+        isConfigurable: true,
+      },
+      ephemeral: false,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    // Type guard to ensure this is a chat input command
-    if (!interaction.isChatInputCommand()) return;
-    if (!interaction.guild) return;
+    super(config);
+  }
 
-    const roleOption = interaction.options.getRole("role", true);
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
+
+    const roleOption = this.getRoleOption("role", true);
 
     // Ensure we have a proper Role object
     if (!(roleOption instanceof Role)) {
-      await interaction.reply({
+      return {
         content: "❌ Invalid role provided.",
         ephemeral: true,
-      });
-      return;
+      };
     }
 
     const role = roleOption;
@@ -35,7 +48,7 @@ export default new Command(
         .setTimestamp()
         .setFooter({
           text: `Role ID: ${role.id}`,
-          iconURL: interaction.user.displayAvatarURL(),
+          iconURL: this.user.displayAvatarURL(),
         });
 
       // Basic role info
@@ -71,7 +84,7 @@ export default new Command(
       });
 
       // Permissions (only show if user has manage roles permission or is admin)
-      const member = interaction.guild.members.cache.get(interaction.user.id);
+      const member = this.guild.members.cache.get(this.user.id);
       if (
         member?.permissions.has(PermissionsBitField.Flags.ManageRoles) ||
         member?.permissions.has(PermissionsBitField.Flags.Administrator)
@@ -118,21 +131,21 @@ export default new Command(
         });
       }
 
-      await interaction.reply({ embeds: [embed] });
-
       // Log command usage
-      await client.logManager.log(interaction.guild.id, "COMMAND_ROLEINFO", {
-        userId: interaction.user.id,
-        channelId: interaction.channel?.id,
+      await this.client.logManager.log(this.guild.id, "COMMAND_ROLEINFO", {
+        userId: this.user.id,
+        channelId: this.interaction.channel?.id,
         metadata: {
           roleId: role.id,
           roleName: role.name,
           memberCount: role.members.size,
         },
       });
+
+      return { embeds: [embed] };
     } catch (error) {
       logger.error("Error in roleinfo command:", error);
-      await interaction.reply({
+      return {
         embeds: [
           new EmbedBuilder()
             .setColor(0xe74c3c)
@@ -141,13 +154,16 @@ export default new Command(
             .setTimestamp(),
         ],
         ephemeral: true,
-      });
+      };
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.PUBLIC,
-      isConfigurable: true,
-    },
   }
-);
+}
+
+// Export the command instance
+export default new RoleinfoCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("roleinfo")
+  .setDescription("Display detailed information about a role")
+  .addRoleOption((opt) => opt.setName("role").setDescription("Role to get information about").setRequired(true));

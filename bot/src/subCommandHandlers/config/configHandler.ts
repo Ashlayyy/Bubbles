@@ -11,7 +11,6 @@ import {
   setWelcomeChannel,
   updateGuildConfig,
 } from "../../database/GuildConfig.js";
-import { isQueueRepeatMode, toDisplayString } from "../../functions/music/queueRepeatMode.js";
 import type Client from "../../structures/Client.js";
 import type { GuildChatInputCommandInteraction } from "../../structures/Command.js";
 
@@ -87,12 +86,6 @@ function getSettingDisplayValue(settingData: SettingData): string {
   if (value === null) return "Not Set";
 
   switch (name) {
-    case "defaultRepeatMode":
-      if (typeof value === "number" && isQueueRepeatMode(value)) {
-        return toDisplayString(value);
-      }
-      return "Invalid";
-
     case "welcomeChannelId":
     case "goodbyeChannelId":
       return typeof value === "string" && value !== "" ? `<#${value}>` : "Not Set";

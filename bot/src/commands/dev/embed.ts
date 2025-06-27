@@ -1,26 +1,36 @@
-import type { GuildMember } from "discord.js";
-import { Colors, MessageFlags, SlashCommandBuilder, User } from "discord.js";
+import { Colors, SlashCommandBuilder, User } from "discord.js";
 
-import Command from "../../structures/Command.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { DevCommand } from "../_core/specialized/DevCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder().setName("embed").setDescription("DEVELOPER ONLY: Shows a test embed."),
+class EmbedCommand extends DevCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "embed",
+      description: "DEVELOPER ONLY: Shows a test embed.",
+      category: "dev",
+      ephemeral: false,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    const channelName = (await interaction.guild?.channels.fetch(interaction.channelId))?.name ?? "CHANNEL_NAME";
+    super(config);
+  }
+
+  protected async execute(): Promise<CommandResponse> {
+    // Only bot developers (in DevCommand) are allowed; perms validated there.
+
+    const channelName = (await this.guild.channels.fetch(this.channel.id))?.name ?? "CHANNEL_NAME";
 
     let userDisplayName = "USER_DISPLAY_NAME";
-    // Should always be true, but just in case
-    if (interaction.member.user instanceof User) {
-      userDisplayName = interaction.member.user.displayName;
+    if (this.member.user instanceof User) {
+      userDisplayName = this.member.user.displayName;
     }
 
-    const testEmbed = client.genEmbed({
+    const testEmbed = this.client.genEmbed({
       title: `Test embed`,
       description: `Title link points to information about embeds!`,
       url: "https://discordjs.guide/popular-topics/embeds.html",
-      timestamp: interaction.createdTimestamp,
+      timestamp: this.interaction.createdTimestamp,
       color: Colors.DarkBlue,
       fields: [
         {
@@ -29,9 +39,6 @@ export default new Command(
           inline: false,
         },
         {
-          /** Reminder that channels, users, roles, and other links will ONLY link properly inside
-           * embed field values or the embed's description
-           */
           name: `Test channel field name: ${channelName}`,
           value: `Test channel field value: ${channelName}`,
           inline: false,
@@ -40,28 +47,29 @@ export default new Command(
       author: {
         name: userDisplayName,
         url: "https://ironbatman2715.github.io/",
-        iconURL: (interaction.member as GuildMember).avatarURL() ?? "",
+        iconURL: this.member.avatarURL() ?? "",
       },
       thumbnail: {
-        url: "https://www.youtube.com/s/desktop/a0d4cab0/img/logos/favicon_144x144.png", //youtube icon
+        url: "https://www.youtube.com/s/desktop/a0d4cab0/img/logos/favicon_144x144.png",
       },
       image: {
-        url: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/U%2B2160.svg/1200px-U%2B2160.svg.png", //letter I
+        url: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/U%2B2160.svg/1200px-U%2B2160.svg.png",
       },
       footer: {
-        text: client.config.name,
+        text: this.client.config.name,
       },
     });
 
-    await interaction.reply({
+    return {
       embeds: [testEmbed],
-      flags: MessageFlags.Ephemeral,
-    });
-  },
-  {
-    permissions: {
-      level: PermissionLevel.DEVELOPER,
-      isConfigurable: false,
-    },
+      ephemeral: true,
+    };
   }
-);
+}
+
+export default new EmbedCommand();
+
+export const builder = new SlashCommandBuilder()
+  .setName("embed")
+  .setDescription("DEVELOPER ONLY: Shows a test embed.")
+  .setDefaultMemberPermissions(0);

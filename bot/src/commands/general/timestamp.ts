@@ -1,48 +1,43 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
-
 import logger from "../../logger.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("timestamp")
-    .setDescription("Generate Discord timestamps for different formats")
-    .addStringOption((opt) =>
-      opt
-        .setName("time")
-        .setDescription("Time/date to convert (e.g. '2024-12-25 15:30', 'tomorrow 3pm', '2 hours')")
-        .setRequired(true)
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName("format")
-        .setDescription("Display format")
-        .addChoices(
-          { name: "Short Time (16:20)", value: "t" },
-          { name: "Long Time (4:20:30 PM)", value: "T" },
-          { name: "Short Date (20/04/2021)", value: "d" },
-          { name: "Long Date (20 April 2021)", value: "D" },
-          { name: "Short Date/Time (20 April 2021 16:20)", value: "f" },
-          { name: "Long Date/Time (Tuesday, 20 April 2021 4:20 PM)", value: "F" },
-          { name: "Relative Time (2 months ago)", value: "R" }
-        )
-    ),
+/**
+ * Timestamp Command - Generate Discord timestamps for different formats
+ */
+export class TimestampCommand extends GeneralCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "timestamp",
+      description: "Generate Discord timestamps for different formats",
+      category: "general",
+      permissions: {
+        level: PermissionLevel.PUBLIC,
+        isConfigurable: true,
+      },
+      ephemeral: false,
+      guildOnly: false,
+    };
 
-  async (client, interaction) => {
-    // Type guard to ensure this is a chat input command
-    if (!interaction.isChatInputCommand()) return;
-    if (!interaction.guild) return;
+    super(config);
+  }
 
-    const timeInput = interaction.options.getString("time", true);
-    const format = interaction.options.getString("format") ?? "f";
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
+
+    const timeInput = this.getStringOption("time", true);
+    const format = this.getStringOption("format") ?? "f";
 
     try {
       // Parse the input time
       const timestamp = parseTimeInput(timeInput);
 
       if (!timestamp) {
-        await interaction.reply({
+        return {
           embeds: [
             new EmbedBuilder()
               .setColor(0xe74c3c)
@@ -58,8 +53,7 @@ export default new Command(
               .setTimestamp(),
           ],
           ephemeral: true,
-        });
-        return;
+        };
       }
 
       const unixTimestamp = Math.floor(timestamp.getTime() / 1000);
@@ -105,12 +99,10 @@ export default new Command(
         inline: false,
       });
 
-      await interaction.reply({ embeds: [embed] });
-
       // Log command usage
-      await client.logManager.log(interaction.guild.id, "COMMAND_TIMESTAMP", {
-        userId: interaction.user.id,
-        channelId: interaction.channel?.id,
+      await this.client.logManager.log(this.guild.id, "COMMAND_TIMESTAMP", {
+        userId: this.user.id,
+        channelId: this.interaction.channel?.id,
         metadata: {
           timeInput,
           format,
@@ -118,9 +110,11 @@ export default new Command(
           parsedTime: timestamp.toISOString(),
         },
       });
+
+      return { embeds: [embed] };
     } catch (error) {
       logger.error("Error in timestamp command:", error);
-      await interaction.reply({
+      return {
         embeds: [
           new EmbedBuilder()
             .setColor(0xe74c3c)
@@ -129,16 +123,38 @@ export default new Command(
             .setTimestamp(),
         ],
         ephemeral: true,
-      });
+      };
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.PUBLIC,
-      isConfigurable: true,
-    },
   }
-);
+}
+
+// Export the command instance
+export default new TimestampCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("timestamp")
+  .setDescription("Generate Discord timestamps for different formats")
+  .addStringOption((opt) =>
+    opt
+      .setName("time")
+      .setDescription("Time/date to convert (e.g. '2024-12-25 15:30', 'tomorrow 3pm', '2 hours')")
+      .setRequired(true)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("format")
+      .setDescription("Display format")
+      .addChoices(
+        { name: "Short Time (16:20)", value: "t" },
+        { name: "Long Time (4:20:30 PM)", value: "T" },
+        { name: "Short Date (20/04/2021)", value: "d" },
+        { name: "Long Date (20 April 2021)", value: "D" },
+        { name: "Short Date/Time (20 April 2021 16:20)", value: "f" },
+        { name: "Long Date/Time (Tuesday, 20 April 2021 4:20 PM)", value: "F" },
+        { name: "Relative Time (2 months ago)", value: "R" }
+      )
+  );
 
 function parseTimeInput(input: string): Date | null {
   const now = new Date();
@@ -202,25 +218,17 @@ function parseTimeInput(input: string): Date | null {
       /(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2}):(\d{2})/,
     ];
 
-    for (const formatRegex of formats) {
-      const match = formatRegex.exec(input);
+    for (const format of formats) {
+      const match = format.exec(input);
       if (match) {
-        const [, a, b, c, hours, minutes] = match;
-        let year, month, day;
-
-        if (formatRegex.source.includes("\\d{4}")) {
-          // Year first format
-          year = parseInt(a, 10);
-          month = parseInt(b, 10) - 1;
-          day = parseInt(c, 10);
-        } else {
-          // Month/day first format
-          month = parseInt(a, 10) - 1;
-          day = parseInt(b, 10);
-          year = parseInt(c, 10);
-        }
-
-        return new Date(year, month, day, parseInt(hours, 10), parseInt(minutes, 10));
+        const [, year, month, day, hour, minute] = match;
+        return new Date(
+          parseInt(year, 10),
+          parseInt(month, 10) - 1,
+          parseInt(day, 10),
+          parseInt(hour, 10),
+          parseInt(minute, 10)
+        );
       }
     }
 
@@ -231,58 +239,62 @@ function parseTimeInput(input: string): Date | null {
 }
 
 function parseRelativeTime(input: string, from: Date): Date | null {
-  const timeRegex = /(\d+)\s*(minute|min|hour|hr|day|week|month|year)s?/gi;
-  const matches = Array.from(input.matchAll(timeRegex));
+  const relativeRegex = /in\s+(\d+)\s+(second|minute|hour|day|week|month|year)s?/i;
+  const match = relativeRegex.exec(input);
 
-  if (matches.length === 0) return null;
+  if (match) {
+    const amount = parseInt(match[1], 10);
+    const unit = match[2].toLowerCase();
 
-  const result = new Date(from);
-
-  for (const match of matches) {
-    const [, amount, unit] = match;
-    const num = parseInt(amount, 10);
-
-    switch (unit.toLowerCase()) {
+    const result = new Date(from);
+    switch (unit) {
+      case "second":
+        result.setSeconds(result.getSeconds() + amount);
+        break;
       case "minute":
-      case "min":
-        result.setMinutes(result.getMinutes() + num);
+        result.setMinutes(result.getMinutes() + amount);
         break;
       case "hour":
-      case "hr":
-        result.setHours(result.getHours() + num);
+        result.setHours(result.getHours() + amount);
         break;
       case "day":
-        result.setDate(result.getDate() + num);
+        result.setDate(result.getDate() + amount);
         break;
       case "week":
-        result.setDate(result.getDate() + num * 7);
+        result.setDate(result.getDate() + amount * 7);
         break;
       case "month":
-        result.setMonth(result.getMonth() + num);
+        result.setMonth(result.getMonth() + amount);
         break;
       case "year":
-        result.setFullYear(result.getFullYear() + num);
+        result.setFullYear(result.getFullYear() + amount);
         break;
     }
+    return result;
   }
 
-  return result;
+  return null;
 }
 
 function parseNextDay(input: string, from: Date): Date | null {
   const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-  const dayMatch = /next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.exec(input);
-  const day = dayMatch?.[1];
+  const dayRegex = /next\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)/i;
+  const match = dayRegex.exec(input);
 
-  if (!day) return null;
+  if (match) {
+    const targetDay = match[1].toLowerCase();
+    const targetDayIndex = days.indexOf(targetDay);
+    const currentDayIndex = from.getDay();
 
-  const targetDay = days.indexOf(day.toLowerCase());
-  const currentDay = from.getDay();
-  const daysUntilNext = (targetDay - currentDay + 7) % 7 || 7;
+    let daysToAdd = targetDayIndex - currentDayIndex;
+    if (daysToAdd <= 0) {
+      daysToAdd += 7;
+    }
 
-  const result = new Date(from);
-  result.setDate(result.getDate() + daysUntilNext);
-  result.setHours(12, 0, 0, 0); // Default to noon
+    const result = new Date(from);
+    result.setDate(result.getDate() + daysToAdd);
+    return result;
+  }
 
-  return result;
+  return null;
 }

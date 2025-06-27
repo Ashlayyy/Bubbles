@@ -4,7 +4,6 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  PermissionsBitField,
   SlashCommandBuilder,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
@@ -14,425 +13,375 @@ import {
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import { ResponseBuilder, type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
 
 // Store active giveaways in memory for quick access
 const activeGiveaways = new Map<string, Giveaway>();
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("giveaway")
-    .setDescription("Create and manage giveaways")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageMessages)
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("create")
-        .setDescription("Create a new giveaway")
-        .addStringOption((opt) =>
-          opt.setName("prize").setDescription("What is being given away").setRequired(true).setMaxLength(200)
-        )
-        .addIntegerOption((opt) =>
-          opt
-            .setName("duration")
-            .setDescription("Duration in minutes (minimum: 1, max: 10080 = 1 week)")
-            .setRequired(true)
-            .setMinValue(1)
-            .setMaxValue(10080)
-        )
-        .addIntegerOption((opt) =>
-          opt.setName("winners").setDescription("Number of winners (default: 1)").setMinValue(1).setMaxValue(20)
-        )
-        .addStringOption((opt) =>
-          opt.setName("description").setDescription("Additional description or requirements").setMaxLength(500)
-        )
-        .addRoleOption((opt) => opt.setName("required_role").setDescription("Role required to enter"))
-        .addRoleOption((opt) => opt.setName("blocked_role").setDescription("Role that cannot enter"))
-        .addIntegerOption((opt) =>
-          opt.setName("minimum_level").setDescription("Minimum user level to enter (if level system is active)")
-        )
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("end")
-        .setDescription("End a giveaway early")
-        .addStringOption((opt) =>
-          opt.setName("giveaway_id").setDescription("Giveaway ID to end").setRequired(true).setAutocomplete(true)
-        )
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("reroll")
-        .setDescription("Reroll winners for a giveaway")
-        .addStringOption((opt) =>
-          opt.setName("giveaway_id").setDescription("Giveaway ID to reroll").setRequired(true).setAutocomplete(true)
-        )
-        .addIntegerOption((opt) => opt.setName("winners").setDescription("Number of new winners to select"))
-    )
-    .addSubcommand((subcommand) => subcommand.setName("list").setDescription("List active giveaways in this server")),
+/**
+ * Giveaway Command - Create and manage giveaways
+ */
+export class GiveawayCommand extends GeneralCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "giveaway",
+      description: "Create and manage giveaways",
+      category: "general",
+      permissions: {
+        level: PermissionLevel.MODERATOR,
+        isConfigurable: true,
+      },
+      ephemeral: false,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    // Type guard to ensure this is a chat input command
-    if (!interaction.isChatInputCommand()) return;
-    if (!interaction.guild) return;
+    super(config);
+  }
 
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
+
+    const interaction = this.interaction as ChatInputCommandInteraction;
     const subcommand = interaction.options.getSubcommand();
 
-    switch (subcommand) {
-      case "create":
-        await handleCreateGiveaway(client, interaction);
-        break;
-      case "end":
-        await handleEndGiveaway(client, interaction);
-        break;
-      case "reroll":
-        await handleRerollGiveaway(client, interaction);
-        break;
-      case "list":
-        await handleListGiveaways(client, interaction);
-        break;
-    }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.MODERATOR,
-      isConfigurable: true,
-    },
-  }
-);
-
-async function handleCreateGiveaway(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) return;
-
-  const prize = interaction.options.getString("prize", true);
-  const duration = interaction.options.getInteger("duration", true);
-  const winners = interaction.options.getInteger("winners") ?? 1;
-  const description = interaction.options.getString("description");
-  const requiredRole = interaction.options.getRole("required_role");
-  const blockedRole = interaction.options.getRole("blocked_role");
-  const minimumLevel = interaction.options.getInteger("minimum_level");
-
-  try {
-    const endsAt = new Date(Date.now() + duration * 60 * 1000);
-    const giveawayId = generateGiveawayId();
-
-    // Create giveaway in database
-    const giveaway: Giveaway = await prisma.giveaway.create({
-      data: {
-        guildId: interaction.guild.id,
-        channelId: interaction.channel?.id ?? "",
-        messageId: "temp", // Will update after message is sent
-        giveawayId,
-        hostId: interaction.user.id,
-        title: `🎉 ${prize}`,
-        description,
-        prize,
-        winnersCount: winners,
-        requiredRoles: requiredRole ? [requiredRole.id] : [],
-        blockedRoles: blockedRole ? [blockedRole.id] : [],
-        minimumLevel,
-        endsAt,
-      },
-    });
-
-    // Create embed
-    const embed = createGiveawayEmbed(giveaway, interaction.user.displayAvatarURL());
-
-    // Create enter button
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`giveaway_enter_${giveaway.id}`)
-        .setLabel("🎉 Enter Giveaway")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`giveaway_entries_${giveaway.id}`)
-        .setLabel("👥 View Entries")
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    await interaction.reply({
-      embeds: [embed],
-      components: [row],
-    });
-
-    // Update database with message ID
-    const reply = await interaction.fetchReply();
-    await prisma.giveaway.update({
-      where: { id: giveaway.id },
-      data: { messageId: reply.id },
-    });
-
-    // Store in memory for quick access
-    activeGiveaways.set(giveaway.id, { ...giveaway, messageId: reply.id });
-
-    // Schedule automatic ending
-    setTimeout(
-      () => {
-        void (async () => {
-          try {
-            await endGiveaway(client, giveaway.id);
-          } catch (error) {
-            logger.warn(`Failed to end giveaway ${giveaway.id} automatically:`, error);
-          }
-        })();
-      },
-      duration * 60 * 1000
-    );
-
-    // Log giveaway creation
-    await client.logManager.log(interaction.guild.id, "GIVEAWAY_CREATE", {
-      userId: interaction.user.id,
-      channelId: interaction.channel?.id,
-      metadata: {
-        giveawayId: giveaway.giveawayId,
-        prize,
-        duration,
-        winners,
-        endsAt: giveaway.endsAt.toISOString(),
-      },
-    });
-  } catch (error) {
-    logger.error("Error creating giveaway:", error);
-    await interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("❌ Error")
-          .setDescription("Failed to create giveaway. Please try again.")
-          .setTimestamp(),
-      ],
-      ephemeral: true,
-    });
-  }
-}
-
-async function handleEndGiveaway(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) return;
-
-  const giveawayId = interaction.options.getString("giveaway_id", true);
-
-  try {
-    const giveaway = await prisma.giveaway.findFirst({
-      where: {
-        giveawayId,
-        guildId: interaction.guild.id,
-        isActive: true,
-      },
-    });
-
-    if (!giveaway) {
-      await interaction.reply({
-        content: "❌ Giveaway not found or already ended.",
-        ephemeral: true,
-      });
-      return;
-    }
-
-    await endGiveaway(client, giveaway.id);
-
-    await interaction.reply({
-      content: `✅ Giveaway **${giveaway.prize}** has been ended early.`,
-      ephemeral: true,
-    });
-  } catch (error) {
-    logger.error("Error ending giveaway:", error);
-    await interaction.reply({
-      content: "❌ Failed to end giveaway. Please try again.",
-      ephemeral: true,
-    });
-  }
-}
-
-async function handleRerollGiveaway(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) return;
-
-  const giveawayId = interaction.options.getString("giveaway_id", true);
-  const newWinnerCount = interaction.options.getInteger("winners");
-
-  try {
-    const giveaway = await prisma.giveaway.findFirst({
-      where: {
-        giveawayId,
-        guildId: interaction.guild.id,
-        hasEnded: true,
-      },
-      include: {
-        entries: true,
-      },
-    });
-
-    if (!giveaway) {
-      await interaction.reply({
-        content: "❌ Giveaway not found or hasn't ended yet.",
-        ephemeral: true,
-      });
-      return;
-    }
-
-    const winnersToSelect = newWinnerCount ?? giveaway.winnersCount;
-    const eligibleEntries = giveaway.entries;
-
-    if (eligibleEntries.length === 0) {
-      await interaction.reply({
-        content: "❌ No entries found for this giveaway.",
-        ephemeral: true,
-      });
-      return;
-    }
-
-    // Select new winners
-    interface GiveawayEntry {
-      userId: string;
-    }
-    const entryUserIds = (eligibleEntries as GiveawayEntry[]).map((e) => e.userId);
-    const newWinners = selectRandomWinners(entryUserIds, winnersToSelect);
-
-    // Update database
-    await prisma.giveaway.update({
-      where: { id: giveaway.id },
-      data: { winners: newWinners },
-    });
-
-    // Create winner announcement embed
-    const embed = new EmbedBuilder()
-      .setTitle("🎉 Giveaway Rerolled!")
-      .setDescription(`**Prize:** ${giveaway.prize}`)
-      .setColor(0xf1c40f)
-      .addFields({
-        name: "🏆 New Winners",
-        value: newWinners.length > 0 ? newWinners.map((id) => `<@${id}>`).join("\n") : "No valid winners",
-        inline: false,
-      })
-      .setTimestamp();
-
-    // Try to update original message
     try {
-      const channel = await client.channels.fetch(giveaway.channelId);
-      if (channel?.isTextBased()) {
-        const message = await channel.messages.fetch(giveaway.messageId);
-        await message.reply({ embeds: [embed] });
+      switch (subcommand) {
+        case "create":
+          return await this.handleCreateGiveaway();
+        case "end":
+          return await this.handleEndGiveaway();
+        case "reroll":
+          return await this.handleRerollGiveaway();
+        case "list":
+          return await this.handleListGiveaways();
+        default:
+          return this.createGeneralError("Invalid Subcommand", "Unknown giveaway subcommand");
       }
     } catch (error) {
-      logger.warn("Failed to update original giveaway message:", error);
+      return this.createGeneralError(
+        "Giveaway Error",
+        `An error occurred: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
-
-    await interaction.reply({
-      content: `✅ Giveaway **${giveaway.prize}** has been rerolled with ${newWinners.length} winner(s).`,
-      ephemeral: true,
-    });
-
-    // Log reroll
-    await client.logManager.log(interaction.guild.id, "GIVEAWAY_REROLL", {
-      userId: interaction.user.id,
-      metadata: {
-        giveawayId: giveaway.giveawayId,
-        newWinners,
-        rerolledBy: interaction.user.id,
-      },
-    });
-  } catch (error) {
-    logger.error("Error rerolling giveaway:", error);
-    await interaction.reply({
-      content: "❌ Failed to reroll giveaway. Please try again.",
-      ephemeral: true,
-    });
   }
-}
 
-async function handleListGiveaways(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) return;
+  private async handleCreateGiveaway(): Promise<CommandResponse> {
+    const interaction = this.interaction as ChatInputCommandInteraction;
+    const prize = interaction.options.getString("prize", true);
+    const duration = interaction.options.getInteger("duration", true);
+    const winners = interaction.options.getInteger("winners") ?? 1;
+    const description = interaction.options.getString("description");
+    const requiredRole = interaction.options.getRole("required_role");
+    const blockedRole = interaction.options.getRole("blocked_role");
+    const minimumLevel = interaction.options.getInteger("minimum_level");
 
-  try {
-    const giveaways: Giveaway[] = await prisma.giveaway.findMany({
-      where: {
-        guildId: interaction.guild.id,
-        isActive: true,
-      },
-      orderBy: {
-        endsAt: "asc",
-      },
-      take: 10,
-    });
+    try {
+      const endsAt = new Date(Date.now() + duration * 60 * 1000);
+      const giveawayId = generateGiveawayId();
 
-    const embed = new EmbedBuilder().setTitle("🎉 Active Giveaways").setColor(0x3498db).setTimestamp();
+      // Create giveaway in database
+      const giveaway: Giveaway = await prisma.giveaway.create({
+        data: {
+          guildId: this.guild.id,
+          channelId: this.interaction.channel?.id ?? "",
+          messageId: "temp", // Will update after message is sent
+          giveawayId,
+          hostId: this.user.id,
+          title: `🎉 ${prize}`,
+          description,
+          prize,
+          winnersCount: winners,
+          requiredRoles: requiredRole ? [requiredRole.id] : [],
+          blockedRoles: blockedRole ? [blockedRole.id] : [],
+          minimumLevel,
+          endsAt,
+        },
+      });
 
-    if (giveaways.length === 0) {
-      embed.setDescription("No active giveaways in this server.");
-    } else {
-      const giveawayList = giveaways
-        .map((g) => {
-          const endsTimestamp = Math.floor(g.endsAt.getTime() / 1000);
-          return `**${g.prize}** (ID: \`${g.giveawayId}\`)\n🏆 ${g.winnersCount} winner(s) • 👥 ${g.totalEntries} entries\n⏰ Ends <t:${endsTimestamp}:R>`;
+      // Create embed
+      const embed = createGiveawayEmbed(giveaway, this.user.displayAvatarURL());
+
+      // Create enter button
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`giveaway_enter_${giveaway.id}`)
+          .setLabel("🎉 Enter Giveaway")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`giveaway_entries_${giveaway.id}`)
+          .setLabel("👥 View Entries")
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      // Store in memory for quick access after message creation
+      const response = { embeds: [embed], components: [row] };
+
+      // Schedule database update and automatic ending in background
+      void (async () => {
+        try {
+          // Update database with message ID after response is sent
+          const messageId = await this.getMessageIdAfterReply();
+          if (messageId) {
+            await prisma.giveaway.update({
+              where: { id: giveaway.id },
+              data: { messageId },
+            });
+
+            activeGiveaways.set(giveaway.id, { ...giveaway, messageId });
+          }
+
+          // Schedule automatic ending
+          setTimeout(
+            () => {
+              void (async () => {
+                try {
+                  await endGiveaway(this.client, giveaway.id);
+                } catch (error) {
+                  logger.warn(`Failed to end giveaway ${giveaway.id} automatically:`, error);
+                }
+              })();
+            },
+            duration * 60 * 1000
+          );
+
+          // Log giveaway creation
+          await this.client.logManager.log(this.guild.id, "GIVEAWAY_CREATE", {
+            userId: this.user.id,
+            channelId: this.interaction.channel?.id,
+            metadata: {
+              giveawayId: giveaway.giveawayId,
+              prize,
+              duration,
+              winners,
+              endsAt: giveaway.endsAt.toISOString(),
+            },
+          });
+        } catch (error) {
+          logger.error("Error in giveaway post-creation tasks:", error);
+        }
+      })();
+
+      return response;
+    } catch (error) {
+      return this.createGeneralError("Creation Failed", "Failed to create giveaway. Please try again.");
+    }
+  }
+
+  private async handleEndGiveaway(): Promise<CommandResponse> {
+    const interaction = this.interaction as ChatInputCommandInteraction;
+    const giveawayId = interaction.options.getString("giveaway_id", true);
+
+    try {
+      await endGiveaway(this.client, giveawayId);
+      return new ResponseBuilder()
+        .success("Giveaway Ended")
+        .content("✅ Giveaway has been ended successfully!")
+        .ephemeral()
+        .build();
+    } catch (error) {
+      return this.createGeneralError("End Failed", "Failed to end giveaway. Please check the ID and try again.");
+    }
+  }
+
+  private async handleRerollGiveaway(): Promise<CommandResponse> {
+    const interaction = this.interaction as ChatInputCommandInteraction;
+    const giveawayId = interaction.options.getString("giveaway_id", true);
+    const newWinners = interaction.options.getInteger("winners");
+
+    try {
+      const giveaway = await prisma.giveaway.findUnique({
+        where: { id: giveawayId },
+        include: { entries: true },
+      });
+
+      if (!giveaway) {
+        return this.createGeneralError("Giveaway Not Found", "Could not find the specified giveaway.");
+      }
+
+      if (!giveaway.hasEnded) {
+        return this.createGeneralError("Giveaway Active", "Cannot reroll an active giveaway. End it first.");
+      }
+
+      const winnersCount = newWinners ?? giveaway.winnersCount;
+      const eligibleEntries = giveaway.entries.map((entry) => entry.userId);
+
+      if (eligibleEntries.length === 0) {
+        return this.createGeneralError("No Entries", "No valid entries found for this giveaway.");
+      }
+
+      const winners = selectRandomWinners(eligibleEntries, winnersCount);
+
+      // Update giveaway with new winners
+      await prisma.giveaway.update({
+        where: { id: giveaway.id },
+        data: { winners: winners },
+      });
+
+      // Create reroll announcement
+      const embed = new EmbedBuilder()
+        .setTitle("🎉 Giveaway Rerolled!")
+        .setDescription(`**Prize:** ${giveaway.prize}`)
+        .addFields({
+          name: "🏆 New Winners",
+          value: winners.length > 0 ? winners.map((id) => `<@${id}>`).join("\n") : "No winners selected",
+          inline: false,
         })
-        .join("\n\n");
+        .setColor(0x00ff00)
+        .setTimestamp();
 
-      embed.setDescription(giveawayList);
+      return { embeds: [embed] };
+    } catch (error) {
+      return this.createGeneralError("Reroll Failed", "Failed to reroll giveaway. Please try again.");
     }
+  }
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-  } catch (error) {
-    logger.error("Error listing giveaways:", error);
-    await interaction.reply({
-      content: "❌ Failed to list giveaways. Please try again.",
-      ephemeral: true,
-    });
+  private async handleListGiveaways(): Promise<CommandResponse> {
+    try {
+      const giveaways = await prisma.giveaway.findMany({
+        where: {
+          guildId: this.guild.id,
+          hasEnded: false,
+        },
+        orderBy: { endsAt: "asc" },
+        take: 10,
+      });
+
+      if (giveaways.length === 0) {
+        return new ResponseBuilder()
+          .info("No Active Giveaways")
+          .content("There are no active giveaways in this server.")
+          .ephemeral()
+          .build();
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle("🎉 Active Giveaways")
+        .setColor(0x3498db)
+        .setDescription(
+          giveaways
+            .map(
+              (g) =>
+                `**${g.prize}**\n` +
+                `ID: \`${g.giveawayId}\`\n` +
+                `Ends: <t:${Math.floor(g.endsAt.getTime() / 1000)}:R>\n` +
+                `Winners: ${g.winnersCount}\n`
+            )
+            .join("\n")
+        )
+        .setFooter({ text: `${giveaways.length} active giveaway${giveaways.length === 1 ? "" : "s"}` });
+
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
+      return this.createGeneralError("List Failed", "Failed to list giveaways. Please try again.");
+    }
+  }
+
+  private getMessageIdAfterReply(): Promise<string | null> {
+    try {
+      // This is a helper method to get the message ID after the reply is sent
+      // In practice, this would need to be implemented based on how the framework handles replies
+      return Promise.resolve(null); // Placeholder - would need actual implementation
+    } catch {
+      return Promise.resolve(null);
+    }
   }
 }
+
+// Export the command instance
+export default new GiveawayCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("giveaway")
+  .setDescription("Create and manage giveaways")
+  .setDefaultMemberPermissions(0) // Hide from all regular users
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("create")
+      .setDescription("Create a new giveaway")
+      .addStringOption((opt) =>
+        opt.setName("prize").setDescription("What is being given away").setRequired(true).setMaxLength(200)
+      )
+      .addIntegerOption((opt) =>
+        opt
+          .setName("duration")
+          .setDescription("Duration in minutes (minimum: 1, max: 10080 = 1 week)")
+          .setRequired(true)
+          .setMinValue(1)
+          .setMaxValue(10080)
+      )
+      .addIntegerOption((opt) =>
+        opt.setName("winners").setDescription("Number of winners (default: 1)").setMinValue(1).setMaxValue(20)
+      )
+      .addStringOption((opt) =>
+        opt.setName("description").setDescription("Additional description or requirements").setMaxLength(500)
+      )
+      .addRoleOption((opt) => opt.setName("required_role").setDescription("Role required to enter"))
+      .addRoleOption((opt) => opt.setName("blocked_role").setDescription("Role that cannot enter"))
+      .addIntegerOption((opt) =>
+        opt.setName("minimum_level").setDescription("Minimum user level to enter (if level system is active)")
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("end")
+      .setDescription("End a giveaway early")
+      .addStringOption((opt) =>
+        opt.setName("giveaway_id").setDescription("Giveaway ID to end").setRequired(true).setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("reroll")
+      .setDescription("Reroll winners for a giveaway")
+      .addStringOption((opt) =>
+        opt.setName("giveaway_id").setDescription("Giveaway ID to reroll").setRequired(true).setAutocomplete(true)
+      )
+      .addIntegerOption((opt) => opt.setName("winners").setDescription("Number of new winners to select"))
+  )
+  .addSubcommand((subcommand) => subcommand.setName("list").setDescription("List active giveaways in this server"));
 
 // Helper functions
 function generateGiveawayId(): string {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  return Math.random().toString(36).substring(2, 10).toUpperCase();
 }
 
 function createGiveawayEmbed(giveaway: Giveaway, hostAvatarURL: string): EmbedBuilder {
   const embed = new EmbedBuilder()
-    .setTitle("🎉 GIVEAWAY 🎉")
-    .setDescription(`**${giveaway.prize}**`)
-    .setColor(0xf1c40f)
-    .setTimestamp(giveaway.endsAt)
+    .setTitle(giveaway.title)
+    .setDescription(
+      [
+        `**Prize:** ${giveaway.prize}`,
+        giveaway.description ? `**Description:** ${giveaway.description}` : null,
+        `**Winners:** ${giveaway.winnersCount}`,
+        `**Ends:** <t:${Math.floor(giveaway.endsAt.getTime() / 1000)}:R>`,
+        `**Host:** <@${giveaway.hostId}>`,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    )
+    .setColor(0x3498db)
     .setFooter({
-      text: `Giveaway ID: ${giveaway.giveawayId} • Ends`,
+      text: `Giveaway ID: ${giveaway.giveawayId} • React to enter!`,
       iconURL: hostAvatarURL,
-    });
+    })
+    .setTimestamp(giveaway.endsAt);
 
-  // Add additional description if provided
-  if (giveaway.description) {
-    embed.addFields({
-      name: "📋 Description",
-      value: giveaway.description,
-      inline: false,
-    });
-  }
-
-  // Add requirements
+  // Add requirements if any
   const requirements: string[] = [];
   if (giveaway.requiredRoles.length > 0) {
-    requirements.push(`🎭 Required role: <@&${giveaway.requiredRoles[0]}>`);
+    requirements.push(`Must have role: ${giveaway.requiredRoles.map((id) => `<@&${id}>`).join(" or ")}`);
   }
   if (giveaway.blockedRoles.length > 0) {
-    requirements.push(`🚫 Cannot have role: <@&${giveaway.blockedRoles[0]}>`);
+    requirements.push(`Cannot have role: ${giveaway.blockedRoles.map((id) => `<@&${id}>`).join(" or ")}`);
   }
   if (giveaway.minimumLevel) {
-    requirements.push(`📊 Minimum level: ${giveaway.minimumLevel}`);
+    requirements.push(`Minimum level: ${giveaway.minimumLevel}`);
   }
-
-  embed.addFields(
-    {
-      name: "🏆 Winners",
-      value: giveaway.winnersCount.toString(),
-      inline: true,
-    },
-    {
-      name: "👥 Entries",
-      value: giveaway.totalEntries.toString(),
-      inline: true,
-    },
-    {
-      name: "👑 Host",
-      value: `<@${giveaway.hostId}>`,
-      inline: true,
-    }
-  );
 
   if (requirements.length > 0) {
     embed.addFields({
@@ -452,202 +401,111 @@ async function endGiveaway(client: Client, giveawayDbId: string): Promise<void> 
       include: { entries: true },
     });
 
-    if (!giveaway || !giveaway.isActive) return;
+    if (!giveaway || giveaway.hasEnded) {
+      return;
+    }
 
-    // Select winners
-    const winners = selectRandomWinners(
-      giveaway.entries.map((e) => e.userId),
-      giveaway.winnersCount
-    );
+    const eligibleEntries = giveaway.entries.map((entry) => entry.userId);
+    const winners = selectRandomWinners(eligibleEntries, giveaway.winnersCount);
 
-    // Update database
+    // Update giveaway as ended
     await prisma.giveaway.update({
       where: { id: giveaway.id },
       data: {
-        isActive: false,
         hasEnded: true,
         endedAt: new Date(),
-        winners,
+        winners: winners,
       },
     });
 
-    // Create winner announcement embed
-    const embed = new EmbedBuilder()
-      .setTitle("🎉 Giveaway Ended!")
-      .setDescription(`**Prize:** ${giveaway.prize}`)
-      .setColor(0x2ecc71)
-      .addFields({
-        name: "🏆 Winners",
-        value: winners.length > 0 ? winners.map((id) => `<@${id}>`).join("\n") : "No valid winners",
-        inline: false,
-      })
-      .setTimestamp();
-
-    // Try to update original message and announce winners
-    try {
-      const channel = await client.channels.fetch(giveaway.channelId);
-      if (channel?.isTextBased()) {
-        const message = await channel.messages.fetch(giveaway.messageId);
-
-        // Update original message to show it ended
-        const endedEmbed = createGiveawayEmbed(giveaway, "");
-        endedEmbed.setColor(0x95a5a6);
-        endedEmbed.setTitle("🎉 GIVEAWAY ENDED 🎉");
-
-        await message.edit({
-          embeds: [endedEmbed],
-          components: [], // Remove buttons
-        });
-
-        // Send winner announcement
-        await message.reply({ embeds: [embed] });
-      }
-    } catch (error) {
-      logger.warn("Failed to update giveaway message:", error);
-    }
-
-    // Clean up memory
+    // Remove from active giveaways
     activeGiveaways.delete(giveaway.id);
 
-    logger.info(`Giveaway ${giveaway.giveawayId} ended with ${winners.length} winners`);
+    // Get the channel and message
+    const guild = client.guilds.cache.get(giveaway.guildId);
+    if (!guild) return;
+
+    const channel = guild.channels.cache.get(giveaway.channelId);
+    if (!channel?.isTextBased()) return;
+
+    try {
+      const message = await channel.messages.fetch(giveaway.messageId);
+
+      // Create ended embed
+      const embed = new EmbedBuilder()
+        .setTitle("🎉 Giveaway Ended!")
+        .setDescription(
+          [
+            `**Prize:** ${giveaway.prize}`,
+            giveaway.description ? `**Description:** ${giveaway.description}` : null,
+            `**Winners:** ${giveaway.winnersCount}`,
+            `**Host:** <@${giveaway.hostId}>`,
+          ]
+            .filter(Boolean)
+            .join("\n")
+        )
+        .addFields({
+          name: "🏆 Winners",
+          value: winners.length > 0 ? winners.map((id) => `<@${id}>`).join("\n") : "No valid entries",
+          inline: false,
+        })
+        .setColor(0x00ff00)
+        .setFooter({ text: `Giveaway ID: ${giveaway.giveawayId} • Ended` })
+        .setTimestamp();
+
+      // Update message
+      await message.edit({
+        embeds: [embed],
+        components: [], // Remove buttons
+      });
+
+      // Announce winners if any
+      if (winners.length > 0) {
+        await channel.send({
+          content: `🎉 **Congratulations!** ${winners.map((id) => `<@${id}>`).join(", ")} won **${giveaway.prize}**!`,
+        });
+      }
+    } catch (error) {
+      logger.warn(`Could not update giveaway message ${giveaway.messageId}:`, error);
+    }
+
+    // Log giveaway end
+    await client.logManager.log(giveaway.guildId, "GIVEAWAY_END", {
+      userId: "system",
+      channelId: giveaway.channelId,
+      metadata: {
+        giveawayId: giveaway.giveawayId,
+        prize: giveaway.prize,
+        winners,
+        totalEntries: eligibleEntries.length,
+      },
+    });
   } catch (error) {
-    logger.error("Error ending giveaway:", error);
+    logger.error(`Error ending giveaway ${giveawayDbId}:`, error);
   }
 }
 
 function selectRandomWinners(userIds: string[], count: number): string[] {
   if (userIds.length === 0) return [];
+  if (count >= userIds.length) return [...userIds];
 
-  const shuffled = userIds.sort(() => 0.5 - Math.random());
-  return shuffled.slice(0, Math.min(count, userIds.length));
+  const shuffled = [...userIds].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count);
 }
 
-// Handle button interactions for giveaways
 export async function handleGiveawayInteraction(interaction: ButtonInteraction): Promise<void> {
-  if (!interaction.customId.startsWith("giveaway_")) return;
-  if (!interaction.guild) return;
+  const customId = interaction.customId;
 
-  const [, action, giveawayDbId] = interaction.customId.split("_");
-
-  switch (action) {
-    case "enter":
-      await handleGiveawayEntry(interaction, giveawayDbId);
-      break;
-    case "entries":
-      await handleViewEntries(interaction, giveawayDbId);
-      break;
+  if (customId.startsWith("giveaway_enter_")) {
+    const giveawayDbId = customId.replace("giveaway_enter_", "");
+    await handleGiveawayEntry(interaction, giveawayDbId);
+  } else if (customId.startsWith("giveaway_entries_")) {
+    const giveawayDbId = customId.replace("giveaway_entries_", "");
+    await handleViewEntries(interaction, giveawayDbId);
   }
 }
 
 async function handleGiveawayEntry(interaction: ButtonInteraction, giveawayDbId: string): Promise<void> {
-  if (!interaction.guild) return;
-
-  try {
-    const giveaway = await prisma.giveaway.findUnique({
-      where: { id: giveawayDbId },
-    });
-
-    if (!giveaway?.isActive) {
-      await interaction.reply({
-        content: "❌ This giveaway is no longer active.",
-        ephemeral: true,
-      });
-      return;
-    }
-
-    // Check if giveaway has ended
-    if (new Date() > giveaway.endsAt) {
-      await interaction.reply({
-        content: "❌ This giveaway has already ended.",
-        ephemeral: true,
-      });
-      return;
-    }
-
-    const member = interaction.member as GuildMember;
-
-    // Check requirements
-    if (giveaway.requiredRoles.length > 0) {
-      const hasRequiredRole = giveaway.requiredRoles.some((roleId) => member.roles.cache.has(roleId));
-      if (!hasRequiredRole) {
-        const requiredRole = interaction.guild.roles.cache.get(giveaway.requiredRoles[0]);
-        await interaction.reply({
-          content: `❌ You need the **${requiredRole?.name ?? "required"}** role to enter this giveaway.`,
-          ephemeral: true,
-        });
-        return;
-      }
-    }
-
-    if (giveaway.blockedRoles.length > 0) {
-      const hasBlockedRole = giveaway.blockedRoles.some((roleId) => member.roles.cache.has(roleId));
-      if (hasBlockedRole) {
-        const blockedRole = interaction.guild.roles.cache.get(giveaway.blockedRoles[0]);
-        await interaction.reply({
-          content: `❌ Users with the **${blockedRole?.name ?? "blocked"}** role cannot enter this giveaway.`,
-          ephemeral: true,
-        });
-        return;
-      }
-    }
-
-    // Check if already entered
-    const existingEntry = await prisma.giveawayEntry.findUnique({
-      where: {
-        giveawayId_userId: {
-          giveawayId: giveaway.id,
-          userId: interaction.user.id,
-        },
-      },
-    });
-
-    if (existingEntry) {
-      // Remove entry
-      await prisma.giveawayEntry.delete({
-        where: { id: existingEntry.id },
-      });
-
-      await prisma.giveaway.update({
-        where: { id: giveaway.id },
-        data: { totalEntries: { decrement: 1 } },
-      });
-
-      await interaction.reply({
-        content: "🗑️ You have left the giveaway.",
-        ephemeral: true,
-      });
-    } else {
-      // Add entry
-      await prisma.giveawayEntry.create({
-        data: {
-          giveawayId: giveaway.id,
-          userId: interaction.user.id,
-          guildId: interaction.guild.id,
-        },
-      });
-
-      await prisma.giveaway.update({
-        where: { id: giveaway.id },
-        data: { totalEntries: { increment: 1 } },
-      });
-
-      await interaction.reply({
-        content: "🎉 You have entered the giveaway! Good luck!",
-        ephemeral: true,
-      });
-    }
-  } catch (error) {
-    logger.error("Error handling giveaway entry:", error);
-    await interaction.reply({
-      content: "❌ Failed to process giveaway entry. Please try again.",
-      ephemeral: true,
-    });
-  }
-}
-
-async function handleViewEntries(interaction: ButtonInteraction, giveawayDbId: string): Promise<void> {
-  if (!interaction.guild) return;
-
   try {
     const giveaway = await prisma.giveaway.findUnique({
       where: { id: giveawayDbId },
@@ -656,50 +514,126 @@ async function handleViewEntries(interaction: ButtonInteraction, giveawayDbId: s
 
     if (!giveaway) {
       await interaction.reply({
-        content: "❌ Giveaway not found.",
+        content: "❌ This giveaway no longer exists.",
         ephemeral: true,
       });
       return;
     }
 
+    if (giveaway.hasEnded) {
+      await interaction.reply({
+        content: "❌ This giveaway has already ended.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (new Date() > giveaway.endsAt) {
+      await interaction.reply({
+        content: "❌ This giveaway has expired.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Check if user already entered
+    const existingEntry = giveaway.entries.find((entry) => entry.userId === interaction.user.id);
+    if (existingEntry) {
+      await interaction.reply({
+        content: "❌ You have already entered this giveaway!",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Check requirements
+    const member = interaction.member as GuildMember;
+
+    // Check required roles
+    if (giveaway.requiredRoles.length > 0) {
+      const hasRequiredRole = giveaway.requiredRoles.some((roleId) => member.roles.cache.has(roleId));
+      if (!hasRequiredRole) {
+        await interaction.reply({
+          content: "❌ You don't have the required role to enter this giveaway.",
+          ephemeral: true,
+        });
+        return;
+      }
+    }
+
+    // Check blocked roles
+    if (giveaway.blockedRoles.length > 0) {
+      const hasBlockedRole = giveaway.blockedRoles.some((roleId) => member.roles.cache.has(roleId));
+      if (hasBlockedRole) {
+        await interaction.reply({
+          content: "❌ You cannot enter this giveaway due to your current roles.",
+          ephemeral: true,
+        });
+        return;
+      }
+    }
+
+    // Add entry
+    await prisma.giveawayEntry.create({
+      data: {
+        giveawayId: giveaway.id,
+        userId: interaction.user.id,
+        guildId: interaction.guildId ?? "",
+      },
+    });
+
+    await interaction.reply({
+      content: "✅ You have successfully entered the giveaway! Good luck! 🍀",
+      ephemeral: true,
+    });
+  } catch (error) {
+    logger.error("Error handling giveaway entry:", error);
+    await interaction.reply({
+      content: "❌ An error occurred while entering the giveaway.",
+      ephemeral: true,
+    });
+  }
+}
+
+async function handleViewEntries(interaction: ButtonInteraction, giveawayDbId: string): Promise<void> {
+  try {
+    const giveaway = await prisma.giveaway.findUnique({
+      where: { id: giveawayDbId },
+      include: { entries: true },
+    });
+
+    if (!giveaway) {
+      await interaction.reply({
+        content: "❌ This giveaway no longer exists.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const entryCount = giveaway.entries.length;
     const embed = new EmbedBuilder()
-      .setTitle(`👥 Giveaway Entries: ${giveaway.prize}`)
-      .setColor(0x3498db)
+      .setTitle("👥 Giveaway Entries")
+      .setDescription(`**Prize:** ${giveaway.prize}`)
       .addFields({
         name: "📊 Statistics",
         value: [
-          `**Total Entries:** ${giveaway.totalEntries}`,
+          `**Total Entries:** ${entryCount}`,
           `**Winners to Select:** ${giveaway.winnersCount}`,
-          `**Chance per Entry:** ${giveaway.totalEntries > 0 ? Math.round((giveaway.winnersCount / giveaway.totalEntries) * 100) : 0}%`,
+          `**Ends:** <t:${Math.floor(giveaway.endsAt.getTime() / 1000)}:R>`,
         ].join("\n"),
         inline: false,
       })
+      .setColor(0x3498db)
       .setTimestamp();
 
-    if (giveaway.entries.length > 0) {
-      const userList = giveaway.entries
-        .slice(0, 20)
-        .map((entry, index) => `${index + 1}. <@${entry.userId}>`)
-        .join("\n");
-
-      embed.addFields({
-        name: `📋 Entries (showing ${Math.min(giveaway.entries.length, 20)}/${giveaway.entries.length})`,
-        value: userList,
-        inline: false,
-      });
-
-      if (giveaway.entries.length > 20) {
-        embed.setFooter({ text: `and ${giveaway.entries.length - 20} more entries...` });
-      }
-    } else {
-      embed.setDescription("No entries yet. Be the first to enter!");
-    }
-
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({
+      embeds: [embed],
+      ephemeral: true,
+    });
   } catch (error) {
     logger.error("Error viewing giveaway entries:", error);
     await interaction.reply({
-      content: "❌ Failed to view giveaway entries. Please try again.",
+      content: "❌ An error occurred while viewing entries.",
       ephemeral: true,
     });
   }

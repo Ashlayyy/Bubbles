@@ -1,27 +1,40 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
-
 import logger from "../../logger.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("userinfo")
-    .setDescription("Display detailed information about a user")
-    .addUserOption((opt) => opt.setName("user").setDescription("User to get information about (defaults to yourself)"))
-    .addBooleanOption((opt) => opt.setName("detailed").setDescription("Show additional technical details")),
+/**
+ * Userinfo Command - Display detailed information about a user
+ */
+export class UserinfoCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "userinfo",
+      description: "Display detailed information about a user",
+      category: "admin",
+      permissions: {
+        level: PermissionLevel.PUBLIC,
+        isConfigurable: true,
+      },
+      ephemeral: false,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    // Type guard to ensure this is a chat input command
-    if (!interaction.isChatInputCommand()) return;
-    if (!interaction.guild) return;
+    super(config);
+  }
 
-    const targetUser = interaction.options.getUser("user") ?? interaction.user;
-    const detailed = interaction.options.getBoolean("detailed") ?? false;
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
+
+    const targetUser = this.getUserOption("user") ?? this.user;
+    const detailed = this.getBooleanOption("detailed") ?? false;
 
     try {
       // Get member object if user is in guild
-      const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+      const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
 
       const embed = new EmbedBuilder()
         .setTitle(`👤 ${targetUser.displayName} User Information`)
@@ -72,7 +85,7 @@ export default new Command(
         );
 
         // Roles information
-        const guildId = interaction.guild.id;
+        const guildId = this.guild.id;
         const roles = member.roles.cache
           .filter((role) => role.id !== guildId) // Exclude @everyone
           .sort((a, b) => b.position - a.position)
@@ -232,26 +245,26 @@ export default new Command(
 
       // Set footer
       embed.setFooter({
-        text: `Requested by ${interaction.user.username}`,
-        iconURL: interaction.user.displayAvatarURL(),
+        text: `Requested by ${this.user.username}`,
+        iconURL: this.user.displayAvatarURL(),
       });
 
-      await interaction.reply({ embeds: [embed] });
-
       // Log command usage
-      await client.logManager.log(interaction.guild.id, "COMMAND_USERINFO", {
-        userId: interaction.user.id,
-        channelId: interaction.channel?.id,
+      await this.client.logManager.log(this.guild.id, "COMMAND_USERINFO", {
+        userId: this.user.id,
+        channelId: this.interaction.channel?.id,
         metadata: {
           targetUserId: targetUser.id,
           targetUsername: targetUser.username,
           detailed,
-          isMember: !!member,
+          isInGuild: !!member,
         },
       });
+
+      return { embeds: [embed] };
     } catch (error) {
       logger.error("Error in userinfo command:", error);
-      await interaction.reply({
+      return {
         embeds: [
           new EmbedBuilder()
             .setColor(0xe74c3c)
@@ -260,13 +273,17 @@ export default new Command(
             .setTimestamp(),
         ],
         ephemeral: true,
-      });
+      };
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.PUBLIC,
-      isConfigurable: true,
-    },
   }
-);
+}
+
+// Export the command instance
+export default new UserinfoCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("userinfo")
+  .setDescription("Display detailed information about a user")
+  .addUserOption((opt) => opt.setName("user").setDescription("User to get information about (defaults to yourself)"))
+  .addBooleanOption((opt) => opt.setName("detailed").setDescription("Show additional technical details"));

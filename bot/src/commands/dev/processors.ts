@@ -1,22 +1,31 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import type { ProcessorFactoryStats } from "../../queue/processors/ProcessorFactory.js";
-import Command from "../../structures/Command.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
 
-export default new Command(
-  new SlashCommandBuilder().setName("processors").setDescription("DEV ONLY: Check processor system status and stats"),
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { DevCommand } from "../_core/specialized/DevCommand.js";
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
+class ProcessorsCommand extends DevCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "processors",
+      description: "DEV ONLY: Check processor system status and stats",
+      category: "dev",
+      ephemeral: true,
+      guildOnly: false,
+    };
 
-    await interaction.deferReply({ ephemeral: true });
+    super(config);
+  }
+
+  protected async execute(): Promise<CommandResponse> {
+    this.validateDevPermissions();
+
+    const { ProcessorFactory } = await import("../../queue/processors/ProcessorFactory.js");
+    const factory = new ProcessorFactory(this.client);
 
     try {
-      const { ProcessorFactory } = await import("../../queue/processors/ProcessorFactory.js");
-      const processorFactory = new ProcessorFactory(client);
-
-      const stats: ProcessorFactoryStats = processorFactory.getProcessorStats();
-      const availableJobTypes = processorFactory.getAvailableJobTypes();
+      const stats: ProcessorFactoryStats = factory.getProcessorStats();
+      const availableJobTypes = factory.getAvailableJobTypes();
 
       const embed = new EmbedBuilder()
         .setTitle("🔧 Processor System Status")
@@ -40,41 +49,34 @@ export default new Command(
           }
         );
 
-      // Add processor details
-      if (stats.processors.length > 0) {
-        for (const processor of stats.processors.slice(0, 5)) {
-          // Limit to 5 to avoid embed limits
-          embed.addFields({
-            name: `🔄 ${processor.processorName}`,
-            value: [`**Job Types:** ${processor.totalJobTypes}`, `**Handles:** ${processor.jobTypes.join(", ")}`].join(
-              "\n"
-            ),
-            inline: true,
-          });
-        }
+      for (const processor of stats.processors.slice(0, 5)) {
+        embed.addFields({
+          name: `🔄 ${processor.processorName}`,
+          value: [`**Job Types:** ${processor.totalJobTypes}`, `**Handles:** ${processor.jobTypes.join(", ")}`].join(
+            "\n"
+          ),
+          inline: true,
+        });
       }
 
-      await interaction.editReply({ embeds: [embed] });
-
-      // Clean up
-      processorFactory.shutdown();
+      return { embeds: [embed], ephemeral: true };
     } catch (error) {
-      console.error("Error checking processor status:", error);
-
       const errorEmbed = new EmbedBuilder()
         .setTitle("❌ Processor System Error")
         .setColor(0xff0000)
         .setDescription(`Failed to check processor status: ${error instanceof Error ? error.message : "Unknown error"}`)
         .setTimestamp();
 
-      await interaction.editReply({ embeds: [errorEmbed] });
+      return { embeds: [errorEmbed], ephemeral: true };
+    } finally {
+      factory.shutdown();
     }
-  },
-  {
-    ephemeral: true,
-    permissions: {
-      level: PermissionLevel.DEVELOPER,
-      isConfigurable: false,
-    },
   }
-);
+}
+
+export default new ProcessorsCommand();
+
+export const builder = new SlashCommandBuilder()
+  .setName("processors")
+  .setDescription("DEV ONLY: Check processor system status and stats")
+  .setDefaultMemberPermissions(0);

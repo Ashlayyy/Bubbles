@@ -1,87 +1,94 @@
 import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
-
-import { prisma } from "../../database/index.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import { parseEvidence, type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("kick")
-    .setDescription("Kick a user from the server")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.KickMembers)
-    .addUserOption((option) => option.setName("user").setDescription("The user to kick").setRequired(true))
-    .addStringOption((option) => option.setName("reason").setDescription("Reason for the kick").setRequired(false))
-    .addStringOption((option) =>
-      option.setName("evidence").setDescription("Evidence links (comma-separated)").setRequired(false)
-    )
-    .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false)),
+/**
+ * Kick Command - Kicks a user from the server
+ */
+export class KickCommand extends ModerationCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "kick",
+      description: "Kick a user from the server",
+      category: "moderation",
+      permissions: {
+        level: PermissionLevel.MODERATOR,
+        discordPermissions: [PermissionsBitField.Flags.KickMembers],
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
+    super(config);
+  }
 
-    await interaction.deferReply({ ephemeral: true });
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
 
-    const targetUser = interaction.options.getUser("user", true);
-    let reason = interaction.options.getString("reason") ?? "No reason provided";
-    const evidence =
-      interaction.options
-        .getString("evidence")
-        ?.split(",")
-        .map((s) => s.trim()) ?? [];
-    const silent = interaction.options.getBoolean("silent") ?? false;
+    // Get command options using typed methods
+    const targetUser = this.getUserOption("user", true);
+    const reasonInput = this.getStringOption("reason") ?? "No reason provided";
+    const evidenceStr = this.getStringOption("evidence");
+    const silent = this.getBooleanOption("silent") ?? false;
 
     try {
-      // Check if reason is an alias and expand it
-      if (reason !== "No reason provided") {
-        const aliasName = reason.toUpperCase();
-        const alias = await prisma.alias.findUnique({
-          where: { guildId_name: { guildId: interaction.guild.id, name: aliasName } },
-        });
-
-        if (alias) {
-          // Expand alias content with variables
-          reason = alias.content;
-          reason = reason.replace(/\{user\}/g, `<@${targetUser.id}>`);
-          reason = reason.replace(/\{server\}/g, interaction.guild.name);
-          reason = reason.replace(/\{moderator\}/g, `<@${interaction.user.id}>`);
-
-          // Update usage count
-          await prisma.alias.update({
-            where: { id: alias.id },
-            data: { usageCount: { increment: 1 } },
-          });
-        }
+      // Check if user is in the server (required for kicks)
+      const member = await this.getTargetMember(true);
+      if (!member) {
+        throw new Error(`User ${targetUser.username} is not in this server.`);
       }
 
-      // Get the moderation manager from client
-      const moderationManager = client.moderationManager;
+      // Validate moderation permissions against the member
+      this.validateModerationTarget(member);
 
-      // Execute the kick - the system handles everything automatically!
-      const case_ = await moderationManager.kick(
-        interaction.guild,
+      // Expand alias with automatic variable substitution
+      const reason = await this.expandReasonAlias(reasonInput, targetUser);
+
+      // Parse evidence automatically
+      const evidence = parseEvidence(evidenceStr ?? undefined);
+
+      // Execute the kick using existing moderation manager
+      const case_ = await this.client.moderationManager.kick(
+        this.guild,
         targetUser.id,
-        interaction.user.id,
+        this.user.id,
         reason,
-        evidence.length > 0 ? evidence : undefined,
+        evidence.all.length > 0 ? evidence.all : undefined,
         !silent
       );
 
-      // Simple success response
-      await interaction.editReply({
-        content: `✅ **${targetUser.tag}** has been kicked.\n📋 **Case #${case_.caseNumber.toString()}** created.`,
-      });
+      // Use the new ResponseBuilder for consistent formatting
+      return this.createModerationResponse(
+        "kicked",
+        targetUser,
+        reason,
+        undefined, // No duration for kicks
+        case_.caseNumber,
+        evidence
+      );
     } catch (error) {
-      await interaction.editReply({
-        content: `❌ Failed to kick **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
+      return this.createModerationError("kick", targetUser, error instanceof Error ? error.message : "Unknown error");
     }
-  },
-  {
-    ephemeral: true,
-    permissions: {
-      level: PermissionLevel.MODERATOR,
-      discordPermissions: [PermissionsBitField.Flags.KickMembers],
-      isConfigurable: true,
-    },
   }
-);
+}
+
+// Export the command instance
+export default new KickCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("kick")
+  .setDescription("Kick a user from the server")
+  .setDefaultMemberPermissions(0) // Hide from all regular users
+  .addUserOption((option) => option.setName("user").setDescription("The user to kick").setRequired(true))
+  .addStringOption((option) =>
+    option.setName("reason").setDescription("Reason for the kick (or alias name)").setRequired(false)
+  )
+  .addStringOption((option) =>
+    option.setName("evidence").setDescription("Evidence links (comma-separated)").setRequired(false)
+  )
+  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false));

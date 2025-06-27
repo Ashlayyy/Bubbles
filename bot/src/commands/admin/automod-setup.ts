@@ -6,15 +6,14 @@ import {
   type ChatInputCommandInteraction,
   ComponentType,
   EmbedBuilder,
-  PermissionsBitField,
   SlashCommandBuilder,
 } from "discord.js";
 
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
-import Command from "../../structures/Command.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
 interface AutoModPreset {
   name: string;
@@ -162,55 +161,122 @@ const AUTOMOD_PRESETS: AutoModPreset[] = [
   },
 ];
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("automod-setup")
-    .setDescription("🧙‍♂️ Setup auto-moderation with guided wizard")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
-    .addSubcommand((sub) => sub.setName("wizard").setDescription("Launch the interactive setup wizard"))
-    .addSubcommand((sub) =>
-      sub
-        .setName("preset")
-        .setDescription("Apply a preset configuration")
-        .addStringOption((opt) =>
-          opt
-            .setName("type")
-            .setDescription("Preset type")
-            .setRequired(true)
-            .addChoices(
-              { name: "🛡️ Basic Protection", value: "basic" },
-              { name: "🔰 Comprehensive Shield", value: "comprehensive" },
-              { name: "👨‍👩‍👧‍👦 Family Friendly", value: "family" },
-              { name: "🎮 Gaming Community", value: "gaming" }
-            )
-        )
-    )
-    .addSubcommand((sub) => sub.setName("status").setDescription("View current auto-moderation status")),
+/**
+ * AutoMod Setup Command - Setup and configure automod features
+ */
+export class AutoModSetupCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "automod-setup",
+      description: "Setup and configure automod features",
+      category: "admin",
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
-
-    const subcommand = interaction.options.getSubcommand();
-
-    switch (subcommand) {
-      case "wizard":
-        await startSetupWizard(client, interaction);
-        break;
-      case "preset":
-        await applyPreset(client, interaction);
-        break;
-      case "status":
-        await showStatus(client, interaction);
-        break;
-    }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.ADMIN,
-      isConfigurable: true,
-    },
+    super(config);
   }
-);
+
+  protected async execute(): Promise<CommandResponse> {
+    // Validate admin permissions for server management
+    this.validateAdminPerms(["ManageGuild"]);
+
+    const action = this.getStringOption("action", true);
+
+    switch (action) {
+      case "quick-setup":
+        return await this.handleQuickSetup();
+      case "advanced-setup":
+        return await this.handleAdvancedSetup();
+      case "reset":
+        return await this.handleReset();
+      default:
+        throw new Error("Invalid action");
+    }
+  }
+
+  private async handleQuickSetup(): Promise<CommandResponse> {
+    try {
+      const result = await this.client.autoModService.quickSetup(this.guild.id);
+
+      return this.createAdminSuccess(
+        "AutoMod Quick Setup Complete",
+        `AutoMod has been configured with default settings:\n${result.configuredRules.map((rule) => `• ${rule}`).join("\n")}`
+      );
+    } catch (error) {
+      throw new Error(`Failed to setup automod: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  private async handleAdvancedSetup(): Promise<CommandResponse> {
+    try {
+      // Get advanced configuration options
+      const antiSpam = this.getBooleanOption("anti-spam") ?? true;
+      const antiRaid = this.getBooleanOption("anti-raid") ?? true;
+      const wordFilter = this.getBooleanOption("word-filter") ?? true;
+      const linkFilter = this.getBooleanOption("link-filter") ?? false;
+
+      const result = await this.client.autoModService.advancedSetup(this.guild.id, {
+        antiSpam,
+        antiRaid,
+        wordFilter,
+        linkFilter,
+      });
+
+      return this.createAdminSuccess(
+        "AutoMod Advanced Setup Complete",
+        `AutoMod has been configured with custom settings:\n${result.configuredRules.map((rule) => `• ${rule}`).join("\n")}`
+      );
+    } catch (error) {
+      throw new Error(`Failed to setup advanced automod: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  private async handleReset(): Promise<CommandResponse> {
+    try {
+      await this.client.autoModService.resetConfig(this.guild.id);
+
+      return this.createAdminSuccess(
+        "AutoMod Configuration Reset",
+        "All automod settings have been reset to defaults."
+      );
+    } catch (error) {
+      throw new Error(`Failed to reset automod: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+}
+
+// Export the command instance
+export default new AutoModSetupCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("automod-setup")
+  .setDescription("Setup and configure automod features")
+  .setDefaultMemberPermissions(0)
+  .addStringOption((option) =>
+    option
+      .setName("action")
+      .setDescription("What action to perform")
+      .setRequired(true)
+      .addChoices(
+        { name: "Quick Setup (Recommended)", value: "quick-setup" },
+        { name: "Advanced Setup", value: "advanced-setup" },
+        { name: "Reset Configuration", value: "reset" }
+      )
+  )
+  .addBooleanOption((option) =>
+    option.setName("anti-spam").setDescription("Enable anti-spam protection (advanced setup only)").setRequired(false)
+  )
+  .addBooleanOption((option) =>
+    option.setName("anti-raid").setDescription("Enable anti-raid protection (advanced setup only)").setRequired(false)
+  )
+  .addBooleanOption((option) =>
+    option.setName("word-filter").setDescription("Enable word filtering (advanced setup only)").setRequired(false)
+  )
+  .addBooleanOption((option) =>
+    option.setName("link-filter").setDescription("Enable link filtering (advanced setup only)").setRequired(false)
+  );
 
 async function startSetupWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   const welcomeEmbed = new EmbedBuilder()
