@@ -963,7 +963,7 @@ export class TicketCommand extends AdminCommand {
           status: "CLOSED",
           closedAt: new Date(),
           closedBy: this.user.id,
-          closeReason: reason,
+          closedReason: reason,
         },
       });
 
@@ -975,31 +975,29 @@ export class TicketCommand extends AdminCommand {
       let transcriptSent = false;
       if (guildConfig?.ticketLogChannelId) {
         const logChannel = this.guild.channels.cache.get(guildConfig.ticketLogChannelId) as TextChannel;
-        if (logChannel) {
-          try {
-            const messages = await channel.messages.fetch({ limit: 100 });
-            const transcript = Array.from(messages.values())
-              .reverse()
-              .map((msg) => `[${msg.createdAt.toISOString()}] ${msg.author.tag}: ${msg.content}`)
-              .join("\n");
+        try {
+          const messages = await channel.messages.fetch({ limit: 100 });
+          const transcript = Array.from(messages.values())
+            .reverse()
+            .map((msg) => `[${msg.createdAt.toISOString()}] ${msg.author.tag}: ${msg.content}`)
+            .join("\n");
 
-            const transcriptEmbed = new EmbedBuilder()
-              .setColor(0x95a5a6)
-              .setTitle("🎫 Ticket Closed")
-              .setDescription(`Ticket in <#${channel.id}> has been closed.`)
-              .addFields(
-                { name: "Ticket ID", value: ticket.id, inline: true },
-                { name: "Opened By", value: `<@${ticket.userId}>`, inline: true },
-                { name: "Closed By", value: `<@${this.user.id}>`, inline: true },
-                { name: "Reason", value: reason, inline: false }
-              )
-              .setTimestamp();
+          const transcriptEmbed = new EmbedBuilder()
+            .setColor(0x95a5a6)
+            .setTitle("🎫 Ticket Closed")
+            .setDescription(`Ticket in <#${channel.id}> has been closed.`)
+            .addFields(
+              { name: "Ticket ID", value: ticket.id, inline: true },
+              { name: "Opened By", value: `<@${ticket.userId}>`, inline: true },
+              { name: "Closed By", value: `<@${this.user.id}>`, inline: true },
+              { name: "Reason", value: reason, inline: false }
+            )
+            .setTimestamp();
 
-            await logChannel.send({ embeds: [transcriptEmbed] });
-            transcriptSent = true;
-          } catch (error) {
-            logger.error("Failed to send transcript:", error);
-          }
+          await logChannel.send({ embeds: [transcriptEmbed] });
+          transcriptSent = true;
+        } catch (error) {
+          logger.error("Failed to send transcript:", error);
         }
       }
 
@@ -1018,12 +1016,10 @@ export class TicketCommand extends AdminCommand {
       await channel.send({ embeds: [embed] });
 
       // Delete the channel after 10 seconds
-      setTimeout(async () => {
-        try {
-          await channel.delete();
-        } catch (error) {
+      setTimeout(() => {
+        channel.delete().catch((error: unknown) => {
           logger.error("Failed to delete ticket channel:", error);
-        }
+        });
       }, 10000);
 
       // Log ticket closure
@@ -1261,12 +1257,9 @@ export class TicketCommand extends AdminCommand {
         };
       }
 
-      const channel = this.guild.channels.cache.get(ticket.channelId) as TextChannel;
-      if (!channel) {
-        return {
-          content: "❌ Ticket channel no longer exists.",
-          ephemeral: true,
-        };
+      const channel = this.guild.channels.cache.get(ticket.channelId);
+      if (!channel?.isTextBased()) {
+        return { content: "❌ Ticket channel no longer exists.", ephemeral: true };
       }
 
       // Fetch messages and create transcript

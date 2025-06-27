@@ -257,9 +257,9 @@ async function handleCreate(client: Client, interaction: ChatInputCommandInterac
     });
 
     // Notify API of automod rule creation
-    if ((client as any).queueService) {
+    if (client.queueService) {
       try {
-        await (client as any).queueService.processRequest({
+        await client.queueService.processRequest({
           type: "AUTOMOD_UPDATE",
           data: {
             guildId: interaction.guild.id,
@@ -445,9 +445,9 @@ async function handleToggle(client: Client, interaction: ChatInputCommandInterac
     });
 
     // Notify API of automod rule toggle
-    if ((client as any).queueService) {
+    if (client.queueService) {
       try {
-        await (client as any).queueService.processRequest({
+        await client.queueService.processRequest({
           type: "AUTOMOD_UPDATE",
           data: {
             guildId: interaction.guild.id,

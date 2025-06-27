@@ -684,4 +684,163 @@ export class AutoModService {
       logger.error("Error updating rule stats:", error);
     }
   }
+
+  /**
+   * Quick setup for automod - creates basic rules with default settings
+   */
+  static async quickSetup(guildId: string): Promise<{ configuredRules: string[] }> {
+    try {
+      const configuredRules: string[] = [];
+
+      // Create basic spam protection rule
+      await prisma.autoModRule.create({
+        data: {
+          guildId,
+          name: "Spam Protection",
+          type: "spam",
+          enabled: true,
+          sensitivity: "MEDIUM",
+          actions: "DELETE",
+          triggers: {
+            maxMessages: 5,
+            timeWindow: 10,
+            duplicateThreshold: 3,
+          },
+          escalation: {},
+          createdBy: "system",
+        },
+      });
+      configuredRules.push("Spam Protection");
+
+      // Create basic caps rule
+      await prisma.autoModRule.create({
+        data: {
+          guildId,
+          name: "Caps Lock Filter",
+          type: "caps",
+          enabled: true,
+          sensitivity: "MEDIUM",
+          actions: "DELETE",
+          triggers: {
+            capsPercent: 70,
+            minLength: 10,
+          },
+          escalation: {},
+          createdBy: "system",
+        },
+      });
+      configuredRules.push("Caps Lock Filter");
+
+      // Clear cache for this guild
+      await AutoModService.invalidateRulesCache(guildId);
+
+      return { configuredRules };
+    } catch (error) {
+      logger.error(`Failed to perform quick setup for guild ${guildId}:`, error);
+      throw new Error("Failed to configure automod rules");
+    }
+  }
+
+  /**
+   * Advanced setup for automod with custom configuration
+   */
+  static async advancedSetup(
+    guildId: string,
+    options: {
+      antiSpam?: boolean;
+      antiRaid?: boolean;
+      wordFilter?: boolean;
+      linkFilter?: boolean;
+    }
+  ): Promise<{ configuredRules: string[] }> {
+    try {
+      const configuredRules: string[] = [];
+
+      if (options.antiSpam) {
+        await prisma.autoModRule.create({
+          data: {
+            guildId,
+            name: "Advanced Spam Protection",
+            type: "spam",
+            enabled: true,
+            sensitivity: "HIGH",
+            actions: "TIMEOUT",
+            triggers: {
+              maxMessages: 3,
+              timeWindow: 5,
+              duplicateThreshold: 2,
+            },
+            escalation: {},
+            createdBy: "system",
+          },
+        });
+        configuredRules.push("Advanced Spam Protection");
+      }
+
+      if (options.wordFilter) {
+        await prisma.autoModRule.create({
+          data: {
+            guildId,
+            name: "Word Filter",
+            type: "words",
+            enabled: true,
+            sensitivity: "MEDIUM",
+            actions: "DELETE",
+            triggers: {
+              blockedWords: ["spam", "scam"],
+              ignoreCase: true,
+            },
+            escalation: {},
+            createdBy: "system",
+          },
+        });
+        configuredRules.push("Word Filter");
+      }
+
+      if (options.linkFilter) {
+        await prisma.autoModRule.create({
+          data: {
+            guildId,
+            name: "Link Filter",
+            type: "links",
+            enabled: true,
+            sensitivity: "MEDIUM",
+            actions: "DELETE",
+            triggers: {
+              blockedDomains: ["bit.ly", "tinyurl.com"],
+            },
+            escalation: {},
+            createdBy: "system",
+          },
+        });
+        configuredRules.push("Link Filter");
+      }
+
+      // Clear cache for this guild
+      await AutoModService.invalidateRulesCache(guildId);
+
+      return { configuredRules };
+    } catch (error) {
+      logger.error(`Failed to perform advanced setup for guild ${guildId}:`, error);
+      throw new Error("Failed to configure automod rules");
+    }
+  }
+
+  /**
+   * Reset automod configuration for a guild
+   */
+  static async resetConfig(guildId: string): Promise<void> {
+    try {
+      // Delete all automod rules for this guild
+      await prisma.autoModRule.deleteMany({
+        where: { guildId },
+      });
+
+      // Clear cache for this guild
+      await AutoModService.invalidateRulesCache(guildId);
+    } catch (error) {
+      logger.error(`Failed to reset config for guild ${guildId}:`, error);
+      throw new Error("Failed to reset automod configuration");
+    }
+  }
 }

@@ -9,6 +9,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 
+import { AutoModRule } from "shared/src/database.js";
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
@@ -197,7 +198,9 @@ export class AutoModSetupCommand extends AdminCommand {
 
   private async handleQuickSetup(): Promise<CommandResponse> {
     try {
-      const result = await this.client.autoModService.quickSetup(this.guild.id);
+      // Import AutoModService and use it statically
+      const { AutoModService } = await import("../../services/autoModService.js");
+      const result = await AutoModService.quickSetup(this.guild.id);
 
       return this.createAdminSuccess(
         "AutoMod Quick Setup Complete",
@@ -216,7 +219,9 @@ export class AutoModSetupCommand extends AdminCommand {
       const wordFilter = this.getBooleanOption("word-filter") ?? true;
       const linkFilter = this.getBooleanOption("link-filter") ?? false;
 
-      const result = await this.client.autoModService.advancedSetup(this.guild.id, {
+      // Import AutoModService and use it statically
+      const { AutoModService } = await import("../../services/autoModService.js");
+      const result = await AutoModService.advancedSetup(this.guild.id, {
         antiSpam,
         antiRaid,
         wordFilter,
@@ -234,7 +239,9 @@ export class AutoModSetupCommand extends AdminCommand {
 
   private async handleReset(): Promise<CommandResponse> {
     try {
-      await this.client.autoModService.resetConfig(this.guild.id);
+      // Import AutoModService and use it statically
+      const { AutoModService } = await import("../../services/autoModService.js");
+      await AutoModService.resetConfig(this.guild.id);
 
       return this.createAdminSuccess(
         "AutoMod Configuration Reset",
@@ -849,7 +856,7 @@ async function showStatus(client: Client, interaction: ChatInputCommandInteracti
           value:
             enabledRules.length > 0
               ? enabledRules
-                  .map((rule: any) => `• **${rule.type}** (${rule.sensitivity.toLowerCase()})`)
+                  .map((rule: AutoModRule) => `• **${rule.type}** (${rule.sensitivity.toLowerCase()})`)
                   .slice(0, 6)
                   .join("\n") + (enabledRules.length > 6 ? `\n... and ${enabledRules.length - 6} more` : "")
               : "No protection currently active",
