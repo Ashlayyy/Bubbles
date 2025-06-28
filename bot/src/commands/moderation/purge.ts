@@ -106,19 +106,32 @@ export class PurgeCommand extends ModerationCommand {
       messagesToDelete = messagesToDelete.filter((msg) => msg.createdTimestamp > twoWeeksAgo);
 
       if (messagesToDelete.length === 0) {
-        return new ResponseBuilder()
-          .error("No Messages Found")
-          .content("No messages found matching the specified criteria.")
-          .ephemeral()
-          .build();
+        return this.createModerationError(
+          "purge",
+          this.user, // Use moderator as target since no specific user
+          `❌ No messages found matching the specified criteria.\n\n` +
+            `💡 **Tips:**\n` +
+            `• Try adjusting your filters\n` +
+            `• Check if messages are older than 14 days (Discord limitation)\n` +
+            `• Ensure the target user has sent messages recently\n\n` +
+            `📖 **Examples:**\n` +
+            `• \`/purge amount:10\` - Delete last 10 messages\n` +
+            `• \`/purge amount:50 user:@username\` - Delete last 50 messages from user`
+        );
       }
 
       // Safety check: large purge confirmation
       if (messagesToDelete.length > 50 && !skipConfirm) {
-        return {
-          content: `⚠️ **WARNING**: You are about to delete **${messagesToDelete.length} messages**.\n\nThis action cannot be undone. Run the command again with \`confirm:True\` to proceed.`,
-          ephemeral: true,
-        };
+        return new ResponseBuilder()
+          .error("Confirmation Required")
+          .content(
+            `⚠️ **WARNING**: You are about to delete **${messagesToDelete.length} messages**.\n\n` +
+              `**This action cannot be undone!**\n\n` +
+              `💡 **To proceed:** Run the command again with \`confirm:True\`\n` +
+              `🛡️ **Safety tip:** Consider using smaller batches for better control.`
+          )
+          .ephemeral()
+          .build();
       }
 
       // Store information before deletion for logging
@@ -209,11 +222,17 @@ export class PurgeCommand extends ModerationCommand {
 
       return { embeds: [embed], ephemeral: true };
     } catch (error) {
-      return new ResponseBuilder()
-        .error("Purge Failed")
-        .content(`Failed to purge messages: ${error instanceof Error ? error.message : "Unknown error"}`)
-        .ephemeral()
-        .build();
+      return this.createModerationError(
+        "purge",
+        this.user, // Use moderator as target since no specific user
+        `${error instanceof Error ? error.message : "Unknown error"}\n\n` +
+          `💡 **Common solutions:**\n` +
+          `• Check if you have manage messages permission\n` +
+          `• Verify the bot has delete messages permission\n` +
+          `• Ensure messages aren't older than 14 days\n` +
+          `• Try purging smaller amounts at once\n\n` +
+          `📖 **Need help?** Contact an administrator.`
+      );
     }
   }
 }

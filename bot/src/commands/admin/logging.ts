@@ -277,6 +277,9 @@ class LoggingCommand extends AdminCommand {
 
 export default new LoggingCommand();
 
+// Re-export the wizard so other modules (e.g., /setup) can invoke it
+export { startLoggingWizard };
+
 async function startLoggingWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   const welcomeEmbed = new EmbedBuilder()
     .setColor(0x3498db)

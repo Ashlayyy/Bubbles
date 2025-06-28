@@ -1,6 +1,6 @@
 import { SlashCommandBuilder } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
-import { expandAlias, type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { expandAlias, ResponseBuilder, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
 
 /**
@@ -33,6 +33,43 @@ export class UntimeoutCommand extends ModerationCommand {
     const silent = this.getBooleanOption("silent") ?? false;
 
     try {
+      // Check if user is in the server
+      const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
+      if (!member) {
+        return this.createModerationError(
+          "untimeout",
+          targetUser,
+          `❌ **${targetUser.username}** is not a member of this server.\n\n` +
+            `**User ID:** \`${targetUser.id}\`\n\n` +
+            `💡 **Tip:** You can only remove timeouts from active server members.`
+        );
+      }
+
+      // Check if user is actually timed out
+      if (!member.isCommunicationDisabled()) {
+        return this.createModerationError(
+          "untimeout",
+          targetUser,
+          `❌ **${targetUser.username}** is not currently timed out.\n\n` +
+            `💡 **Tips:**\n` +
+            `• Check if the timeout has already expired\n` +
+            `• Use \`/lookup user:${targetUser.username}\` to see their current status\n` +
+            `• Timeouts automatically expire after their duration`
+        );
+      }
+
+      // Validate moderation permissions
+      try {
+        this.validateModerationTarget(member);
+      } catch (error) {
+        return this.createModerationError(
+          "untimeout",
+          targetUser,
+          `${error instanceof Error ? error.message : "Unknown validation error"}\n\n` +
+            `💡 **Tip:** Make sure you have appropriate permissions and role hierarchy.`
+        );
+      }
+
       // Expand alias if provided
       if (reason !== "No reason provided") {
         reason = await expandAlias(reason, {
@@ -40,23 +77,6 @@ export class UntimeoutCommand extends ModerationCommand {
           user: targetUser,
           moderator: this.user,
         });
-      }
-
-      // Check if user is in the server
-      const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
-      if (!member) {
-        return {
-          content: `❌ **${targetUser.tag}** is not in this server.`,
-          ephemeral: true,
-        };
-      }
-
-      // Check if user is actually timed out
-      if (!member.isCommunicationDisabled()) {
-        return {
-          content: `❌ **${targetUser.tag}** is not currently timed out.`,
-          ephemeral: true,
-        };
       }
 
       // Execute the untimeout using the moderation system
@@ -70,15 +90,30 @@ export class UntimeoutCommand extends ModerationCommand {
         notifyUser: !silent,
       });
 
-      return {
-        content: `🔊 **${targetUser.tag}** timeout has been removed.\n📋 **Case #${case_.caseNumber}** created.`,
-        ephemeral: true,
-      };
+      // Success response with better formatting
+      return new ResponseBuilder()
+        .success("Timeout Removed")
+        .content(
+          `🔊 **${targetUser.username}** timeout has been removed.\n\n` +
+            `📋 **Case #${String(case_.caseNumber)}** created\n` +
+            (reason !== "No reason provided" ? `📝 **Reason:** ${reason}\n` : "") +
+            (!silent ? `📨 User was notified via DM` : `🔕 Silent removal (user not notified)`) +
+            `\n\n💡 **Note:** User can now participate normally in the server.`
+        )
+        .ephemeral()
+        .build();
     } catch (error) {
-      return {
-        content: `❌ Failed to remove timeout from **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-        ephemeral: true,
-      };
+      return this.createModerationError(
+        "untimeout",
+        targetUser,
+        `${error instanceof Error ? error.message : "Unknown error"}\n\n` +
+          `💡 **Common solutions:**\n` +
+          `• Check if the user is still in the server\n` +
+          `• Verify you have timeout permissions\n` +
+          `• Ensure proper role hierarchy\n` +
+          `• Confirm the user is actually timed out\n\n` +
+          `📖 **Need help?** Contact an administrator.`
+      );
     }
   }
 }

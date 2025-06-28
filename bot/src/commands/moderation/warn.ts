@@ -35,31 +35,48 @@ export class WarnCommand extends ModerationCommand {
       throw new Error("This command only supports slash command format");
     }
 
-    // Get command options using typed methods
     const targetUser = this.getUserOption("user", true);
     const reasonInput = this.getStringOption("reason", true);
     const evidenceStr = this.getStringOption("evidence");
     const points = this.getIntegerOption("points") ?? 1;
     const silent = this.getBooleanOption("silent") ?? false;
 
-    // Expand alias with automatic variable substitution
-    const reason = await expandAlias(reasonInput, {
-      guild: this.guild,
-      user: targetUser,
-      moderator: this.user,
-    });
-
-    // Parse evidence automatically
-    const evidence = parseEvidence(evidenceStr ?? undefined);
-
     try {
       // Check if user is in the server
       const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
       if (!member) {
-        throw new Error(`**${targetUser.username}** is not in this server.`);
+        return this.createModerationError(
+          "warn",
+          targetUser,
+          `❌ **${targetUser.username}** is not a member of this server.\n\n` +
+            `**User ID:** \`${targetUser.id}\`\n\n` +
+            `💡 **Tip:** You can only warn active server members. Use \`/note\` to add notes about users who have left.`
+        );
       }
 
-      // Execute the warning using existing moderation manager
+      // Validate moderation target (hierarchy, self-moderation, etc.)
+      try {
+        this.validateModerationTarget(member);
+      } catch (error) {
+        return this.createModerationError(
+          "warn",
+          targetUser,
+          `${error instanceof Error ? error.message : "Unknown validation error"}\n\n` +
+            `💡 **Tip:** Make sure you have appropriate permissions and role hierarchy.`
+        );
+      }
+
+      // Expand alias with automatic variable substitution
+      const reason = await expandAlias(reasonInput, {
+        guild: this.guild,
+        user: targetUser,
+        moderator: this.user,
+      });
+
+      // Parse evidence automatically
+      const evidence = parseEvidence(evidenceStr ?? undefined);
+
+      // Execute the warning using moderation manager
       const case_ = await this.client.moderationManager.warn(
         this.guild,
         targetUser.id,
@@ -73,17 +90,31 @@ export class WarnCommand extends ModerationCommand {
       // Get user's total points for display
       const totalPoints = await this.client.moderationManager.getInfractionPoints(this.guild.id, targetUser.id);
 
-      // Use the new ResponseBuilder for consistent formatting
+      // Success response with better formatting
+      const pointsText = points === 1 ? "1 point" : `${points} points`;
+
       return new ResponseBuilder()
         .success("Warning Applied")
         .content(
-          `**${targetUser.username}** has been warned (${points} point${points !== 1 ? "s" : ""}).\n📋 **Case #${case_.caseNumber}** created.\n🔢 **Total Points:** ${totalPoints}`
+          `⚠️ **${targetUser.username}** has been warned (${pointsText}).\n\n` +
+            `📋 **Case #${String(case_.caseNumber)}** created\n` +
+            `🔢 **Total Points:** ${totalPoints}\n` +
+            (reason !== "No reason provided" ? `📝 **Reason:** ${reason}\n` : "") +
+            (evidence.all.length > 0 ? `📎 **Evidence:** ${evidence.all.length} item(s) attached\n` : "") +
+            (!silent ? `📨 User was notified via DM` : `🔕 Silent warning (user not notified)`)
         )
         .ephemeral()
         .build();
     } catch (error) {
-      throw new Error(
-        `Failed to warn **${targetUser.username}**: ${error instanceof Error ? error.message : "Unknown error"}`
+      return this.createModerationError(
+        "warn",
+        targetUser,
+        `${error instanceof Error ? error.message : "Unknown error"}\n\n` +
+          `💡 **Common solutions:**\n` +
+          `• Check if the user is still in the server\n` +
+          `• Verify you have moderation permissions\n` +
+          `• Ensure proper role hierarchy\n\n` +
+          `📖 **Need help?** Contact an administrator.`
       );
     }
   }

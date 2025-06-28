@@ -1,6 +1,6 @@
 import { SlashCommandBuilder } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
-import { expandAlias, type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { expandAlias, ResponseBuilder, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
 
 /**
@@ -34,6 +34,16 @@ export class NoteCommand extends ModerationCommand {
     const silent = this.getBooleanOption("silent") ?? false;
 
     try {
+      // Validate content length
+      if (content.length > 2000) {
+        return this.createModerationError(
+          "note",
+          targetUser,
+          `❌ Note content is too long: **${content.length}/2000** characters\n\n` +
+            `💡 **Tip:** Keep notes concise and focused. Split longer notes into multiple entries if needed.`
+        );
+      }
+
       // Expand alias if provided
       content = await expandAlias(content, {
         guild: this.guild,
@@ -51,18 +61,32 @@ export class NoteCommand extends ModerationCommand {
         !silent
       );
 
+      // Success response with better formatting
       const noteType = isInternal ? "internal" : "public";
-      const notificationStatus = silent ? " (silent)" : "";
+      const noteIcon = isInternal ? "🔒" : "📝";
 
-      return {
-        content: `📝 Added ${noteType} note about **${targetUser.tag}**.\n📋 **Case #${case_.caseNumber}** created${notificationStatus}.`,
-        ephemeral: true,
-      };
+      return new ResponseBuilder()
+        .success("Note Added")
+        .content(
+          `${noteIcon} Added **${noteType}** note about **${targetUser.username}**.\n\n` +
+            `📋 **Case #${String(case_.caseNumber)}** created\n` +
+            `📄 **Content:** ${content.length > 100 ? `${content.substring(0, 100)}...` : content}\n` +
+            `🔐 **Visibility:** ${isInternal ? "Staff only" : "Viewable by user"}\n` +
+            (!silent ? `📨 User was notified` : `🔕 Silent note (user not notified)`)
+        )
+        .ephemeral()
+        .build();
     } catch (error) {
-      return {
-        content: `❌ Failed to add note about **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-        ephemeral: true,
-      };
+      return this.createModerationError(
+        "note",
+        targetUser,
+        `${error instanceof Error ? error.message : "Unknown error"}\n\n` +
+          `💡 **Common solutions:**\n` +
+          `• Check if the note content is appropriate\n` +
+          `• Verify you have moderation permissions\n` +
+          `• Try shortening the note content\n\n` +
+          `📖 **Need help?** Contact an administrator.`
+      );
     }
   }
 }

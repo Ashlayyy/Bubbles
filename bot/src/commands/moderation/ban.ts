@@ -36,44 +36,64 @@ export class BanCommand extends ModerationCommand {
       throw new Error("This command only supports slash command format");
     }
 
-    // Get command options using typed methods
     const targetUser = this.getUserOption("user", true);
     const reasonInput = this.getStringOption("reason", true);
     const durationStr = this.getStringOption("duration");
     const evidenceStr = this.getStringOption("evidence");
-    const _deleteDays = this.getIntegerOption("delete-days") ?? 1;
+    const deleteDays = this.getIntegerOption("delete-days") ?? 1;
     const silent = this.getBooleanOption("silent") ?? false;
 
-    // Parse duration if provided
-    let duration: number | undefined;
-    if (durationStr) {
-      const parsedDuration = parseDuration(durationStr);
-      if (!parsedDuration) {
-        throw new Error("Invalid duration format. Use format like: 1d, 3h, 30m");
-      }
-      duration = parsedDuration;
-    }
-
-    // Expand alias with automatic variable substitution
-    const reason = await expandAlias(reasonInput, {
-      guild: this.guild,
-      user: targetUser,
-      moderator: this.user,
-    });
-
-    // Parse evidence automatically
-    const evidence = parseEvidence(evidenceStr ?? undefined);
-
     try {
+      // Parse duration if provided with detailed validation
+      let duration: number | undefined;
+      if (durationStr) {
+        const parsedDuration = parseDuration(durationStr);
+        if (parsedDuration === null) {
+          return this.createModerationError(
+            "ban",
+            targetUser,
+            `❌ Invalid duration format: **${durationStr}**\n\n` +
+              `**Correct format examples:**\n` +
+              `• \`30m\` - 30 minutes\n` +
+              `• \`2h\` - 2 hours\n` +
+              `• \`1d\` - 1 day\n` +
+              `• \`7d\` - 7 days\n` +
+              `• \`30d\` - 30 days\n\n` +
+              `**Allowed units:** s(econds), m(inutes), h(ours), d(ays), w(eeks), mo(nths), y(ears)\n\n` +
+              `💡 **Tip:** Leave duration blank for permanent ban.`
+          );
+        }
+        duration = parsedDuration;
+      }
+
       // Check if user is in the server (for validation, but not required for bans)
       const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
 
       if (member) {
-        // Validate moderation permissions against the member
-        this.validateModerationTarget(member);
+        // Validate moderation target (hierarchy, self-moderation, etc.)
+        try {
+          this.validateModerationTarget(member);
+        } catch (error) {
+          return this.createModerationError(
+            "ban",
+            targetUser,
+            `${error instanceof Error ? error.message : "Unknown validation error"}\n\n` +
+              `💡 **Tip:** Make sure you have appropriate permissions and role hierarchy.`
+          );
+        }
       }
 
-      // Execute the ban using existing moderation manager
+      // Expand alias with automatic variable substitution
+      const reason = await expandAlias(reasonInput, {
+        guild: this.guild,
+        user: targetUser,
+        moderator: this.user,
+      });
+
+      // Parse evidence automatically
+      const evidence = parseEvidence(evidenceStr ?? undefined);
+
+      // Execute the ban using moderation manager
       const case_ = await this.client.moderationManager.ban(
         this.guild,
         targetUser.id,
@@ -84,19 +104,33 @@ export class BanCommand extends ModerationCommand {
         !silent
       );
 
-      // Use the new ResponseBuilder for consistent formatting
-      const durationText = duration ? ` for ${this.formatDuration(duration)}` : "";
+      // Success response with better formatting
+      const durationText = duration ? ` for **${this.formatDuration(duration)}**` : "";
+      const memberStatus = member ? "Member" : "User (not in server)";
 
       return new ResponseBuilder()
         .success("Ban Applied")
         .content(
-          `**${targetUser.username}** has been banned${durationText}.\n📋 **Case #${String(case_.caseNumber)}** created.`
+          `🔨 **${targetUser.username}** has been banned${durationText}.\n\n` +
+            `📋 **Case #${String(case_.caseNumber)}** created\n` +
+            `👤 **Target:** ${memberStatus}\n` +
+            (reason !== "No reason provided" ? `📝 **Reason:** ${reason}\n` : "") +
+            (evidence.all.length > 0 ? `📎 **Evidence:** ${evidence.all.length} item(s) attached\n` : "") +
+            (deleteDays > 0 ? `🗑️ **Messages deleted:** Last ${deleteDays} day(s)\n` : "") +
+            (!silent ? `📨 User was notified via DM` : `🔕 Silent ban (user not notified)`)
         )
         .ephemeral()
         .build();
     } catch (error) {
-      throw new Error(
-        `Failed to ban **${targetUser.username}**: ${error instanceof Error ? error.message : "Unknown error"}`
+      return this.createModerationError(
+        "ban",
+        targetUser,
+        `${error instanceof Error ? error.message : "Unknown error"}\n\n` +
+          `💡 **Common solutions:**\n` +
+          `• Check if you have ban permissions\n` +
+          `• Verify role hierarchy\n` +
+          `• Ensure the bot has necessary permissions\n\n` +
+          `📖 **Need help?** Contact an administrator.`
       );
     }
   }

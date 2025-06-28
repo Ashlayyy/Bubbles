@@ -29,71 +29,95 @@ export class UnbanCommand extends ModerationCommand {
       throw new Error("This command only supports slash command format");
     }
 
-    // Get command options using typed methods
     const userInput = this.getStringOption("user", true);
     const reasonInput = this.getStringOption("reason") ?? "No reason provided";
     const silent = this.getBooleanOption("silent") ?? false;
 
     try {
-      // Resolve user ID and tag
+      // Resolve user ID and tag with better validation
       let userId: string;
       let userTag = userInput;
+      let resolvedUser: User | null = null;
 
       // Check if it's a user ID (numeric)
       if (/^\d{17,19}$/.test(userInput)) {
         userId = userInput;
         try {
-          const user = await this.client.users.fetch(userId);
-          userTag = user.tag;
+          resolvedUser = await this.client.users.fetch(userId);
+          userTag = resolvedUser.username;
         } catch {
+          // User not found, but ID format is valid - continue with ID
           userTag = `Unknown User (${userId})`;
         }
       } else {
         // Try to find by username in ban list
-        const bans = await this.guild.bans.fetch();
-        const bannedUser = bans.find(
-          (ban) =>
-            ban.user.username.toLowerCase() === userInput.toLowerCase() ||
-            ban.user.tag.toLowerCase() === userInput.toLowerCase()
-        );
+        try {
+          const bans = await this.guild.bans.fetch();
+          const bannedUser = bans.find(
+            (ban) =>
+              ban.user.username.toLowerCase() === userInput.toLowerCase() ||
+              ban.user.tag.toLowerCase() === userInput.toLowerCase()
+          );
 
-        if (!bannedUser) {
-          throw new Error(`Could not find banned user with username: **${userInput}**`);
+          if (!bannedUser) {
+            return this.createModerationError(
+              "unban",
+              { username: userInput, id: "unknown" } as User,
+              `❌ Could not find banned user: **${userInput}**\n\n` +
+                `💡 **Tips:**\n` +
+                `• Use the exact username or user ID\n` +
+                `• Check \`/lookup bans\` to see all banned users\n` +
+                `• User IDs are more reliable than usernames\n\n` +
+                `📖 **Example:** \`/unban user:123456789012345678\``
+            );
+          }
+
+          userId = bannedUser.user.id;
+          userTag = bannedUser.user.username;
+          resolvedUser = bannedUser.user;
+        } catch (fetchError) {
+          return this.createModerationError(
+            "unban",
+            { username: userInput, id: "unknown" } as User,
+            `❌ Failed to fetch ban list: ${fetchError instanceof Error ? fetchError.message : "Unknown error"}\n\n` +
+              `💡 **Tip:** The bot may not have permission to view bans.`
+          );
         }
-
-        userId = bannedUser.user.id;
-        userTag = bannedUser.user.tag;
       }
 
       // Check if user is actually banned
       try {
         await this.guild.bans.fetch(userId);
       } catch {
-        throw new Error(`**${userTag}** is not banned from this server.`);
+        return this.createModerationError(
+          "unban",
+          resolvedUser ?? ({ username: userTag, id: userId } as User),
+          `❌ **${userTag}** is not banned from this server.\n\n` +
+            `💡 **Tips:**\n` +
+            `• Double-check the username or user ID\n` +
+            `• Use \`/lookup bans\` to see all banned users\n` +
+            `• The user may have already been unbanned`
+        );
       }
 
-      // Expand alias with automatic variable substitution (use resolved user)
-      // Try to get the real user object first, fallback to partial object
-      let userForAlias: User;
-      try {
-        userForAlias = await this.client.users.fetch(userId);
-      } catch {
-        // Create a minimal user-like object for alias expansion when user fetch fails
-        userForAlias = {
+      // Create user object for alias expansion
+      const userForAlias =
+        resolvedUser ??
+        ({
           id: userId,
-          username: userTag.split("#")[0] || userTag,
-          discriminator: userTag.includes("#") ? userTag.split("#")[1] : "0000",
-          tag: userTag,
-        } as User;
-      }
+          username: userTag.includes("(") ? "Unknown User" : userTag,
+          discriminator: "0000",
+          tag: userTag.includes("(") ? userTag : `${userTag}#0000`,
+        } as User);
 
+      // Expand alias with automatic variable substitution
       const reason = await expandAlias(reasonInput, {
         guild: this.guild,
         user: userForAlias,
         moderator: this.user,
       });
 
-      // Execute the unban using existing moderation manager
+      // Execute the unban using moderation manager
       const case_ = await this.client.moderationManager.moderate(this.guild, {
         type: "UNBAN",
         userId,
@@ -104,14 +128,28 @@ export class UnbanCommand extends ModerationCommand {
         notifyUser: !silent,
       });
 
-      // Use the new ResponseBuilder for consistent formatting
+      // Success response with better formatting
       return new ResponseBuilder()
         .success("Unban Applied")
-        .content(`**${userTag}** has been unbanned from this server.\n📋 **Case #${case_.caseNumber}** created.`)
+        .content(
+          `✅ **${userTag}** has been unbanned from this server.\n\n` +
+            `📋 **Case #${String(case_.caseNumber)}** created\n` +
+            (reason !== "No reason provided" ? `📝 **Reason:** ${reason}\n` : "") +
+            (!silent ? `📨 User was notified via DM` : `🔕 Silent unban (user not notified)`)
+        )
         .ephemeral()
         .build();
     } catch (error) {
-      throw new Error(`Failed to unban user: ${error instanceof Error ? error.message : "Unknown error"}`);
+      return this.createModerationError(
+        "unban",
+        { username: userInput, id: "unknown" } as User,
+        `${error instanceof Error ? error.message : "Unknown error"}\n\n` +
+          `💡 **Common solutions:**\n` +
+          `• Verify the user ID or username is correct\n` +
+          `• Check if you have ban permissions\n` +
+          `• Use \`/lookup bans\` to see banned users\n\n` +
+          `📖 **Need help?** Contact an administrator.`
+      );
     }
   }
 }

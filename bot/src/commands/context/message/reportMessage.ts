@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+
 import {
   ActionRowBuilder,
   ApplicationCommandType,
@@ -13,6 +17,8 @@ import {
   type ModalSubmitInteraction,
 } from "discord.js";
 
+import { getGuildConfig } from "../../../database/GuildConfig.js";
+import { prisma } from "../../../database/index.js";
 import { PermissionLevel } from "../../../structures/PermissionTypes.js";
 import { BaseCommand } from "../../_core/BaseCommand.js";
 import type { CommandConfig, CommandResponse } from "../../_core/index.js";
@@ -209,7 +215,7 @@ class ReportMessageCommand extends BaseCommand {
       : "Quick report - Inappropriate behavior";
 
     try {
-      this.submitReport(targetMessage, reason, messageLink);
+      await this.submitReport(targetMessage, reason, messageLink);
 
       await buttonInteraction.editReply({
         content:
@@ -285,7 +291,7 @@ class ReportMessageCommand extends BaseCommand {
     await modalInteraction.deferReply({ ephemeral: true });
 
     try {
-      this.submitReport(targetMessage, fullReason, messageLink);
+      await this.submitReport(targetMessage, fullReason, messageLink);
 
       await modalInteraction.editReply({
         content:
@@ -305,45 +311,58 @@ class ReportMessageCommand extends BaseCommand {
     }
   }
 
-  private submitReport(targetMessage: Message, reason: string, messageLink: string): void {
-    // For now, log to console. In a production bot, you'd want to:
-    // 1. Send to a moderation channel
-    // 2. Create a case in the database
-    // 3. Notify online moderators
-    // 4. Maybe queue for review in your moderation system
+  private async submitReport(targetMessage: Message, reason: string, messageLink: string): Promise<void> {
+    const guildId = this.guild.id;
 
-    const reportData = {
-      reportedBy: {
-        id: this.user.id,
-        tag: this.user.tag,
-      },
-      reportedUser: {
-        id: targetMessage.author.id,
-        tag: targetMessage.author.tag,
-      },
-      message: {
-        id: targetMessage.id,
-        content: targetMessage.content,
-        channel: targetMessage.channel.id,
-        timestamp: targetMessage.createdTimestamp,
+    // 1. Persist to database
+    // generated types will include userReport once Prisma migration is complete
+    const report = await (prisma as any).userReport.create({
+      data: {
+        guildId,
+        reporterId: this.user.id,
+        reportedUser: targetMessage.author.id,
+        messageId: targetMessage.id,
+        channelId: targetMessage.channel.id,
         link: messageLink,
+        reason,
       },
-      reason,
-      timestamp: Date.now(),
-      guild: this.guild.id,
-    };
+    });
 
-    console.log("Message Report Submitted:", JSON.stringify(reportData, null, 2));
+    // 2. Build embed
+    const embed = new EmbedBuilder()
+      .setColor(0xff4757)
+      .setTitle("🚨 New Message Report")
+      .addFields(
+        { name: "Reporter", value: `<@${this.user.id}>`, inline: true },
+        { name: "Reported User", value: `<@${targetMessage.author.id}>`, inline: true },
+        { name: "Reason", value: reason.substring(0, 1024), inline: false },
+        { name: "Message Link", value: `[Jump to Message](${messageLink})`, inline: false }
+      )
+      .setTimestamp();
 
-    // TODO: Implement actual report submission logic
-    // Example implementations:
-    // - Send to moderation log channel
-    // - Create database entry
-    // - Send notification to online moderators
-    // - Add to moderation queue
+    // 3. Fetch guild config for channel / role
+    // GuildConfig type will include new fields after migration
+    const config = (await getGuildConfig(guildId)) as any;
 
-    // Placeholder for actual implementation
-    throw new Error("Report submission not yet implemented - this is a demo");
+    if (config.reportChannelId) {
+      const reportChannel = this.guild.channels.cache.get(String(config.reportChannelId));
+      if (reportChannel?.isTextBased()) {
+        await reportChannel.send({
+          content: config.reportPingRoleId ? `<@&${config.reportPingRoleId}>` : undefined,
+          embeds: [embed],
+        });
+      }
+    }
+
+    // 4. Log via log manager
+    await this.client.logManager.log(guildId, "USER_REPORT", {
+      userId: this.user.id,
+      channelId: targetMessage.channel.id,
+      metadata: {
+        reportId: report.id,
+        reportedUserId: targetMessage.author.id,
+      },
+    });
   }
 }
 

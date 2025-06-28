@@ -285,6 +285,8 @@ export const builder = new SlashCommandBuilder()
     option.setName("link-filter").setDescription("Enable link filtering (advanced setup only)").setRequired(false)
   );
 
+export { startSetupWizard };
+
 async function startSetupWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   const welcomeEmbed = new EmbedBuilder()
     .setColor(0x3498db)

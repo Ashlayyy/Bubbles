@@ -2,10 +2,13 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelSelectMenuBuilder,
   ChannelType,
   EmbedBuilder,
   PermissionFlagsBits,
   SlashCommandBuilder,
+  type ButtonInteraction,
+  type ChannelSelectMenuInteraction,
   type ChatInputCommandInteraction,
   type GuildMember,
 } from "discord.js";
@@ -517,7 +520,10 @@ async function handleCategoryConfig(client: Client, interaction: ChatInputComman
   });
 }
 
-async function handlePanelCreation(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+async function handlePanelCreation(
+  client: Client,
+  interaction: ChatInputCommandInteraction | ButtonInteraction
+): Promise<void> {
   if (!interaction.guild) return;
 
   const config = await getGuildConfig(interaction.guild.id);
@@ -1108,5 +1114,214 @@ async function handleLoggingChannelConfig(client: Client, interaction: ChatInput
       newValue: channel.id,
       channelName: channel.name,
     },
+  });
+}
+
+// Ticket Setup Wizard
+export async function startTicketWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({
+      content: "❌ This command must be used in a server.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const config = await getGuildConfig(interaction.guild.id);
+
+  const wizardEmbed = new EmbedBuilder()
+    .setColor(0x3498db)
+    .setTitle("🎫 Ticket Setup Wizard")
+    .setDescription(
+      "Welcome to the **Ticket System Setup Wizard**!\n\n" +
+        "Follow the steps below to configure tickets for your server.\n\n" +
+        "• **Select Ticket Channel** – Where users press the create-ticket button.\n" +
+        "• **Toggle Threads** – Decide whether each ticket is a thread or its own channel.\n" +
+        "• **Create Panel** – Post the " +
+        "ticket creation panel in the configured channel."
+    )
+    .addFields(
+      {
+        name: "Current Settings",
+        value:
+          `• Channel: ${config.ticketChannelId ? `<#${config.ticketChannelId}>` : "Not set"}` +
+          `\n• Threads: ${config.useTicketThreads ? "Enabled" : "Disabled"}`,
+        inline: false,
+      },
+      {
+        name: "Instructions",
+        value:
+          "1. Select a channel (dropdown below).\n" +
+          "2. Toggle threads if desired.\n" +
+          "3. Press **Create Panel** when ready.",
+        inline: false,
+      }
+    )
+    .setFooter({ text: "This wizard will stay active for 5 minutes." })
+    .setTimestamp();
+
+  // Channel select menu
+  const channelSelect = new ChannelSelectMenuBuilder()
+    .setCustomId("ticket_channel_select")
+    .setPlaceholder("Select ticket channel")
+    .addChannelTypes(ChannelType.GuildText)
+    .setMinValues(1)
+    .setMaxValues(1);
+
+  const threadButton = new ButtonBuilder()
+    .setCustomId(config.useTicketThreads ? "ticket_disable_threads" : "ticket_enable_threads")
+    .setLabel(config.useTicketThreads ? "Disable Threads" : "Enable Threads")
+    .setStyle(ButtonStyle.Secondary);
+
+  const panelButton = new ButtonBuilder()
+    .setCustomId("ticket_create_panel")
+    .setLabel("Create Panel")
+    .setStyle(ButtonStyle.Success);
+
+  const components = [
+    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(channelSelect),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(threadButton, panelButton),
+  ];
+
+  await interaction.reply({ embeds: [wizardEmbed], components: components, ephemeral: true });
+
+  const collector = interaction.channel?.createMessageComponentCollector({
+    time: 300000, // 5 minutes
+    filter: (i) => i.user.id === interaction.user.id,
+  });
+
+  collector?.on("collect", (interactionComponent) => {
+    void (async () => {
+      try {
+        if (interactionComponent.isChannelSelectMenu() && interactionComponent.customId === "ticket_channel_select") {
+          const menu = interactionComponent;
+          const selectedChannelId = menu.values[0];
+          if (!selectedChannelId) {
+            await menu.reply({ content: "❌ No channel selected.", ephemeral: true });
+            return;
+          }
+          await applyTicketChannel(client, menu, selectedChannelId);
+        } else if (interactionComponent.isButton()) {
+          const btn = interactionComponent;
+          switch (btn.customId) {
+            case "ticket_enable_threads":
+              await applyTicketThreads(client, btn, true);
+              break;
+            case "ticket_disable_threads":
+              await applyTicketThreads(client, btn, false);
+              break;
+            case "ticket_create_panel":
+              await handlePanelCreation(client, btn);
+              break;
+          }
+        }
+      } catch (error) {
+        logger.error("Ticket wizard error:", error);
+        if (!interactionComponent.replied && !interactionComponent.deferred) {
+          await interactionComponent.reply({ content: "❌ An error occurred.", ephemeral: true });
+        }
+      }
+    })();
+  });
+
+  collector?.on("end", () => void 0);
+}
+
+async function applyTicketChannel(
+  client: Client,
+  interaction: ChannelSelectMenuInteraction,
+  channelId: string
+): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ Guild unavailable.", ephemeral: true });
+    return;
+  }
+
+  const channel = interaction.guild.channels.cache.get(channelId);
+  if (!channel || channel.type !== ChannelType.GuildText) {
+    await interaction.reply({ content: "❌ Please select a text channel.", ephemeral: true });
+    return;
+  }
+
+  const botMember = interaction.guild.members.me;
+  if (!botMember) {
+    await interaction.reply({ content: "❌ Bot user not found in guild.", ephemeral: true });
+    return;
+  }
+  const perms = channel.permissionsFor(botMember);
+  if (!perms.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) {
+    await interaction.reply({
+      content: `❌ I need **View Channel**, **Send Messages**, and **Embed Links** in <#${channel.id}> to work properly.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await updateGuildConfig(interaction.guild.id, { ticketChannelId: channel.id });
+
+  // Notify queue service if available
+  const customClient = client as any as Client;
+  if (customClient.queueService) {
+    try {
+      await customClient.queueService.processRequest({
+        type: "CONFIG_UPDATE",
+        data: {
+          guildId: interaction.guild.id,
+          section: "TICKET_SYSTEM",
+          setting: "channelId",
+          value: channel.id,
+          action: "UPDATE_TICKET_CHANNEL",
+          updatedBy: interaction.user.id,
+        },
+        source: "rest",
+        userId: interaction.user.id,
+        guildId: interaction.guild.id,
+        requiresReliability: true,
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  await interaction.reply({
+    content: `✅ Ticket channel set to <#${channel.id}>`,
+    ephemeral: true,
+  });
+}
+
+async function applyTicketThreads(client: Client, interaction: ButtonInteraction, enabled: boolean): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ Guild unavailable.", ephemeral: true });
+    return;
+  }
+
+  await updateGuildConfig(interaction.guild.id, { useTicketThreads: enabled });
+
+  const customClient = client as any as Client;
+  if (customClient.queueService) {
+    try {
+      await customClient.queueService.processRequest({
+        type: "CONFIG_UPDATE",
+        data: {
+          guildId: interaction.guild.id,
+          section: "TICKET_SYSTEM",
+          setting: "useThreads",
+          value: enabled,
+          action: "UPDATE_TICKET_THREADS",
+          updatedBy: interaction.user.id,
+        },
+        source: "rest",
+        userId: interaction.user.id,
+        guildId: interaction.guild.id,
+        requiresReliability: true,
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  await interaction.reply({
+    content: `✅ Tickets will now use ${enabled ? "threads" : "separate channels"}.`,
+    ephemeral: true,
   });
 }

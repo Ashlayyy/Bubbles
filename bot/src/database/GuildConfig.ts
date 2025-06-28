@@ -4,7 +4,11 @@ import { GuildConfigCacheManager } from "./GuildConfigCache.js";
 import logger from "../logger.js";
 import { prisma } from "./index.js";
 
-export const defaults: Omit<GuildConfig, "guildId" | "id"> & { notify_user: boolean } = {
+export const defaults: Omit<GuildConfig, "guildId" | "id"> & {
+  notify_user: boolean;
+  reportChannelId: string | null;
+  reportPingRoleId: string | null;
+} = {
   maxMessagesCleared: 100,
   musicChannelId: "",
   defaultRepeatMode: 0,
@@ -25,6 +29,8 @@ export const defaults: Omit<GuildConfig, "guildId" | "id"> & { notify_user: bool
   ticketAccessRoleId: null,
   ticketAccessPermission: null,
   ticketLogChannelId: null,
+  reportChannelId: null,
+  reportPingRoleId: null,
   logSettingsId: null,
   appealSettingsId: null,
   notify_user: false,
@@ -37,6 +43,8 @@ export const descriptions: Record<string, string> = {
   logReactionRoles:
     "Enable database logging of reaction role activities. Use /logging command for channel-based logging.",
   notify_user: "Send direct messages to users for moderation actions by default.",
+  reportChannelId: "Channel where user reports will be sent.",
+  reportPingRoleId: "Role that will be pinged when a new user report is submitted.",
 };
 
 /**
