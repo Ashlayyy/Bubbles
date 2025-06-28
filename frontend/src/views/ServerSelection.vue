@@ -233,7 +233,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue';
-import { useGuildsStore, type Guild } from '@/stores/guilds';
+import { useGuildsStore } from '@/stores/guilds';
 import { useAuthStore } from '@/stores/auth';
 import { storeToRefs } from 'pinia';
 
@@ -245,21 +245,30 @@ const { fetchGuilds, getGuildIconUrl } = guildsStore;
 
 const authStore = useAuthStore();
 
-const manageGuilds = computed<Guild[]>(() =>
-	guilds.value.filter((g) => g.hasBubbles)
+type FullGuild = {
+	id: string;
+	name: string;
+	icon?: string | null;
+	owner: boolean;
+	permissions: string;
+	hasBubbles?: boolean;
+};
+
+const manageGuilds = computed<FullGuild[]>(() =>
+	guilds.value.filter((g): g is FullGuild => !!g.hasBubbles)
 );
 
-const inviteGuilds = computed<Guild[]>(() =>
-	guilds.value.filter((g) => !g.hasBubbles)
+const inviteGuilds = computed<FullGuild[]>(() =>
+	guilds.value.filter((g): g is FullGuild => !g.hasBubbles)
 );
 
-const filteredManage = computed(() => {
+const filteredManage = computed<FullGuild[]>(() => {
 	const q = searchQuery.value.trim().toLowerCase();
 	if (!q) return manageGuilds.value;
 	return manageGuilds.value.filter((g) => g.name.toLowerCase().includes(q));
 });
 
-const filteredInvite = computed(() => {
+const filteredInvite = computed<FullGuild[]>(() => {
 	const q = searchQuery.value.trim().toLowerCase();
 	if (!q) return inviteGuilds.value;
 	return inviteGuilds.value.filter((g) => g.name.toLowerCase().includes(q));
@@ -280,7 +289,7 @@ onMounted(() => {
 	}
 });
 
-const getUserRole = (guild: Guild) => {
+const getUserRole = (guild: FullGuild) => {
 	if (guild.owner) return 'owner';
 	if (
 		guild.permissions &&

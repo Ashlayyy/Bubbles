@@ -39,6 +39,15 @@ export const getGuilds = async (req: AuthenticatedRequest, res: Response) => {
 			}
 		});
 
+		// Fetch bot's guild list to mark presence
+		let botGuildIds: Set<string> = new Set();
+		try {
+			const botGuilds = await discordApi.getGuilds();
+			botGuildIds = new Set(botGuilds.map((g: any) => g.id));
+		} catch (err) {
+			logger.warn('Failed to fetch bot guilds', err);
+		}
+
 		res.success({
 			guilds: userGuilds.map((guild) => ({
 				id: guild.id,
@@ -49,6 +58,7 @@ export const getGuilds = async (req: AuthenticatedRequest, res: Response) => {
 				memberCount: guild.approximate_member_count,
 				description: guild.description,
 				features: guild.features,
+				hasBubbles: botGuildIds.has(guild.id),
 			})),
 			total: userGuilds.length,
 		});
