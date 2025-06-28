@@ -244,5 +244,8 @@ export class FrontendWebSocketService {
 
 // Export singleton for easy use
 export const websocketService = new FrontendWebSocketService(
-	import.meta.env.VITE_API_URL || 'http://localhost:3001'
+	import.meta.env.VITE_WS_URL ||
+		(import.meta.env.VITE_API_URL || 'http://localhost:3001')
+			.replace(/^http/, 'ws')
+			.replace('/api/v1', '')
 );

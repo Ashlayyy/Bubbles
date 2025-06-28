@@ -13,7 +13,7 @@ interface AuthPayload {
 }
 
 export const discordLogin = async () => {
-	const { data } = await apiClient().post('/discord/login');
+	const { data } = await apiClient().post('/auth/discord/login');
 	return data as LoginResponse;
 };
 
@@ -22,6 +22,6 @@ export const handleCallback = async (code: string, state?: string) => {
 	return data as AuthPayload;
 };
 
-export const logout = () => apiClient().post('/logout');
-export const me = () => apiClient().get('/me');
-export const refresh = () => apiClient().get('/refresh');
+export const logout = () => apiClient().post('/auth/logout');
+export const me = () => apiClient().get('/auth/me');
+export const refresh = () => apiClient().get('/auth/refresh');

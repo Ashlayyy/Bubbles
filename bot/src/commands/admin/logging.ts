@@ -14,9 +14,10 @@ import {
 
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
-import Command from "../../structures/Command.js";
 import { ALL_LOG_TYPES, LOG_CATEGORIES, STANDARD_LOG_TYPES } from "../../structures/LogManager.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
 // Helper type & accessor for optional queue service
 interface QueueService {
@@ -158,97 +159,123 @@ const LOGGING_PRESETS: LoggingPreset[] = [
   },
 ];
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("logging")
-    .setDescription("🗂️ Comprehensive server logging configuration")
-    .addSubcommand((sub) => sub.setName("setup").setDescription("🧙‍♂️ Launch the interactive logging setup wizard"))
-    .addSubcommand((sub) =>
-      sub
-        .setName("preset")
-        .setDescription("📦 Apply a logging preset configuration")
-        .addStringOption((opt) =>
-          opt
-            .setName("type")
-            .setDescription("Preset type")
-            .setRequired(true)
-            .addChoices(
-              { name: "📝 Essential Logging", value: "essential" },
-              { name: "📊 Comprehensive Logging", value: "comprehensive" },
-              { name: "🔒 Security Focused", value: "security" },
-              { name: "👥 Community Server", value: "community" }
-            )
-        )
-    )
-    .addSubcommand((sub) => sub.setName("status").setDescription("📊 View current logging configuration"))
-    .addSubcommand((sub) => sub.setName("channels").setDescription("📍 Configure log channels for specific categories"))
-    .addSubcommand((sub) =>
-      sub
-        .setName("toggle")
-        .setDescription("🔄 Enable/disable specific log categories")
-        .addStringOption((opt) => {
-          opt.setName("category").setDescription("Log category to toggle").setRequired(true);
-          Object.keys(LOG_CATEGORIES).forEach((category) => {
-            opt.addChoices({ name: category, value: category });
-          });
-          return opt;
-        })
-        .addBooleanOption((opt) => opt.setName("enabled").setDescription("Enable or disable").setRequired(true))
-    )
-    .addSubcommand((sub) => sub.setName("advanced").setDescription("⚙️ Advanced logging configuration and management"))
-    .addSubcommand((sub) =>
-      sub
-        .setName("channel")
-        .setDescription("📍 Bind a log category to a channel")
-        .addStringOption((opt) => {
-          opt.setName("category").setDescription("Log category to route").setRequired(true);
-          Object.keys(LOG_CATEGORIES).forEach((cat) => opt.addChoices({ name: cat, value: cat }));
-          return opt;
-        })
-        .addChannelOption((opt) =>
-          opt
-            .setName("channel")
-            .setDescription("Destination text channel")
-            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
-            .setRequired(true)
-        )
-    ),
+export const builder = new SlashCommandBuilder()
+  .setName("logging")
+  .setDescription("🗂️ Comprehensive server logging configuration")
+  .addSubcommand((sub) => sub.setName("setup").setDescription("🧙‍♂️ Launch the interactive logging setup wizard"))
+  .addSubcommand((sub) =>
+    sub
+      .setName("preset")
+      .setDescription("📦 Apply a logging preset configuration")
+      .addStringOption((opt) =>
+        opt
+          .setName("type")
+          .setDescription("Preset type")
+          .setRequired(true)
+          .addChoices(
+            { name: "📝 Essential Logging", value: "essential" },
+            { name: "📊 Comprehensive Logging", value: "comprehensive" },
+            { name: "🔒 Security Focused", value: "security" },
+            { name: "👥 Community Server", value: "community" }
+          )
+      )
+  )
+  .addSubcommand((sub) => sub.setName("status").setDescription("📊 View current logging configuration"))
+  .addSubcommand((sub) => sub.setName("channels").setDescription("📍 Configure log channels for specific categories"))
+  .addSubcommand((sub) =>
+    sub
+      .setName("toggle")
+      .setDescription("🔄 Enable/disable specific log categories")
+      .addStringOption((opt) => {
+        opt.setName("category").setDescription("Log category to toggle").setRequired(true);
+        Object.keys(LOG_CATEGORIES).forEach((category) => {
+          opt.addChoices({ name: category, value: category });
+        });
+        return opt;
+      })
+      .addBooleanOption((opt) => opt.setName("enabled").setDescription("Enable or disable").setRequired(true))
+  )
+  .addSubcommand((sub) => sub.setName("advanced").setDescription("⚙️ Advanced logging configuration and management"))
+  .addSubcommand((sub) =>
+    sub
+      .setName("bind")
+      .setDescription("🔗 Bind a specific channel to log categories")
+      .addChannelOption((opt) =>
+        opt.setName("channel").setDescription("Channel to bind categories to").setRequired(true)
+      )
+      .addStringOption((opt) =>
+        opt
+          .setName("categories")
+          .setDescription("Comma-separated list of categories (e.g., MESSAGE,MEMBER)")
+          .setRequired(true)
+      )
+  );
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
+class LoggingCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "logging",
+      description: "🗂️ Comprehensive server logging configuration",
+      category: "admin",
+      permissions: {
+        level: PermissionLevel.ADMIN,
+      },
+      guildOnly: true,
+    };
 
-    const subcommand = interaction.options.getSubcommand();
-
-    switch (subcommand) {
-      case "setup":
-        await startLoggingWizard(client, interaction);
-        break;
-      case "preset":
-        await applyLoggingPreset(client, interaction);
-        break;
-      case "status":
-        await showLoggingStatus(client, interaction);
-        break;
-      case "channels":
-        await configureChannels(client, interaction);
-        break;
-      case "toggle":
-        await toggleCategory(client, interaction);
-        break;
-      case "advanced":
-        await showAdvancedOptions(client, interaction);
-        break;
-      case "channel":
-        await handleChannelBinding(client, interaction);
-        break;
-    }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.ADMIN,
-    },
+    super(config);
   }
-);
+
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.interaction.guild || !this.interaction.isChatInputCommand()) {
+      return {};
+    }
+
+    const subcommand = this.interaction.options.getSubcommand();
+
+    try {
+      switch (subcommand) {
+        case "setup":
+          await startLoggingWizard(this.client, this.interaction);
+          break;
+        case "preset":
+          await applyLoggingPreset(this.client, this.interaction);
+          break;
+        case "status":
+          await showLoggingStatus(this.client, this.interaction);
+          break;
+        case "channels":
+          await configureChannels(this.client, this.interaction);
+          break;
+        case "toggle":
+          await toggleCategory(this.client, this.interaction);
+          break;
+        case "advanced":
+          await showAdvancedOptions(this.client, this.interaction);
+          break;
+        case "bind":
+          await handleChannelBinding(this.client, this.interaction);
+          break;
+      }
+    } catch (error) {
+      logger.error("Error in logging command:", error);
+      await this.interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xe74c3c)
+            .setTitle("❌ Error")
+            .setDescription("Failed to execute logging command. Please try again.")
+            .setTimestamp(),
+        ],
+        ephemeral: true,
+      });
+    }
+
+    return {};
+  }
+}
+
+export default new LoggingCommand();
 
 async function startLoggingWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   const welcomeEmbed = new EmbedBuilder()

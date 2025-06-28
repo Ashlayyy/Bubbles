@@ -16,7 +16,8 @@ loginHandler.secure = false;
 const callbackHandler: any = discordCallback;
 callbackHandler.secure = false;
 
-router.get('/discord', authRateLimit, loginHandler);
+router.get('/discord/login', authRateLimit, loginHandler);
+router.post('/discord/login', authRateLimit, loginHandler);
 router.get('/discord/callback', authRateLimit, callbackHandler);
 router.post('/logout', authenticateToken, logout);
 router.get('/me', authenticateToken, getCurrentUser);

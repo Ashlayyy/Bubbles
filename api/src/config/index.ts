@@ -2,13 +2,23 @@ import dotenv from 'dotenv';
 import { resolve } from 'path';
 import { existsSync } from 'fs';
 
-// 1) Load local env (within /api)
-dotenv.config();
-
-// 2) Fallback – load repository-root .env if present (does NOT override existing vars)
+// 1) Load repository-root .env first (base config)
 const rootEnvPath = resolve(process.cwd(), '../.env');
 if (existsSync(rootEnvPath)) {
-	dotenv.config({ path: rootEnvPath, override: false });
+	dotenv.config({ path: rootEnvPath });
+}
+
+// 2) Load environment-specific config (development/production) as override
+const nodeEnv = process.env.NODE_ENV ?? 'development';
+const envSpecificPath = resolve(process.cwd(), `../.env.${nodeEnv}`);
+if (existsSync(envSpecificPath)) {
+	dotenv.config({ path: envSpecificPath, override: true });
+}
+
+// 3) Load local env (within /api) as final override if present
+const localEnvPath = resolve(process.cwd(), '.env');
+if (existsSync(localEnvPath)) {
+	dotenv.config({ path: localEnvPath, override: true });
 }
 
 export interface Config {
@@ -19,10 +29,12 @@ export interface Config {
 		host: string;
 		port: number;
 		password?: string;
+		url: string;
 	};
 	discord: {
 		clientId: string;
 		clientSecret: string;
+		botToken: string;
 		redirectUri: string;
 	};
 	jwt: {
@@ -39,6 +51,14 @@ export interface Config {
 	session: {
 		secret: string;
 	};
+	websocket: {
+		logAll: boolean;
+	};
+	features: {
+		devRoutes: boolean;
+		analytics: boolean;
+		auditLog: boolean;
+	};
 }
 
 const getConfig = (): Config => {
@@ -54,28 +74,34 @@ const getConfig = (): Config => {
 	}
 
 	return {
-		port: parseInt(process.env.PORT || '3001'),
+		port: parseInt(process.env.API_PORT || process.env.PORT || '3001'),
 		nodeEnv: process.env.NODE_ENV || 'development',
-		dbUrl: process.env.DB_URL || 'mongodb://localhost:27017/discord-bot',
+		dbUrl: process.env.DB_URL || 'mongodb://localhost:27017/bubbles',
 		redis: {
 			host: process.env.REDIS_HOST || 'localhost',
 			port: parseInt(process.env.REDIS_PORT || '6379'),
 			password: process.env.REDIS_PASSWORD,
+			url:
+				process.env.REDIS_URL ||
+				`redis://${process.env.REDIS_HOST || 'localhost'}:${
+					process.env.REDIS_PORT || '6379'
+				}`,
 		},
 		discord: {
 			clientId: process.env.DISCORD_CLIENT_ID || 'default-client-id',
 			clientSecret:
 				process.env.DISCORD_CLIENT_SECRET || 'default-client-secret',
+			botToken: process.env.DISCORD_BOT_TOKEN || 'default-bot-token',
 			redirectUri:
 				process.env.DISCORD_REDIRECT_URI ||
-				'http://localhost:3001/api/auth/discord/callback',
+				'http://localhost:8080/auth/callback',
 		},
 		jwt: {
 			secret: process.env.JWT_SECRET || 'default-jwt-secret-for-development',
 			expiresIn: process.env.JWT_EXPIRES_IN || '24h',
 		},
 		cors: {
-			origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+			origin: process.env.CORS_ORIGIN || 'http://localhost:8080',
 		},
 		rateLimit: {
 			windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
@@ -85,6 +111,16 @@ const getConfig = (): Config => {
 			secret:
 				process.env.SESSION_SECRET ||
 				'a-secure-default-session-secret-for-development',
+		},
+		websocket: {
+			logAll: process.env.WS_LOG_ALL === 'true',
+		},
+		features: {
+			devRoutes:
+				process.env.ENABLE_DEV_ROUTES === 'true' ||
+				process.env.NODE_ENV === 'development',
+			analytics: process.env.ENABLE_ANALYTICS !== 'false',
+			auditLog: process.env.ENABLE_AUDIT_LOG !== 'false',
 		},
 	};
 };

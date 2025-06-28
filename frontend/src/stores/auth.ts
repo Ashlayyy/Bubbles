@@ -34,7 +34,7 @@ export const useAuthStore = defineStore('auth', () => {
 	});
 
 	const login = () => {
-		window.location.href = `${apiClient().defaults.baseURL}/auth/discord`;
+		window.location.href = `${apiClient().defaults.baseURL}/auth/discord/login`;
 	};
 
 	const loginAsDemoUser = () => {

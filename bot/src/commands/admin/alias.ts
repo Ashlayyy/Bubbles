@@ -9,7 +9,7 @@ import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 /**
  * Alias Command - Manage quick response aliases
  */
-export class AliasCommand extends AdminCommand {
+class AliasCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "alias",

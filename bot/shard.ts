@@ -1,5 +1,28 @@
-import { ShardingManager } from "discord.js";
+import dotenv from "dotenv";
 import path from "path";
+import { fileURLToPath } from "url";
+
+// Get current directory for ESM compatibility
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Use centralized environment loading
+const environmentLoaderPath = path.resolve(__dirname, "src/functions/general/environmentLoader.js");
+try {
+  const { loadEnvironment } = (await import(environmentLoaderPath)) as { loadEnvironment: () => void };
+  loadEnvironment();
+} catch (error) {
+  // Fallback to basic environment loading if the module isn't built yet
+  console.warn("⚠️ Using fallback environment loading for shard.ts");
+  const rootEnvPath = path.resolve(__dirname, "../.env");
+  dotenv.config({ path: rootEnvPath });
+
+  const nodeEnv = process.env.NODE_ENV ?? "development";
+  const envSpecificPath = path.resolve(__dirname, `../.env.${nodeEnv}`);
+  dotenv.config({ path: envSpecificPath, override: true });
+}
+
+import { ShardingManager } from "discord.js";
 
 // Create sharding manager
 const manager = new ShardingManager(path.join(__dirname, "build", "bot", "src", "index.js"), {

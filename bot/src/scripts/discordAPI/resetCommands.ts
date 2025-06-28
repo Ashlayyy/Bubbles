@@ -1,3 +1,7 @@
+// Load environment variables first
+import { loadEnvironment } from "../../functions/general/environmentLoader.js";
+loadEnvironment();
+
 import logger from "../../logger.js";
 import Client, { DiscordAPIAction } from "../../structures/Client.js";
 

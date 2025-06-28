@@ -8,6 +8,7 @@ import type {
   SlashCommandSubcommandsOnlyBuilder,
 } from "discord.js";
 
+import { BaseCommand } from "../commands/_core/BaseCommand.js";
 import Client from "./Client.js";
 import type { CommandPermissionConfig } from "./PermissionTypes.js";
 import { PermissionLevel } from "./PermissionTypes.js";
@@ -33,19 +34,25 @@ interface CommandOptions {
   enabledOnDev?: boolean;
 }
 
-export function isCommand(input: unknown): input is Command {
+// Updated function to recognize both old and new command instances
+export function isCommand(input: unknown): input is Command | BaseCommand {
+  // Check for new BaseCommand instances
+  if (input instanceof BaseCommand) {
+    return true;
+  }
+
+  // Check for old Command instances
   return (
     input instanceof Object &&
     "_category" in input &&
     (typeof input._category === "string" || typeof input._category === "undefined") &&
     "builder" in input &&
-    // input.builder instanceof Builder &&
     "run" in input &&
     input.run instanceof Function
-    // TODO: type guard for function signature
   );
 }
 
+// Legacy Command class - keeping for backward compatibility during migration
 export default class Command {
   private _category?: string;
   readonly builder: Builder;

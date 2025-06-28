@@ -24,6 +24,7 @@ import {
 
 import type { BotConfig } from "../botConfig.js";
 import { getConfigFile } from "../botConfig.js";
+import { BaseCommand } from "../commands/_core/BaseCommand.js";
 import { getGuildConfig } from "../database/GuildConfig.js";
 import { connect as connectToDB } from "../database/index.js";
 import { isDevEnvironment } from "../functions/general/environment.js";
@@ -32,8 +33,7 @@ import { camel2Display, isOnlyDigits } from "../functions/general/strings.js";
 import logger from "../logger.js";
 import { UnifiedQueueService } from "../services/unifiedQueueService.js";
 import { WebSocketService } from "../services/websocketService.js";
-import type Command from "./Command.js";
-import { isCommand } from "./Command.js";
+import Command, { isCommand } from "./Command.js";
 import { EventEmitterType, eventEmitterTypeFromDir, isBaseEvent } from "./Event.js";
 import LogManager from "./LogManager.js";
 import ModerationManager from "./ModerationManager.js";
@@ -57,11 +57,11 @@ export default class Client extends DiscordClient {
   private static instance?: Client;
   readonly config: BotConfig;
   readonly version: string;
-  /** True in development environment, otherwise false */
+  /** Development mode enables additional features & ensures environment variable requirements are properly set */
   readonly devMode: boolean;
   private started = false;
-
-  readonly commands: Collection<string, Command> = new Collection<string, Command>();
+  /** All loaded commands from disk, indexed by command name */
+  readonly commands: Collection<string, BaseCommand | Command> = new Collection<string, BaseCommand | Command>();
   readonly commandCategories: string[] = [];
 
   // Add the managers
@@ -286,6 +286,11 @@ export default class Client extends DiscordClient {
         return; // Already loaded this file, skip.
       }
 
+      // Skip helper directories that contain base classes and utilities
+      if (category === "_core" || category === "_shared") {
+        return;
+      }
+
       if (category === "dev" && !this.devMode) {
         logger.error(new Error(`Development only commands are present in production environment`));
         process.exit(1);
@@ -293,10 +298,45 @@ export default class Client extends DiscordClient {
 
       const command = await importDefaultESM(commandFilePath, isCommand);
 
-      // All commands need a category for the permission manager.
+      // Set category for both command types
       command.category = category;
 
-      // Only add slash command categories to the user-facing list (e.g. for help commands)
+      // Handle command name and builder
+      let commandName: string;
+      if (command instanceof BaseCommand) {
+        // For BaseCommand, we need to import the builder separately
+        try {
+          // Convert file path to proper import URL for ES modules (same approach as importDefaultESM)
+          const path = await import("path");
+          const url = await import("url");
+          const normalizedPath = commandFilePath.replace(/\\/g, "/");
+          const absolutePath = path.resolve(normalizedPath);
+          const fileUrl = url.pathToFileURL(absolutePath).href;
+
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          const module = await import(fileUrl);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+          const builder = module.builder;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          if (builder && typeof builder.toJSON === "function") {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            command.builder = builder;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            commandName = (builder.name as string) || `${category}-basecommand-${this.commands.size}`;
+          } else {
+            logger.warn(`BaseCommand at ${commandFilePath} has no valid builder export`);
+            commandName = `${category}-basecommand-${this.commands.size}`;
+          }
+        } catch (error) {
+          logger.warn(`Failed to load builder for BaseCommand at ${commandFilePath}:`, error);
+          commandName = `${category}-basecommand-${this.commands.size}`;
+        }
+      } else {
+        // For legacy Command instances, the builder is already attached
+        commandName = command.builder.name;
+      }
+
+      // Only add slash command categories to the user-facing list
       if (category !== "context" && category !== "message" && category !== "user") {
         if (!this.commandCategories.includes(category)) {
           logger.debug(`\t${camel2Display(category)}`);
@@ -304,11 +344,10 @@ export default class Client extends DiscordClient {
         }
       }
 
-      this.commands.set(command.builder.name, command);
+      this.commands.set(commandName, command);
       loadedCommandFiles.add(commandFilePath);
 
-      // Log now to signify loading this file is complete
-      logger.debug(`\t\t${command.builder.name}`);
+      logger.debug(`\t\t${commandName}`);
     };
 
     // Load top-level command categories (admin, general, etc.)
@@ -341,17 +380,47 @@ export default class Client extends DiscordClient {
         }
 
         actionDescriptor = "register";
-        // Filter commands based on enabledOnDev flag in both dev and production modes
-        const commandsToRegister = this.commands.filter((command) => command.enabledOnDev);
-        const disabledCommands = this.commands.filter((command) => !command.enabledOnDev);
+        // Only register BaseCommand instances with valid builders
+        const commandsToRegister = this.commands.filter((command) => {
+          // Only include BaseCommand instances that have valid builders and are enabled
+          if (command instanceof BaseCommand) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            return command.enabledOnDev && command.builder && typeof command.builder.toJSON === "function";
+          }
+          // Skip all legacy Command instances
+          return false;
+        });
 
-        if (disabledCommands.size > 0) {
-          logger.info(`Skipping ${disabledCommands.size} disabled commands:`, {
-            skippedCommands: disabledCommands.map((cmd) => cmd.builder.name),
-          });
+        const skippedCommands = this.commands.filter((command) => {
+          if (command instanceof BaseCommand) {
+            // Count BaseCommand instances without builders or disabled as "skipped"
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            return !command.enabledOnDev || !command.builder || typeof command.builder.toJSON !== "function";
+          } else {
+            // All legacy Command instances are skipped
+            return true;
+          }
+        });
+
+        if (skippedCommands.size > 0) {
+          logger.info(
+            `Skipping ${skippedCommands.size} commands (legacy Command instances and disabled/invalid BaseCommand instances)`
+          );
+
+          // Log which legacy commands are being skipped
+          const legacyCommands = this.commands.filter((command) => !(command instanceof BaseCommand));
+          if (legacyCommands.size > 0) {
+            logger.warn(`Legacy Command instances not registered: ${Array.from(legacyCommands.keys()).join(", ")}`);
+            logger.warn(`These commands need to be migrated to BaseCommand structure to register with Discord.`);
+          }
         }
 
-        commandDataArr = commandsToRegister.map((command) => command.builder.toJSON());
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        commandDataArr = commandsToRegister.map((command) => {
+          // All commands in this array are BaseCommand instances due to filtering above
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+          return (command as BaseCommand).builder.toJSON();
+        });
 
         logger.info("Registering commands with Discord API", {
           commands: { raw: this.commands, json: commandDataArr },
@@ -630,13 +699,22 @@ export default class Client extends DiscordClient {
   }
 
   async runCommand(
-    command: Command,
+    command: Command | BaseCommand,
     interaction: ChatInputCommandInteraction | MessageContextMenuCommandInteraction
   ): Promise<void> {
+    // Handle BaseCommand instances
+    if (command instanceof BaseCommand) {
+      await command.run(this, interaction);
+      return;
+    }
+
+    // Handle legacy Command instances
+    const legacyCommand = command;
+
     // For now, all commands should assume we are in a guild.
     // Subject to change.
     if (!interaction.inGuild()) {
-      logger.warn(`Tried to run \`/${command.builder.name}\` command outside of a server/guild`);
+      logger.warn(`Tried to run \`/${legacyCommand.builder.name}\` command outside of a server/guild`);
       await interaction.reply({
         content: "This bot only supports commands in a server/guild!",
         flags: 64 /* MessageFlags.Ephemeral */,
@@ -649,7 +727,7 @@ export default class Client extends DiscordClient {
 
     const permissionResult = await permissionManager.checkPermission(
       interaction.member as GuildMember,
-      command.builder.name,
+      legacyCommand.builder.name,
       interaction.guildId
     );
 
@@ -662,7 +740,7 @@ export default class Client extends DiscordClient {
     }
 
     // Keep existing music channel restrictions
-    if (command.category === "music") {
+    if (legacyCommand.category === "music") {
       try {
         const guildConfig = await getGuildConfig(interaction.guildId);
         const musicChannelId = guildConfig.musicChannelId;
@@ -684,14 +762,14 @@ export default class Client extends DiscordClient {
     }
 
     logger.info(
-      `Guild "${interaction.guild?.name ?? "NO NAME"}" [id: ${interaction.guildId}] ran \`/${command.builder.name}\` command`
+      `Guild "${interaction.guild?.name ?? "NO NAME"}" [id: ${interaction.guildId}] ran \`/${legacyCommand.builder.name}\` command`
     );
     try {
-      await command.run(this, interaction);
+      await legacyCommand.run(this, interaction);
     } catch (error: unknown) {
       logger.error("Command execution error:", error);
       const errorReply = {
-        content: `There was an error while executing the \`${command.builder.name}\` command!`,
+        content: `There was an error while executing the \`${legacyCommand.builder.name}\` command!`,
         flags: 64 /* MessageFlags.Ephemeral */,
       };
       if (interaction.replied || interaction.deferred) {

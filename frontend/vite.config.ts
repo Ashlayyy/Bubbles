@@ -16,12 +16,25 @@ if (existsSync(rootEnvPath)) {
 export default defineConfig(({ mode }) => ({
 	server: {
 		host: '::',
-		port: 8080,
+		port: parseInt(process.env.FRONTEND_PORT || '8080'),
+		proxy: {
+			// Proxy API requests to the backend server
+			'/api': {
+				target: process.env.API_BASE_URL || 'http://localhost:3001',
+				changeOrigin: true,
+				secure: false,
+			},
+		},
 	},
 	plugins: [vue(), mode === 'development' && componentTagger()].filter(Boolean),
 	resolve: {
 		alias: {
 			'@': path.resolve(__dirname, './src'),
+			'@shared': path.resolve(__dirname, '../shared/src'),
 		},
+	},
+	define: {
+		// Make sure environment variables are available at build time
+		__APP_VERSION__: JSON.stringify(process.env.npm_package_version || '1.0.0'),
 	},
 }));

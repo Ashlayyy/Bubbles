@@ -129,8 +129,11 @@ export const discordCallback = async (
 			`User authenticated: ${userData.username}#${userData.discriminator}`
 		);
 
-		const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
-		const redirectUrl = `${frontendUrl}/login/callback`;
+		const frontendUrl =
+			process.env.FRONTEND_BASE_URL ||
+			process.env.CORS_ORIGIN ||
+			'http://localhost:8080';
+		const redirectUrl = `${frontendUrl}/auth/callback`;
 
 		res.redirect(redirectUrl);
 	} catch (error) {

@@ -15,6 +15,7 @@ import type {
 
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { ResponseBuilder } from "../_shared/responses/ResponseBuilder.js";
 import { CommandError, handleCommandError } from "./errors.js";
 import type {
@@ -31,13 +32,35 @@ export abstract class BaseCommand {
   protected context!: CommandContext;
   protected responseBuilder: ResponseBuilder;
 
+  // Compatibility properties for legacy system
+  private _category?: string;
+  public builder: any; // Will be set by the command loading system
+  public defaultPermissions: any; // Will be derived from config
+  public enabledOnDev = true;
+
   constructor(config: CommandConfig) {
     this.config = config;
     this.responseBuilder = new ResponseBuilder();
+
+    // Set up compatibility properties
+    this.defaultPermissions = config.permissions ?? { level: PermissionLevel.PUBLIC };
+    this.enabledOnDev = true; // BaseCommand instances are enabled by default
+  }
+
+  // Compatibility getter/setter for category
+  get category(): string {
+    return this._category ?? this.config.category ?? "unknown";
+  }
+
+  set category(category: string) {
+    this._category = category;
   }
 
   // Abstract method that must be implemented by subclasses
-  protected abstract execute(...args: any[]): Promise<CommandResult | CommandResponse>;
+  // Can return either a Promise or direct value for flexibility
+  protected abstract execute(
+    ...args: any[]
+  ): Promise<CommandResult | CommandResponse> | CommandResult | CommandResponse;
 
   // Main execution method called by the command handler
   async run(client: Client, interaction: CommandInteraction): Promise<void> {
@@ -55,8 +78,8 @@ export abstract class BaseCommand {
         });
       }
 
-      // Execute the command
-      const result = await this.execute();
+      // Execute the command (handle both sync and async)
+      const result = await Promise.resolve(this.execute());
 
       // Handle the result
       await this.handleResult(result);

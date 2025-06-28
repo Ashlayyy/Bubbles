@@ -38,37 +38,66 @@ export class ClearCommand extends AdminCommand {
 
     // Check if desired number is within allowed range
     if (!isInRange(quantity, 1, maxMessagesCleared)) {
-      return {
-        content: `You can not clear ${quantity} messages! Allowed range is from 1 to ${maxMessagesCleared}.`,
-        ephemeral: true,
-      };
+      return this.createAdminError(
+        "Invalid Quantity",
+        `❌ Cannot clear **${quantity}** messages!\n\n` +
+          `**Allowed range:** 1 to ${maxMessagesCleared} messages\n` +
+          `**Tip:** Server admins can adjust this limit in \`/config\``
+      );
     }
 
     const channel = this.interaction.channel as TextChannel;
 
-    const messagesToDelete = await channel.messages.fetch({
-      limit: quantity,
-      before: this.interaction.id,
-    });
-
     try {
-      // Note: 2nd argument in bulkDelete filters out messages +2 weeks old, as they cannot be deleted via bulkDelete
-      await channel.bulkDelete(messagesToDelete, true);
+      // Show loading indicator for large operations
+      if (quantity > 50) {
+        await this.interaction.deferReply({ ephemeral: true });
+      }
+
+      const messagesToDelete = await channel.messages.fetch({
+        limit: quantity,
+        before: this.interaction.id,
+      });
+
+      const actualCount = messagesToDelete.size;
+
+      if (actualCount === 0) {
+        return this.createAdminError("No Messages Found", "❌ No messages found to delete in this channel.");
+      }
+
+      // Note: 2nd argument in bulkDelete filters out messages +2 weeks old
+      const deletedMessages = await channel.bulkDelete(messagesToDelete, true);
+      const deletedCount = deletedMessages.size;
+
+      // Log the clear action
+      await this.client.logManager.log(this.guild.id, "MESSAGE_BULK_DELETE", {
+        channelId: channel.id,
+        executorId: this.user.id,
+        metadata: {
+          requestedCount: quantity,
+          actuallyDeleted: deletedCount,
+          method: "clear_command",
+        },
+      });
+
+      // Success message with embed
+      return this.createAdminSuccess(
+        "Messages Cleared",
+        `🧹 Successfully cleared **${deletedCount}** message${deletedCount === 1 ? "" : "s"}` +
+          (deletedCount < quantity ? `\n\n*Note: Some messages may have been too old to delete (>14 days)*` : "")
+      );
     } catch (err) {
-      logger.error("Errored while trying to bulkDelete messages", err);
+      logger.error("Error while trying to bulkDelete messages", err);
 
-      return {
-        content: `Errored while trying to bulkDelete messages! Make sure you are not 
-        (1) deleting more than are in the channel or (2) trying to delete messages made +2 weeks ago.`,
-        ephemeral: true,
-      };
+      return this.createAdminError(
+        "Deletion Failed",
+        "❌ Failed to delete messages. This usually happens when:\n\n" +
+          "• **Messages are older than 14 days** (Discord limitation)\n" +
+          "• **Insufficient permissions** to delete messages\n" +
+          "• **Too many messages** requested at once\n\n" +
+          "💡 **Tip:** Try reducing the number of messages or check bot permissions."
+      );
     }
-
-    // Confirmation message
-    return {
-      content: `Cleared \`${quantity}\` message${quantity === 1 ? "" : "s"}`,
-      ephemeral: true,
-    };
   }
 }
 

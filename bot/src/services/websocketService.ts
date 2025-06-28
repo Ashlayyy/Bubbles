@@ -128,10 +128,11 @@ export class WebSocketService extends EventEmitter {
       iat: Math.floor(Date.now() / 1000),
     };
 
-    // Use a bot-specific secret or fallback
-    let secret = process.env.BOT_JWT_SECRET;
-    secret ??= process.env.DISCORD_TOKEN;
-    secret ??= "fallback-secret";
+    // Use the unified JWT_SECRET for consistency with API
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error("JWT_SECRET environment variable is required for bot authentication");
+    }
     return jwt.sign(payload, secret, { expiresIn: "24h" });
   }
 

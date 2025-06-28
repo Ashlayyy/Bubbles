@@ -27,3 +27,5 @@ api/src/**/*.d.ts
 bot/src/**/*.js
 bot/src/**/*.js.map
 bot/src/**/*.d.ts
+
+backup/

@@ -13,120 +13,138 @@ import {
 import { getGuildConfig, updateGuildConfig } from "../../database/GuildConfig.js";
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
 // Type guard to ensure string is not null/undefined
 function isValidString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("ticket-setup")
-    .setDescription("Configure the ticket system for this server")
-    .addSubcommand((sub) =>
-      sub
-        .setName("channel")
-        .setDescription("Set the channel where users can create tickets")
-        .addChannelOption((opt) =>
-          opt
-            .setName("channel")
-            .setDescription("Channel for ticket creation")
-            .addChannelTypes(ChannelType.GuildText)
-            .setRequired(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("threads")
-        .setDescription("Configure whether to use threads or separate channels")
-        .addBooleanOption((opt) =>
-          opt.setName("enabled").setDescription("Use threads for tickets (recommended: true)").setRequired(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("oncall")
-        .setDescription("Set the role to ping when new tickets are created")
-        .addRoleOption((opt) => opt.setName("role").setDescription("Role to ping for new tickets").setRequired(false))
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("category")
-        .setDescription("Set category for ticket channels (only if not using threads)")
-        .addChannelOption((opt) =>
-          opt
-            .setName("category")
-            .setDescription("Category for ticket channels")
-            .addChannelTypes(ChannelType.GuildCategory)
-            .setRequired(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub.setName("panel").setDescription("Create/update the ticket creation panel in the configured channel")
-    )
-    .addSubcommand((sub) => sub.setName("status").setDescription("View current ticket system configuration"))
-    .addSubcommand((sub) =>
-      sub
-        .setName("silent-claim")
-        .setDescription("Configure whether staff can claim tickets silently")
-        .addBooleanOption((opt) =>
-          opt.setName("enabled").setDescription("Allow silent ticket claiming (default: true)").setRequired(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("access-type")
-        .setDescription("Choose how to determine who gets access to tickets")
-        .addStringOption((opt) =>
-          opt
-            .setName("type")
-            .setDescription("Access control method")
-            .setRequired(true)
-            .addChoices({ name: "Role-based", value: "role" }, { name: "Permission-based", value: "permission" })
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("access-role")
-        .setDescription("Set the role that gets access to all tickets")
-        .addRoleOption((opt) => opt.setName("role").setDescription("Role to grant ticket access").setRequired(true))
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("access-permission")
-        .setDescription("Set the Discord permission required for ticket access")
-        .addStringOption((opt) =>
-          opt
-            .setName("permission")
-            .setDescription("Required Discord permission")
-            .setRequired(true)
-            .addChoices(
-              { name: "Manage Messages", value: "ManageMessages" },
-              { name: "Manage Channels", value: "ManageChannels" },
-              { name: "Manage Members", value: "ManageMembers" },
-              { name: "Ban Members", value: "BanMembers" },
-              { name: "Kick Members", value: "KickMembers" },
-              { name: "Moderate Members", value: "ModerateMembers" }
-            )
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("logging-channel")
-        .setDescription("Configure channel for ticket event logging")
-        .addChannelOption((opt) =>
-          opt.setName("channel").setDescription("Channel to log ticket events to").setRequired(true)
-        )
-    ),
+export const builder = new SlashCommandBuilder()
+  .setName("ticket-setup")
+  .setDescription("Configure the ticket system for this server")
+  .addSubcommand((sub) =>
+    sub
+      .setName("channel")
+      .setDescription("Set the channel where users can create tickets")
+      .addChannelOption((opt) =>
+        opt
+          .setName("channel")
+          .setDescription("Channel for ticket creation")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("threads")
+      .setDescription("Configure whether to use threads or separate channels")
+      .addBooleanOption((opt) =>
+        opt.setName("enabled").setDescription("Use threads for tickets (recommended: true)").setRequired(true)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("oncall")
+      .setDescription("Set the role to ping when new tickets are created")
+      .addRoleOption((opt) => opt.setName("role").setDescription("Role to ping for new tickets").setRequired(false))
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("category")
+      .setDescription("Set category for ticket channels (only if not using threads)")
+      .addChannelOption((opt) =>
+        opt
+          .setName("category")
+          .setDescription("Category for ticket channels")
+          .addChannelTypes(ChannelType.GuildCategory)
+          .setRequired(true)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub.setName("panel").setDescription("Create/update the ticket creation panel in the configured channel")
+  )
+  .addSubcommand((sub) => sub.setName("status").setDescription("View current ticket system configuration"))
+  .addSubcommand((sub) =>
+    sub
+      .setName("silent-claim")
+      .setDescription("Configure whether staff can claim tickets silently")
+      .addBooleanOption((opt) =>
+        opt.setName("enabled").setDescription("Allow silent ticket claiming (default: true)").setRequired(true)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("access-type")
+      .setDescription("Choose how to determine who gets access to tickets")
+      .addStringOption((opt) =>
+        opt
+          .setName("type")
+          .setDescription("Access control method")
+          .setRequired(true)
+          .addChoices({ name: "Role-based", value: "role" }, { name: "Permission-based", value: "permission" })
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("access-role")
+      .setDescription("Set the role that gets access to all tickets")
+      .addRoleOption((opt) => opt.setName("role").setDescription("Role to grant ticket access").setRequired(true))
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("access-permission")
+      .setDescription("Set the Discord permission required for ticket access")
+      .addStringOption((opt) =>
+        opt
+          .setName("permission")
+          .setDescription("Required Discord permission")
+          .setRequired(true)
+          .addChoices(
+            { name: "Manage Messages", value: "ManageMessages" },
+            { name: "Manage Channels", value: "ManageChannels" },
+            { name: "Manage Members", value: "ManageMembers" },
+            { name: "Ban Members", value: "BanMembers" },
+            { name: "Kick Members", value: "KickMembers" },
+            { name: "Moderate Members", value: "ModerateMembers" }
+          )
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("logging-channel")
+      .setDescription("Configure channel for ticket event logging")
+      .addChannelOption((opt) =>
+        opt.setName("channel").setDescription("Channel to log ticket events to").setRequired(true)
+      )
+  );
 
-  async (client, interaction) => {
-    if (!interaction.guild || !interaction.isChatInputCommand()) return;
+class TicketSetupCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "ticket-setup",
+      description: "Configure the ticket system for this server",
+      category: "admin",
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
+      },
+      guildOnly: true,
+    };
 
-    const member = interaction.member as GuildMember;
+    super(config);
+  }
+
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.interaction.guild || !this.interaction.isChatInputCommand()) {
+      return {};
+    }
+
+    const member = this.interaction.member as GuildMember;
     if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-      await interaction.reply({
+      await this.interaction.reply({
         embeds: [
           new EmbedBuilder()
             .setColor(0xe74c3c)
@@ -136,50 +154,50 @@ export default new Command(
         ],
         ephemeral: true,
       });
-      return;
+      return {};
     }
 
-    const subcommand = interaction.options.getSubcommand();
+    const subcommand = this.interaction.options.getSubcommand();
 
     try {
       switch (subcommand) {
         case "channel":
-          await handleChannelSetup(client, interaction);
+          await handleChannelSetup(this.client, this.interaction);
           break;
         case "threads":
-          await handleThreadsConfig(client, interaction);
+          await handleThreadsConfig(this.client, this.interaction);
           break;
         case "oncall":
-          await handleOnCallConfig(client, interaction);
+          await handleOnCallConfig(this.client, this.interaction);
           break;
         case "category":
-          await handleCategoryConfig(client, interaction);
+          await handleCategoryConfig(this.client, this.interaction);
           break;
         case "panel":
-          await handlePanelCreation(client, interaction);
+          await handlePanelCreation(this.client, this.interaction);
           break;
         case "status":
-          await handleStatusDisplay(client, interaction);
+          await handleStatusDisplay(this.client, this.interaction);
           break;
         case "silent-claim":
-          await handleSilentClaimConfig(client, interaction);
+          await handleSilentClaimConfig(this.client, this.interaction);
           break;
         case "access-type":
-          await handleAccessTypeConfig(client, interaction);
+          await handleAccessTypeConfig(this.client, this.interaction);
           break;
         case "access-role":
-          await handleAccessRoleConfig(client, interaction);
+          await handleAccessRoleConfig(this.client, this.interaction);
           break;
         case "access-permission":
-          await handleAccessPermissionConfig(client, interaction);
+          await handleAccessPermissionConfig(this.client, this.interaction);
           break;
         case "logging-channel":
-          await handleLoggingChannelConfig(client, interaction);
+          await handleLoggingChannelConfig(this.client, this.interaction);
           break;
       }
     } catch (error) {
       logger.error("Error in ticket-setup command:", error);
-      await interaction.reply({
+      await this.interaction.reply({
         embeds: [
           new EmbedBuilder()
             .setColor(0xe74c3c)
@@ -190,14 +208,12 @@ export default new Command(
         ephemeral: true,
       });
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.ADMIN,
-      isConfigurable: false,
-    },
+
+    return {};
   }
-);
+}
+
+export default new TicketSetupCommand();
 
 async function handleChannelSetup(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) return;

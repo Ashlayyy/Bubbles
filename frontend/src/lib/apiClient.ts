@@ -14,10 +14,11 @@ let api: AxiosInstance | null = null;
 
 function createApiClient(): AxiosInstance {
 	const instance = axios.create({
-		baseURL: import.meta.env.VITE_API_URL || '/api',
+		baseURL: import.meta.env.VITE_API_URL || '/api/v1',
 		headers: {
 			'Content-Type': 'application/json',
 		},
+		withCredentials: true, // Include cookies for session management
 	});
 
 	// Request interceptor – attach JWT

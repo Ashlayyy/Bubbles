@@ -11,6 +11,7 @@ import {
   TextInputStyle,
   type ButtonInteraction,
   type ModalSubmitInteraction,
+  type User,
 } from "discord.js";
 
 import { PermissionLevel } from "../../../structures/PermissionTypes.js";
@@ -24,9 +25,9 @@ import {
 import { ModerationCommand } from "../../_core/specialized/ModerationCommand.js";
 
 /**
- * Ban User Context Menu Command - Ban a user from a message context menu
+ * Ban User Context Menu Command - Ban a user from the user context menu
  */
-export class BanUserContextCommand extends ModerationCommand {
+class BanUserCommand extends ModerationCommand {
   constructor() {
     const config: CommandConfig = {
       name: "Ban User",
@@ -45,13 +46,12 @@ export class BanUserContextCommand extends ModerationCommand {
   }
 
   protected async execute(): Promise<CommandResponse> {
-    if (!this.isMessageContextMenu()) {
-      throw new Error("This command only works as a message context menu");
+    if (!this.isUserContextMenu()) {
+      throw new Error("This command only works as a user context menu");
     }
 
-    const interaction = this.interaction as import("discord.js").MessageContextMenuCommandInteraction;
-    const targetMessage = interaction.targetMessage;
-    const targetUser = targetMessage.author;
+    const interaction = this.interaction as import("discord.js").UserContextMenuCommandInteraction;
+    const targetUser = interaction.targetUser;
 
     // Validate the target user
     if (targetUser.bot) {
@@ -84,20 +84,10 @@ export class BanUserContextCommand extends ModerationCommand {
       }
     }
 
-    // Create evidence link and content preview
-    const messageLink = `https://discord.com/channels/${this.guild.id}/${targetMessage.channel.id}/${targetMessage.id}`;
-    const truncatedContent =
-      targetMessage.content.length > 100 ? targetMessage.content.substring(0, 100) + "..." : targetMessage.content;
-
-    return this.showBanConfirmation(targetUser, targetMessage, messageLink, truncatedContent);
+    return this.showBanConfirmation(targetUser);
   }
 
-  private showBanConfirmation(
-    targetUser: import("discord.js").User,
-    targetMessage: import("discord.js").Message,
-    messageLink: string,
-    truncatedContent: string
-  ): CommandResponse {
+  private showBanConfirmation(targetUser: User): CommandResponse {
     const embed = new EmbedBuilder()
       .setColor(0xe74c3c)
       .setTitle("🔨 Ban User")
@@ -109,35 +99,31 @@ export class BanUserContextCommand extends ModerationCommand {
           inline: true,
         },
         {
-          name: "📝 Message Content",
-          value: targetMessage.content || "*No text content*",
-          inline: false,
-        },
-        {
-          name: "🔗 Evidence",
-          value: `[Jump to Message](${messageLink})`,
+          name: "📅 Account Created",
+          value: `<t:${Math.floor(targetUser.createdTimestamp / 1000)}:R>`,
           inline: true,
         }
       )
+      .setThumbnail(targetUser.displayAvatarURL({ size: 128 }))
       .setTimestamp()
       .setFooter({ text: `Requested by ${this.user.tag}` });
 
     const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId(`ban_quick_${targetUser.id}_${targetMessage.id}`)
+        .setCustomId(`ban_quick_${targetUser.id}`)
         .setLabel("Quick Ban")
         .setStyle(ButtonStyle.Danger)
         .setEmoji("⚡"),
       new ButtonBuilder()
-        .setCustomId(`ban_custom_${targetUser.id}_${targetMessage.id}`)
+        .setCustomId(`ban_custom_${targetUser.id}`)
         .setLabel("Custom Ban")
         .setStyle(ButtonStyle.Secondary)
         .setEmoji("⚙️"),
       new ButtonBuilder().setCustomId("ban_cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary).setEmoji("❌")
     );
 
-    // Set up interaction handlers (this is a simplified approach)
-    this.setupInteractionHandlers(targetUser, targetMessage, messageLink, truncatedContent);
+    // Set up interaction handlers
+    this.setupInteractionHandlers(targetUser);
 
     return {
       embeds: [embed],
@@ -146,12 +132,7 @@ export class BanUserContextCommand extends ModerationCommand {
     };
   }
 
-  private setupInteractionHandlers(
-    targetUser: import("discord.js").User,
-    targetMessage: import("discord.js").Message,
-    messageLink: string,
-    truncatedContent: string
-  ): void {
+  private setupInteractionHandlers(targetUser: User): void {
     // Handle button interactions
     const collector = this.interaction.channel?.createMessageComponentCollector({
       time: 300000, // 5 minutes
@@ -171,11 +152,11 @@ export class BanUserContextCommand extends ModerationCommand {
           }
 
           if (buttonInteraction.customId.startsWith("ban_quick_")) {
-            await this.handleQuickBan(buttonInteraction, targetUser, truncatedContent, messageLink);
+            await this.handleQuickBan(buttonInteraction, targetUser);
           }
 
           if (buttonInteraction.customId.startsWith("ban_custom_")) {
-            await this.handleCustomBan(buttonInteraction, targetUser, targetMessage, messageLink, truncatedContent);
+            await this.handleCustomBan(buttonInteraction, targetUser);
           }
         } catch (error) {
           console.error("Error handling ban context menu button:", error);
@@ -204,22 +185,15 @@ export class BanUserContextCommand extends ModerationCommand {
           ],
         })
         .catch(() => {
-          // Do nothing
+          // Ignore errors on cleanup
         });
     });
   }
 
-  private async handleQuickBan(
-    buttonInteraction: ButtonInteraction,
-    targetUser: import("discord.js").User,
-    truncatedContent: string,
-    messageLink: string
-  ): Promise<void> {
+  private async handleQuickBan(buttonInteraction: ButtonInteraction, targetUser: User): Promise<void> {
     await buttonInteraction.deferUpdate();
 
-    const reason = truncatedContent
-      ? `Inappropriate message: "${truncatedContent}"`
-      : "Inappropriate behavior (via context menu)";
+    const reason = "Banned via user context menu (Quick Ban)";
 
     try {
       const case_ = await this.client.moderationManager.ban(
@@ -228,7 +202,7 @@ export class BanUserContextCommand extends ModerationCommand {
         this.user.id,
         reason,
         undefined, // No duration (permanent)
-        [messageLink] // Evidence
+        [] // No evidence for user context menu
       );
 
       await buttonInteraction.editReply({
@@ -245,24 +219,15 @@ export class BanUserContextCommand extends ModerationCommand {
     }
   }
 
-  private async handleCustomBan(
-    buttonInteraction: ButtonInteraction,
-    targetUser: import("discord.js").User,
-    targetMessage: import("discord.js").Message,
-    messageLink: string,
-    truncatedContent: string
-  ): Promise<void> {
+  private async handleCustomBan(buttonInteraction: ButtonInteraction, targetUser: User): Promise<void> {
     // Create and show modal for custom ban details
-    const modal = new ModalBuilder()
-      .setCustomId(`ban_modal_${targetUser.id}_${targetMessage.id}`)
-      .setTitle("Custom Ban Details");
+    const modal = new ModalBuilder().setCustomId(`ban_modal_${targetUser.id}`).setTitle("Custom Ban Details");
 
     const reasonInput = new TextInputBuilder()
       .setCustomId("ban_reason")
       .setLabel("Reason for ban")
       .setStyle(TextInputStyle.Paragraph)
       .setPlaceholder("Enter the reason for this ban...")
-      .setValue(truncatedContent ? `Inappropriate message: "${truncatedContent}"` : "")
       .setRequired(true)
       .setMaxLength(1000);
 
@@ -270,16 +235,16 @@ export class BanUserContextCommand extends ModerationCommand {
       .setCustomId("ban_duration")
       .setLabel("Duration (optional)")
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder("e.g., 7d, 3h, 30m (leave empty for permanent)")
+      .setPlaceholder("e.g., 7d, 30d, permanent")
+      .setValue("permanent")
       .setRequired(false)
-      .setMaxLength(10);
+      .setMaxLength(20);
 
     const evidenceInput = new TextInputBuilder()
       .setCustomId("ban_evidence")
-      .setLabel("Additional Evidence (optional)")
+      .setLabel("Evidence (optional)")
       .setStyle(TextInputStyle.Paragraph)
-      .setPlaceholder("Additional evidence links, comma-separated...")
-      .setValue(messageLink)
+      .setPlaceholder("Evidence links, comma-separated...")
       .setRequired(false)
       .setMaxLength(1000);
 
@@ -291,84 +256,78 @@ export class BanUserContextCommand extends ModerationCommand {
 
     await buttonInteraction.showModal(modal);
 
-    // Handle modal submission
-    this.setupModalHandler(targetUser, messageLink);
+    // Handle modal submission using awaitModalSubmit
+    try {
+      const modalInteraction = await buttonInteraction.awaitModalSubmit({
+        time: 300000, // 5 minutes
+        filter: (i) => i.user.id === this.user.id && i.customId.startsWith("ban_modal_"),
+      });
+
+      await this.processBanModal(modalInteraction, targetUser);
+    } catch (error) {
+      // Modal submission timed out or failed
+      console.error("Modal submission failed:", error);
+    }
   }
 
-  private setupModalHandler(targetUser: import("discord.js").User, messageLink: string): void {
-    // Note: In a production implementation, you'd want a more robust way to handle this
-    // This is a simplified approach for the conversion
-    const modalCollector = this.interaction.channel?.createMessageComponentCollector({
-      time: 300000,
-      filter: (i) => i.user.id === this.user.id && i.isModalSubmit(),
-    });
+  private async processBanModal(modalInteraction: ModalSubmitInteraction, targetUser: User): Promise<void> {
+    const reason = modalInteraction.fields.getTextInputValue("ban_reason");
+    const durationStr = modalInteraction.fields.getTextInputValue("ban_duration");
+    const evidenceStr = modalInteraction.fields.getTextInputValue("ban_evidence");
 
-    modalCollector?.on("collect", (modalInteraction: ModalSubmitInteraction) => {
-      void (async () => {
-        if (!modalInteraction.customId.startsWith("ban_modal_")) return;
+    // Parse duration
+    let duration: number | undefined;
+    if (durationStr && durationStr.toLowerCase() !== "permanent") {
+      const parsedDuration = parseDuration(durationStr);
+      if (!parsedDuration) {
+        await modalInteraction.reply({
+          content: "❌ Invalid duration format. Use formats like: 7d, 30d, or leave empty for permanent",
+          ephemeral: true,
+        });
+        return;
+      }
+      duration = parsedDuration;
+    }
 
-        await modalInteraction.deferReply({ ephemeral: true });
+    // Parse evidence
+    const evidence = evidenceStr ? parseEvidence(evidenceStr) : { all: [] };
 
-        try {
-          const reasonInput = modalInteraction.fields.getTextInputValue("ban_reason");
-          const durationStr = modalInteraction.fields.getTextInputValue("ban_duration");
-          const evidenceStr = modalInteraction.fields.getTextInputValue("ban_evidence");
+    await modalInteraction.deferReply({ ephemeral: true });
 
-          // Expand reason alias
-          const reason = await this.expandReasonAlias(reasonInput, targetUser);
+    try {
+      const case_ = await this.client.moderationManager.ban(
+        this.guild,
+        targetUser.id,
+        modalInteraction.user.id,
+        reason,
+        duration,
+        evidence.all
+      );
 
-          // Parse duration
-          let duration: number | undefined;
-          if (durationStr) {
-            const parsedDuration = parseDuration(durationStr);
-            if (parsedDuration === null) {
-              await modalInteraction.editReply({
-                content: "❌ Invalid duration format. Use format like: 1d, 3h, 30m",
-              });
-              return;
-            }
-            duration = parsedDuration;
-          }
+      const durationText = duration ? ` for ${formatDuration(duration)}` : " permanently";
+      await modalInteraction.editReply({
+        content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber}** created.`,
+      });
 
-          // Parse evidence
-          const evidence = parseEvidence(evidenceStr);
-
-          const case_ = await this.client.moderationManager.ban(
-            this.guild,
-            targetUser.id,
-            this.user.id,
-            reason,
-            duration,
-            evidence.all.length > 0 ? evidence.all : [messageLink]
-          );
-
-          const durationText = duration ? ` for ${formatDuration(duration)}` : " permanently";
-
-          await modalInteraction.editReply({
-            content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber}** created.`,
-          });
-
-          // Update the original interaction
-          await this.interaction.editReply({
-            content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber}** created.`,
-            embeds: [],
-            components: [],
-          });
-        } catch (error) {
-          await modalInteraction.editReply({
-            content: `❌ Failed to ban **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-          });
-        }
-      })();
-    });
+      // Update the original interaction
+      await this.interaction.editReply({
+        content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber}** created.`,
+        embeds: [],
+        components: [],
+      });
+    } catch (error) {
+      await modalInteraction.editReply({
+        content: `❌ Failed to ban **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+    }
   }
 }
 
 // Export the command instance
-export default new BanUserContextCommand();
+export default new BanUserCommand();
 
 // Export the Discord command builder for registration
 export const builder = new ContextMenuCommandBuilder()
   .setName("Ban User")
-  .setType(ApplicationCommandType.Message)
-  .setDefaultMemberPermissions(0);
+  .setType(ApplicationCommandType.User)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers);

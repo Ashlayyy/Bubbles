@@ -11,7 +11,9 @@
 		"frontend"
 	],
 	"scripts": {
-		"build": "npm run build:shared && npm run build:bot && npm run build:api && npm run build:frontend",
+		"dev": "concurrently -n \"API,Frontend\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm run dev:api\" \"npm run dev:frontend\"",
+		"dev:full": "concurrently -n \"API,Frontend,Bot\" -c \"bgBlue.bold,bgMagenta.bold,bgGreen.bold\" \"npm run dev:api\" \"npm run dev:frontend\" \"npm run dev:bot\"",
+		"build": "npm run build:shared && npm run build:api && npm run build:frontend",
 		"build:shared": "cd shared && npm run build",
 		"build:bot": "cd bot && npm run build",
 		"build:api": "cd api && npm run build",
