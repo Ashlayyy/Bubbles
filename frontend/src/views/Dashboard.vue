@@ -10,18 +10,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import DashboardWidgets from '@/components/DashboardWidgets.vue';
 import { useGuildsStore } from '@/stores/guilds';
 
 const route = useRoute();
 const guildsStore = useGuildsStore();
-const guildId = computed(() => route.params.guildId as string);
+const guildId = computed(() => route.params.guildId as string | undefined);
 
-onMounted(() => {
-	if (guildId.value) {
-		guildsStore.fetchGuildStats(guildId.value);
-	}
-});
+watch(
+	() => guildId.value,
+	(id) => {
+		if (id) guildsStore.fetchGuildStats(id);
+	},
+	{ immediate: true }
+);
 </script>

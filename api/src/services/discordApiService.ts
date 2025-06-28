@@ -1,4 +1,5 @@
 import { createLogger } from '../types/shared.js';
+import { config } from '../config/index.js';
 
 const logger = createLogger('discord-api-service');
 
@@ -162,9 +163,9 @@ export class DiscordApiService {
 	private baseURL = 'https://discord.com/api/v10';
 
 	constructor() {
-		this.botToken = process.env.DISCORD_CLIENT_SECRET || '';
+		this.botToken = process.env.DISCORD_TOKEN || config.discord.botToken;
 		if (!this.botToken) {
-			throw new Error('DISCORD_CLIENT_SECRET environment variable is required');
+			throw new Error('DISCORD_TOKEN environment variable is required');
 		}
 		logger.info('Discord API service initialized');
 	}

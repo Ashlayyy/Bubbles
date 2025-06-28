@@ -4,6 +4,7 @@ import {
 	type RouteRecordRaw,
 } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { useGuildsStore, type GuildItem } from '@/stores/guilds';
 
 // Import views
 import Login from '@/views/Login.vue';
@@ -156,9 +157,24 @@ router.beforeEach(async (to) => {
 	const publicPages = ['/login', '/login/callback', '/auth/callback'];
 	const authRequired = !publicPages.includes(to.path);
 	const auth = useAuthStore();
+	const guildsStore = useGuildsStore();
 
 	if (authRequired) {
 		await auth.checkAuth();
+	}
+
+	// Ensure guild list is loaded when accessing server-scoped routes
+	if (auth.isAuthenticated && guildsStore.guilds.length === 0) {
+		await guildsStore.fetchGuilds();
+	}
+
+	// If route contains :guildId param and we already have guild list, sync currentGuild
+	if (to.params.guildId) {
+		const gid = to.params.guildId as string;
+		if (!guildsStore.currentGuild || guildsStore.currentGuild.id !== gid) {
+			const found = guildsStore.guilds.find((g: GuildItem) => g.id === gid);
+			if (found) guildsStore.setCurrentGuild(found);
+		}
 	}
 
 	// Redirect to login if auth is required and user is not authenticated

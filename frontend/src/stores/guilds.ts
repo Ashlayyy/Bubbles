@@ -3,9 +3,7 @@ import { ref } from 'vue';
 import { guildsApi } from '@/lib/endpoints';
 import type { Guild as ApiGuild } from '@shared/types/api';
 
-export interface Guild extends ApiGuild {
-	hasBubbles?: boolean;
-}
+export type GuildItem = ApiGuild & { hasBubbles?: boolean };
 
 export interface GuildStats {
 	memberCount: number;
@@ -16,24 +14,31 @@ export interface GuildStats {
 }
 
 export const useGuildsStore = defineStore('guilds', () => {
-	const guilds = ref<Guild[]>([]);
-	const currentGuild = ref<Guild | null>(null);
+	const guilds = ref<GuildItem[]>([]);
+	const currentGuild = ref<GuildItem | null>(null);
 	const currentGuildStats = ref<GuildStats | null>(null);
 	const loading = ref(false);
+	const loaded = ref(false);
 
 	const fetchGuilds = async () => {
+		if (loading.value || loaded.value) return;
 		loading.value = true;
 		try {
 			const fetched: ApiGuild[] = await guildsApi.getUserGuilds();
-			guilds.value = fetched.map((g) => ({
-				...g,
-				icon: g.icon ?? null,
-				hasBubbles: g.hasBubbles ?? false,
-			}));
+			guilds.value = fetched.map((g): GuildItem => {
+				const hasBubbles =
+					(g as unknown as { hasBubbles?: boolean }).hasBubbles ?? false;
+				return {
+					...g,
+					icon: g.icon ?? null,
+					hasBubbles,
+				};
+			});
 		} catch (error) {
 			console.error('Failed to fetch guilds:', error);
 		} finally {
 			loading.value = false;
+			loaded.value = guilds.value.length > 0;
 		}
 	};
 
@@ -58,11 +63,11 @@ export const useGuildsStore = defineStore('guilds', () => {
 		}
 	};
 
-	const setCurrentGuild = (guild: Guild) => {
+	const setCurrentGuild = (guild: GuildItem) => {
 		currentGuild.value = guild;
 	};
 
-	const getGuildIconUrl = (guild: Guild) => {
+	const getGuildIconUrl = (guild: GuildItem) => {
 		if (!guild.icon) return null;
 		return `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=128`;
 	};
@@ -72,6 +77,7 @@ export const useGuildsStore = defineStore('guilds', () => {
 		currentGuild,
 		currentGuildStats,
 		loading,
+		loaded,
 		fetchGuilds,
 		fetchGuildStats,
 		setCurrentGuild,

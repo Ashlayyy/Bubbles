@@ -25,7 +25,13 @@ const router = Router();
 router.get('/', authenticateToken, generalRateLimit, getUserGuilds);
 
 const guildRouter = Router({ mergeParams: true });
-router.use('/:guildId', validateGuildId, validateGuildAccess, guildRouter);
+router.use(
+	'/:guildId',
+	validateGuildId,
+	authenticateToken,
+	validateGuildAccess,
+	guildRouter
+);
 
 guildRouter.get('/', authenticateToken, generalRateLimit, getGuildInfo);
 

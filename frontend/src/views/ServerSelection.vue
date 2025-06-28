@@ -274,7 +274,13 @@ const filteredInvite = computed<FullGuild[]>(() => {
 	return inviteGuilds.value.filter((g) => g.name.toLowerCase().includes(q));
 });
 
-const CLIENT_ID = import.meta.env.VITE_DISCORD_CLIENT_ID || '';
+const CLIENT_ID =
+	import.meta.env.VITE_DISCORD_CLIENT_ID ||
+	import.meta.env.VITE_DISCORD_CLIENTID ||
+	import.meta.env.VITE_APP_DISCORD_CLIENT_ID ||
+	import.meta.env.VITE_DISCORD_CLIENT ||
+	'';
+console.log(import.meta.env);
 const getInviteUrl = (guildId?: string) => {
 	const base = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&permissions=8&scope=bot%20applications.commands`;
 	return guildId
@@ -291,11 +297,14 @@ onMounted(() => {
 
 const getUserRole = (guild: FullGuild) => {
 	if (guild.owner) return 'owner';
-	if (
-		guild.permissions &&
-		(BigInt(guild.permissions) & BigInt(8)) === BigInt(8)
-	) {
-		return 'admin';
+
+	if (guild.permissions) {
+		const perms = BigInt(guild.permissions);
+		// Administrator permission (bit 3 => value 8)
+		if ((perms & BigInt(8)) === BigInt(8)) return 'admin';
+
+		// Manage Guild permission (bit 5 => value 32)
+		if ((perms & BigInt(32)) === BigInt(32)) return 'moderator';
 	}
 	return null;
 };
@@ -306,6 +315,8 @@ const getRoleBadgeClass = (role: string | null) => {
 			return 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-500/40';
 		case 'admin':
 			return 'bg-gradient-to-r from-red-500/20 to-pink-500/20 text-red-300 border border-red-500/40';
+		case 'moderator':
+			return 'bg-gradient-to-r from-blue-500/20 to-teal-500/20 text-blue-300 border border-blue-500/40';
 		default:
 			return 'bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-300 border border-green-500/40';
 	}

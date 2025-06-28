@@ -5,11 +5,16 @@ import { config } from '../config/index.js';
 import jwt from 'jsonwebtoken';
 import { blacklistToken } from '../services/tokenBlacklistService.js';
 import { Session, SessionData } from 'express-session';
+import 'express-session';
 
 const logger = createLogger('auth-controller');
 
 type AuthenticatedRequest = AuthRequest & {
-	session: Session & Partial<SessionData> & { accessToken?: string };
+	session: Session &
+		Partial<SessionData> & {
+			accessToken?: string;
+			user?: any; // Stored user object
+		};
 };
 
 // Discord OAuth login
@@ -133,9 +138,10 @@ export const discordCallback = async (
 			})),
 		};
 
-		// Store access token in session (optional)
+		// Store user and access token in session for subsequent requests
 		if (req.session) {
-			req.session.accessToken = accessToken;
+			(req.session as any).accessToken = accessToken;
+			(req.session as any).user = userData;
 		}
 
 		// Generate JWT for frontend authentication
@@ -186,6 +192,13 @@ export const logout = async (req: AuthRequest, res: Response) => {
 
 		if (token && req.user) {
 			await blacklistToken(token, req.user.id);
+		}
+
+		// Destroy server-side session
+		if (req.session) {
+			req.session.destroy(() => {
+				/* no-op */
+			});
 		}
 
 		logger.info(`User logged out: ${req.user?.username || 'Unknown'}`);
