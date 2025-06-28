@@ -26,10 +26,18 @@ export const getGuilds = async (req: AuthenticatedRequest, res: Response) => {
 		// Fetch guilds from Discord API
 		const guilds = await discordApi.getGuilds(accessToken);
 
-		// Filter guilds the user has access to based on their permissions
-		const userGuilds = guilds.filter(
-			(guild) => req.user?.guilds?.includes(guild.id) || guild.owner
-		);
+		// Discord permission bit for MANAGE_GUILD (1 << 5 = 32)
+		const MANAGE_GUILD = BigInt(1 << 5);
+		const userGuilds = guilds.filter((guild) => {
+			if (guild.owner) return true;
+			// permissions may come as string – convert to BigInt for bitwise check
+			try {
+				const perms = BigInt(guild.permissions);
+				return (perms & MANAGE_GUILD) === MANAGE_GUILD;
+			} catch {
+				return false;
+			}
+		});
 
 		res.success({
 			guilds: userGuilds.map((guild) => ({

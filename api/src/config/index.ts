@@ -91,7 +91,7 @@ const getConfig = (): Config => {
 			clientId: process.env.DISCORD_CLIENT_ID || 'default-client-id',
 			clientSecret:
 				process.env.DISCORD_CLIENT_SECRET || 'default-client-secret',
-			botToken: process.env.DISCORD_BOT_TOKEN || 'default-bot-token',
+			botToken: process.env.DISCORD_TOKEN || 'default-bot-token',
 			redirectUri:
 				process.env.DISCORD_REDIRECT_URI ||
 				'http://localhost:8080/auth/callback',

@@ -42,7 +42,18 @@ export const discordCallback = async (
 	res: Response
 ) => {
 	try {
-		const { code, state } = req.query as { code: string; state: string };
+		// Accept code/state from either query (GET) or body (POST JSON)
+		const { code: queryCode, state: queryState } = req.query as {
+			code?: string;
+			state?: string;
+		};
+		const { code: bodyCode, state: bodyState } = (req.body || {}) as {
+			code?: string;
+			state?: string;
+		};
+
+		const code = bodyCode || queryCode;
+		const state = bodyState || queryState;
 
 		if (!code) {
 			return res.status(400).json({
@@ -122,18 +133,39 @@ export const discordCallback = async (
 			})),
 		};
 
-		// Store access token in session
-		req.session.accessToken = accessToken;
+		// Store access token in session (optional)
+		if (req.session) {
+			req.session.accessToken = accessToken;
+		}
+
+		// Generate JWT for frontend authentication
+		const jwtToken = jwt.sign({ user: userData }, config.jwt.secret, {
+			expiresIn: config.jwt.expiresIn,
+		} as jwt.SignOptions);
 
 		logger.info(
 			`User authenticated: ${userData.username}#${userData.discriminator}`
 		);
 
+		// If this is a JSON POST request, return payload instead of redirect
+		if (req.method === 'POST') {
+			return res.json({
+				success: true,
+				data: {
+					user: userData,
+					token: jwtToken,
+					// Convert expiresIn (e.g. "24h") to seconds (default 86400)
+					expiresIn: 24 * 60 * 60,
+				},
+			} as ApiResponse);
+		}
+
+		// Default behaviour – redirect browser back to frontend including token
 		const frontendUrl =
 			process.env.FRONTEND_BASE_URL ||
 			process.env.CORS_ORIGIN ||
 			'http://localhost:8080';
-		const redirectUrl = `${frontendUrl}/auth/callback`;
+		const redirectUrl = `${frontendUrl}/login/callback?token=${jwtToken}`;
 
 		res.redirect(redirectUrl);
 	} catch (error) {
