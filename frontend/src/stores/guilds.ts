@@ -28,7 +28,7 @@ export const useGuildsStore = defineStore('guilds', () => {
 			guilds.value = fetched.map((g) => ({
 				...g,
 				icon: g.icon ?? null,
-				hasBubbles: true,
+				hasBubbles: g.hasBubbles ?? false,
 			}));
 		} catch (error) {
 			console.error('Failed to fetch guilds:', error);

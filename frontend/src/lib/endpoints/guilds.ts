@@ -4,7 +4,8 @@ import type { DiscordItem } from '@/types/discord';
 
 export const getUserGuilds = async () => {
 	const { data } = await apiClient().get('/guilds');
-	return data as Guild[];
+	const payload = (data as { data?: { guilds: Guild[] } }).data ?? data;
+	return (payload.guilds ?? payload) as Guild[];
 };
 
 export const getGuild = async (guildId: string) => {

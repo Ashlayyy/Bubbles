@@ -18,8 +18,14 @@ export const discordLogin = async () => {
 };
 
 export const handleCallback = async (code: string, state?: string) => {
-	const { data } = await apiClient().post('/discord/callback', { code, state });
-	return data as AuthPayload;
+	const { data } = await apiClient().post('/auth/discord/callback', {
+		code,
+		state,
+	});
+	// API wraps payload inside "data" property. Fall back if not present.
+	const payload =
+		(data as { data?: AuthPayload }).data ?? (data as AuthPayload);
+	return payload as AuthPayload;
 };
 
 export const logout = () => apiClient().post('/auth/logout');

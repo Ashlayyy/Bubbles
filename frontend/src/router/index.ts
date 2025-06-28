@@ -140,6 +140,11 @@ const routes: RouteRecordRaw[] = [
 		path: '/welcome/:guildId',
 		redirect: (to) => ({ path: `/server/${to.params.guildId}/welcome` }),
 	},
+	// Legacy/support path used in OAuth redirect URI
+	{
+		path: '/auth/callback',
+		redirect: (to) => ({ path: '/login/callback', query: to.query }),
+	},
 ];
 
 const router = createRouter({
@@ -148,7 +153,7 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
-	const publicPages = ['/login', '/login/callback'];
+	const publicPages = ['/login', '/login/callback', '/auth/callback'];
 	const authRequired = !publicPages.includes(to.path);
 	const auth = useAuthStore();
 

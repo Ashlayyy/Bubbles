@@ -77,9 +77,10 @@ export const useAuthStore = defineStore('auth', () => {
 	const refreshToken = async () => {
 		if (!token.value) throw new Error('No token');
 		const { data } = await apiClient().get('/auth/refresh');
-		const res = data as AuthResponse;
-		token.value = res.token;
-		expiresAt.value = Math.floor(Date.now() / 1000) + res.expiresIn;
+		const payload =
+			(data as { data?: AuthResponse }).data ?? (data as AuthResponse);
+		token.value = payload.token;
+		expiresAt.value = Math.floor(Date.now() / 1000) + payload.expiresIn;
 	};
 
 	const checkAuth = async () => {
@@ -91,8 +92,11 @@ export const useAuthStore = defineStore('auth', () => {
 		loading.value = true;
 		try {
 			const { data } = await apiClient().get('/auth/me');
-			const payload = data as { user: User };
-			user.value = payload.user;
+			const payload =
+				(data as { data?: User; user?: User }).data ??
+				(data as { user?: User }).user;
+			if (!payload) throw new Error('Invalid user data');
+			user.value = payload as User;
 			isAuthenticated.value = true;
 			isDemoUser.value = false;
 		} catch (error) {
