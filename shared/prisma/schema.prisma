@@ -44,6 +44,10 @@ model GuildConfig {
   welcomeStats           Json?
   /// Send DMs to users when a moderation action is taken by default
   notify_user            Boolean         @default(false)
+  /// Channel where user reports should be sent
+  reportChannelId        String?
+  /// Role to ping when a new user report is submitted
+  reportPingRoleId       String?
 }
 
 model LogSettings {
@@ -855,4 +859,23 @@ model User {
   lastLogin      DateTime @default(now())
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+/// Table storing user-submitted message reports
+model UserReport {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  reporterId   String
+  reportedUser String
+  messageId    String
+  channelId    String
+  link         String
+  reason       String
+  status       String    @default("OPEN")
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedBy   String?
+  resolution   String?
+
+  @@index([guildId, status])
 }

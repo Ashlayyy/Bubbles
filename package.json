@@ -18,7 +18,6 @@
 		"build:bot": "cd bot && npm run build",
 		"build:api": "cd api && npm run build",
 		"build:frontend": "cd frontend && npm run build",
-		"devStartup": "concurrently \"npm run dev:bot\" \"npm run dev:api\" \"npm run dev:frontend\"",
 		"dev:shared": "cd shared && npm run dev",
 		"dev:bot": "cd bot && npm run dev",
 		"dev:api": "cd api && npm run dev",

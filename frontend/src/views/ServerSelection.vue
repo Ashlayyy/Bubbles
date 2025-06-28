@@ -245,9 +245,13 @@ const { fetchGuilds, getGuildIconUrl } = guildsStore;
 
 const authStore = useAuthStore();
 
-const manageGuilds = computed(() => guilds.value.filter((g) => g.hasBubbles));
+const manageGuilds = computed<Guild[]>(() =>
+	guilds.value.filter((g) => g.hasBubbles)
+);
 
-const inviteGuilds = computed(() => guilds.value.filter((g) => !g.hasBubbles));
+const inviteGuilds = computed<Guild[]>(() =>
+	guilds.value.filter((g) => !g.hasBubbles)
+);
 
 const filteredManage = computed(() => {
 	const q = searchQuery.value.trim().toLowerCase();
