@@ -1,4 +1,4 @@
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, computed, watchEffect } from 'vue';
 import { useToastStore } from '@/stores/toast';
 import type { DiscordItem } from '@/types/discord';
 import type { AuditLogEntry, AuditLogUser } from '@/types/audit-log';
@@ -8,13 +8,15 @@ import type {
 	LeaderboardEntry,
 	AutoModPunishment,
 } from '@/types/moderation';
-import { subDays, format, add } from 'date-fns';
+import { format } from 'date-fns';
 import { useMutedUsers } from './useMutedUsers';
 import { useBannedUsers } from './useBannedUsers';
 import { useModerationCases } from './useModerationCases';
 import { useModeratorNotes } from './useModeratorNotes';
 import { useGuildsStore } from '@/stores/guilds';
 import { moderationEndpoints } from '@/lib/endpoints/moderation';
+import { guildsApi, rolesApi } from '@/lib/endpoints';
+import { analyticsApi } from '@/lib/endpoints';
 
 type Action = 'warn' | 'mute' | 'kick' | 'ban';
 interface ActionInfo {
@@ -22,6 +24,17 @@ interface ActionInfo {
 	user: AuditLogUser;
 	predefinedReasons?: string[];
 }
+
+interface DailyActivityEntry {
+	date: string;
+	cases: number;
+}
+
+interface ModerationAnalytics {
+	dailyActivity: DailyActivityEntry[];
+}
+
+const ROLE_TTL_MS = 60000; // 1 minute
 
 export function useModeration() {
 	const toastStore = useToastStore();
@@ -37,7 +50,7 @@ export function useModeration() {
 		closeCaseModal,
 		fetchCases,
 	} = useModerationCases();
-	const { moderatorNotes } = useModeratorNotes();
+	const { moderatorNotes, fetchNotes, addNote } = useModeratorNotes();
 
 	const fetchSettings = async () => {
 		if (!guildStore.currentGuild) return;
@@ -53,16 +66,52 @@ export function useModeration() {
 		}
 	};
 
-	const fetchData = async () => {
+	const rolesCache = new Map<
+		string,
+		{ roles: DiscordItem[]; fetchedAt: number }
+	>();
+
+	const fetchRoles = async () => {
+		if (!guildStore.currentGuild) return;
+
+		const now = Date.now();
+		const gid = guildStore.currentGuild.id;
+		const cacheItem = rolesCache.get(gid);
+
+		if (cacheItem && now - cacheItem.fetchedAt < ROLE_TTL_MS) {
+			roles.value = cacheItem.roles;
+			return;
+		}
+
+		try {
+			const { data } = await rolesApi.rolesEndpoints.getRoles(gid);
+			roles.value = data;
+			rolesCache.set(gid, { roles: data, fetchedAt: now });
+		} catch (e) {
+			console.error('Failed to fetch roles', e);
+		}
+	};
+
+	const fetchAll = async () => {
 		await Promise.all([
 			fetchCases(),
 			fetchMutes(),
 			fetchBans(),
 			fetchSettings(),
+			fetchRoles(),
+			fetchModerationAnalytics(),
 		]);
 	};
 
-	onMounted(fetchData);
+	// Run when current guild becomes available or changes
+	const lastFetchedGuildId = ref<string | null>(null);
+	watchEffect(() => {
+		const gid = guildStore.currentGuild?.id;
+		if (gid && gid !== lastFetchedGuildId.value) {
+			lastFetchedGuildId.value = gid;
+			fetchAll();
+		}
+	});
 
 	const predefinedReasons: Record<Action, string[]> = {
 		warn: [
@@ -113,32 +162,19 @@ export function useModeration() {
 		},
 	});
 
-	const roles = ref<DiscordItem[]>([
-		{ id: '1001', name: 'Admin' },
-		{ id: '1002', name: 'Moderator' },
-		{ id: '1003', name: 'Member' },
-		{ id: '1004', name: 'VIP' },
-		{ id: '1005', name: 'Booster' },
-		{ id: '1006', name: 'Level 10+' },
-	]);
-
-	const mod1: AuditLogUser = {
-		id: 'mod1',
-		name: 'Moderator1',
-		joinDate: subDays(new Date(), 365),
-		roles: ['Moderator'],
-	};
+	const roles = ref<DiscordItem[]>([]);
 
 	// User History Modal
 	const selectedUserForHistory = ref<AuditLogUser | null>(null);
 	const userAuditLog = ref<AuditLogEntry[]>([]);
 	const userNotes = ref<ModeratorNote[]>([]);
 
-	const openUserHistoryModal = (user: AuditLogUser) => {
+	const openUserHistoryModal = async (user: AuditLogUser) => {
 		selectedUserForHistory.value = user;
 		userAuditLog.value = moderationCases.value
 			.filter((c) => c.target.type === 'user' && c.target.id === user.id)
 			.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+		await fetchNotes(user.id);
 		userNotes.value = moderatorNotes.value.get(user.id) || [];
 	};
 
@@ -215,7 +251,7 @@ export function useModeration() {
 			);
 
 			// Refetch data to update UI
-			await fetchData();
+			await fetchAll();
 		} catch (error) {
 			console.error(`Failed to ${action} user:`, error);
 			toastStore.addToast(`Failed to execute ${action} action.`, 'error');
@@ -224,31 +260,18 @@ export function useModeration() {
 		}
 	};
 
-	const addModeratorNote = ({
+	const addModeratorNote = async ({
 		userId,
 		content,
 	}: {
 		userId: string;
 		content: string;
 	}) => {
-		const notes = moderatorNotes.value.get(userId) || [];
-		const newNote: ModeratorNote = {
-			id: `note${Math.random()}`,
-			moderator: mod1, // Assuming current moderator
-			content,
-			timestamp: new Date(),
-		};
-		notes.push(newNote);
-		moderatorNotes.value.set(userId, notes);
+		await addNote(userId, content);
 
 		if (selectedUserForHistory.value?.id === userId) {
-			userNotes.value = [...notes];
+			userNotes.value = moderatorNotes.value.get(userId) || [];
 		}
-
-		toastStore.addToast(
-			`Private note added for @${selectedUserForHistory.value?.name}.`,
-			'info'
-		);
 	};
 
 	// Computed properties for stats and combined data
@@ -304,48 +327,40 @@ export function useModeration() {
 		);
 	});
 
+	// moderation analytics for charts
+	const moderationAnalytics = ref<ModerationAnalytics | null>(null);
+
+	async function fetchModerationAnalytics() {
+		if (!guildStore.currentGuild) return;
+		try {
+			const { data } = await analyticsApi.analyticsEndpoints.getModeration(
+				guildStore.currentGuild.id,
+				{ period: '7d' }
+			);
+			const payload =
+				(data as { data?: ModerationAnalytics }).data ??
+				(data as ModerationAnalytics);
+			moderationAnalytics.value = payload;
+		} catch (e) {
+			console.error('Failed analytics', e);
+		}
+	}
+
 	const modActionsChartData = computed(() => {
-		const labels = Array.from({ length: 7 }).map((_, i) =>
-			format(subDays(new Date(), 6 - i), 'MMM d')
+		if (!moderationAnalytics.value) return { labels: [], datasets: [] };
+		const labels = moderationAnalytics.value.dailyActivity.map(
+			(d: DailyActivityEntry) => d.date
 		);
-		const data = {
-			bans: [0, 0, 0, 0, 0, 0, 0],
-			mutes: [0, 0, 0, 0, 0, 0, 0],
-			kicks: [0, 0, 0, 0, 0, 0, 0],
-			warns: [0, 0, 0, 0, 0, 0, 0],
-		};
-
-		data.bans = [1, 0, 2, 1, 0, 1, 0];
-		data.mutes = [2, 3, 1, 4, 2, 5, 3];
-		data.kicks = [0, 1, 0, 0, 2, 0, 1];
-		data.warns = [5, 4, 6, 3, 7, 5, 8];
-
+		const dataset = moderationAnalytics.value.dailyActivity.map(
+			(d: DailyActivityEntry) => d.cases
+		);
 		return {
 			labels,
 			datasets: [
 				{
-					label: 'Bans',
-					backgroundColor: '#f87171',
-					data: data.bans,
-					stack: 'actions',
-				},
-				{
-					label: 'Mutes',
-					backgroundColor: '#facc15',
-					data: data.mutes,
-					stack: 'actions',
-				},
-				{
-					label: 'Kicks',
-					backgroundColor: '#fb923c',
-					data: data.kicks,
-					stack: 'actions',
-				},
-				{
-					label: 'Warns',
+					label: 'Cases',
 					backgroundColor: '#60a5fa',
-					data: data.warns,
-					stack: 'actions',
+					data: dataset,
 				},
 			],
 		};
@@ -379,5 +394,7 @@ export function useModeration() {
 		closeActionModal,
 		confirmModerationAction,
 		addModeratorNote,
+		fetchRoles,
+		fetchModerationAnalytics,
 	};
 }

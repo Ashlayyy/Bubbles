@@ -31,7 +31,8 @@ export async function getReactionRolesByMessage(messageId: string): Promise<Reac
 }
 
 export async function getReactionRoleByEmojiAndMessage(messageId: string, emoji: string): Promise<ReactionRole | null> {
-  return await prisma.reactionRole.findUnique({
+  // Primary lookup with the current identifier format
+  const reactionRole = await prisma.reactionRole.findUnique({
     where: {
       messageId_emoji: {
         messageId,
@@ -40,6 +41,25 @@ export async function getReactionRoleByEmojiAndMessage(messageId: string, emoji:
       isActive: true,
     },
   });
+
+  if (reactionRole) return reactionRole;
+
+  // Fallback: legacy format that stored only the emoji ID (for custom emojis)
+  const legacyIdMatch = /^(\d+):[A-Za-z0-9_~]+$/.exec(emoji);
+  if (legacyIdMatch) {
+    const legacyId = legacyIdMatch[1];
+    return await prisma.reactionRole.findUnique({
+      where: {
+        messageId_emoji: {
+          messageId,
+          emoji: legacyId,
+        },
+        isActive: true,
+      },
+    });
+  }
+
+  return null;
 }
 
 export async function deleteReactionRole(messageId: string, emoji: string): Promise<void> {
@@ -323,8 +343,8 @@ export async function removeReactionRole(
     return { count: 0 };
   }
 
-  // Get the reaction role info before removing it for logging
-  const reactionRole = await prisma.reactionRole.findFirst({
+  // Attempt primary lookup using current identifier format
+  let reactionRole = await prisma.reactionRole.findFirst({
     where: {
       messageId,
       emoji: emoji.identifier,
@@ -332,7 +352,7 @@ export async function removeReactionRole(
     },
   });
 
-  const result = await prisma.reactionRole.updateMany({
+  let result = await prisma.reactionRole.updateMany({
     where: {
       messageId,
       emoji: emoji.identifier,
@@ -342,6 +362,29 @@ export async function removeReactionRole(
       isActive: false,
     },
   });
+
+  // If nothing was updated, try legacy identifier (id only)
+  if (result.count === 0) {
+    const legacyIdMatch = /^(\d+):[A-Za-z0-9_~]+$/.exec(emoji.identifier);
+    const legacyId = legacyIdMatch ? legacyIdMatch[1] : emoji.identifier;
+
+    reactionRole = await prisma.reactionRole.findFirst({
+      where: {
+        messageId,
+        emoji: legacyId,
+        isActive: true,
+      },
+    });
+
+    result = await prisma.reactionRole.updateMany({
+      where: {
+        messageId,
+        emoji: legacyId,
+        isActive: true,
+      },
+      data: { isActive: false },
+    });
+  }
 
   // Log the configuration removal
   if (reactionRole && result.count > 0) {

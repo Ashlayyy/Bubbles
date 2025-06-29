@@ -24,4 +24,52 @@ export const moderationEndpoints = {
 
 	updateSettings: (guildId: string, payload: Record<string, unknown>) =>
 		apiClient().put(`/guilds/${guildId}/moderation/settings`, payload),
+
+	// Moderator Notes
+	getModeratorNotes: (
+		guildId: string,
+		params?: { userId?: string; limit?: number; offset?: number }
+	) => apiClient().get(`/guilds/${guildId}/moderation/notes`, { params }),
+
+	addModeratorNote: (guildId: string, payload: Record<string, unknown>) =>
+		apiClient().post(`/guilds/${guildId}/moderation/notes`, payload),
+
+	updateModeratorNote: (
+		guildId: string,
+		noteId: string,
+		payload: Record<string, unknown>
+	) =>
+		apiClient().put(`/guilds/${guildId}/moderation/notes/${noteId}`, payload),
+
+	deleteModeratorNote: (guildId: string, noteId: string) =>
+		apiClient().delete(`/guilds/${guildId}/moderation/notes/${noteId}`),
+
+	// Warnings
+	getWarnings: (
+		guildId: string,
+		params?: { userId?: string; limit?: number; offset?: number }
+	) => apiClient().get(`/guilds/${guildId}/moderation/warnings`, { params }),
+
+	addWarning: (guildId: string, payload: Record<string, unknown>) =>
+		apiClient().post(`/guilds/${guildId}/moderation/warnings`, payload),
+
+	deleteWarning: (guildId: string, warningId: string) =>
+		apiClient().delete(`/guilds/${guildId}/moderation/warnings/${warningId}`),
+
+	// Auto-mod rules
+	getAutomodRules: (guildId: string) =>
+		apiClient().get(`/guilds/${guildId}/moderation/automod`),
+
+	createAutomodRule: (guildId: string, payload: Record<string, unknown>) =>
+		apiClient().post(`/guilds/${guildId}/moderation/automod`, payload),
+
+	updateAutomodRule: (
+		guildId: string,
+		ruleId: string,
+		payload: Record<string, unknown>
+	) =>
+		apiClient().put(`/guilds/${guildId}/moderation/automod/${ruleId}`, payload),
+
+	deleteAutomodRule: (guildId: string, ruleId: string) =>
+		apiClient().delete(`/guilds/${guildId}/moderation/automod/${ruleId}`),
 };

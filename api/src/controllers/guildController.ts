@@ -16,7 +16,28 @@ interface AuthenticatedRequest extends Request {
 
 const logger = createLogger('guild-controller');
 
+// ------------------------------
+// Simple in-memory caches
+// ------------------------------
+const CACHE_TTL_MS = 60_000; // 1 minute
+
+interface CacheEntry<T> {
+	data: T;
+	fetchedAt: number;
+}
+
+let guildListCache: CacheEntry<any[]> | null = null;
+const guildDetailsCache: Map<string, CacheEntry<any>> = new Map();
+
 export const getGuilds = async (req: AuthenticatedRequest, res: Response) => {
+	const now = Date.now();
+	if (guildListCache && now - guildListCache.fetchedAt < CACHE_TTL_MS) {
+		return res.success({
+			guilds: guildListCache.data,
+			total: guildListCache.data.length,
+		});
+	}
+
 	try {
 		const accessToken = req.session.accessToken;
 		if (!accessToken) {
@@ -48,20 +69,21 @@ export const getGuilds = async (req: AuthenticatedRequest, res: Response) => {
 			logger.warn('Failed to fetch bot guilds', err);
 		}
 
-		res.success({
-			guilds: userGuilds.map((guild) => ({
-				id: guild.id,
-				name: guild.name,
-				icon: guild.icon,
-				owner: guild.owner,
-				permissions: guild.permissions,
-				memberCount: guild.approximate_member_count,
-				description: guild.description,
-				features: guild.features,
-				hasBubbles: botGuildIds.has(guild.id),
-			})),
-			total: userGuilds.length,
-		});
+		const payload = userGuilds.map((guild) => ({
+			id: guild.id,
+			name: guild.name,
+			icon: guild.icon,
+			owner: guild.owner,
+			permissions: guild.permissions,
+			memberCount: guild.approximate_member_count,
+			description: guild.description,
+			features: guild.features,
+			hasBubbles: botGuildIds.has(guild.id),
+		}));
+
+		guildListCache = { data: payload, fetchedAt: now } as any;
+
+		res.success({ guilds: payload, total: payload.length });
 	} catch (error) {
 		logger.error('Failed to fetch guilds:', error);
 		res.failure('Failed to fetch guilds', 500);
@@ -69,11 +91,16 @@ export const getGuilds = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const getGuild = async (req: AuthenticatedRequest, res: Response) => {
-	try {
-		const { guildId } = req.params;
+	const { guildId } = req.params;
+	const cached = guildDetailsCache.get(guildId);
+	if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+		return res.success(cached.data);
+	}
 
+	try {
 		// Fetch guild details from Discord API
 		const guild = await discordApi.getGuild(guildId);
+		logger.debug('Discord guild payload:', guild);
 		const channels = await discordApi.getGuildChannels(guildId);
 		const roles = await discordApi.getGuildRoles(guildId);
 
@@ -126,6 +153,7 @@ export const getGuild = async (req: AuthenticatedRequest, res: Response) => {
 			})),
 		};
 
+		guildDetailsCache.set(guildId, { data: guildData, fetchedAt: Date.now() });
 		res.success(guildData);
 	} catch (error) {
 		logger.error(`Failed to fetch guild ${req.params.guildId}:`, error);

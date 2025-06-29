@@ -581,16 +581,19 @@ async function handleMappingAdd(client: Client, interaction: GuildChatInputComma
   }
 
   try {
+    // First attempt to react to ensure the bot can use this emoji
+    await message.react(emoji.name);
+
     const dbResult = await addReactionRole(interaction, messageId, emojiRaw, role.id);
     if (!dbResult) {
+      // Revert the reaction since DB insert failed (likely duplicate)
+      await message.reactions.resolve(emoji.identifier)?.remove();
       await interaction.followUp({
         content: "❌ Failed to add reaction role. This emoji may already be in use for this message.",
         ephemeral: true,
       });
       return;
     }
-
-    await message.react(emoji.name);
 
     await interaction.followUp({
       content: `✅ **Success!** Added reaction role: ${emoji.name} → **${role.name}**`,
@@ -690,7 +693,10 @@ async function handleMappingList(client: Client, interaction: GuildChatInputComm
 
   const roleMappings = roles
     .map((r: ReactionRole) => {
-      const emoji = client.emojis.cache.get(r.emoji) ?? r.emoji;
+      // r.emoji may be stored as "id:name" for custom emojis. Extract the ID before fetching.
+      const [emojiId] = r.emoji.split(":");
+      const fetchedEmoji = client.emojis.cache.get(emojiId);
+      const emoji = fetchedEmoji ?? r.emoji;
       const roleList = r.roleIds.map((roleId) => `<@&${roleId}>`).join(", ");
       return `${emoji.toString()} → ${roleList}`;
     })

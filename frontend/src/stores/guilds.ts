@@ -20,6 +20,11 @@ export const useGuildsStore = defineStore('guilds', () => {
 	const loading = ref(false);
 	const loaded = ref(false);
 
+	// Simple in-memory cache for guild stats
+	const STAT_TTL_MS = 60 * 1000; // 60 seconds
+	const statsCache: Map<string, { data: GuildStats; fetchedAt: number }> =
+		new Map();
+
 	const fetchGuilds = async () => {
 		if (loading.value || loaded.value) return;
 		loading.value = true;
@@ -43,20 +48,41 @@ export const useGuildsStore = defineStore('guilds', () => {
 	};
 
 	const fetchGuildStats = async (guildId: string) => {
+		const now = Date.now();
+		const cached = statsCache.get(guildId);
+
+		// Use cache if it exists and is fresh
+		if (cached && now - cached.fetchedAt < STAT_TTL_MS) {
+			currentGuildStats.value = cached.data;
+			return;
+		}
+
 		try {
 			const data: ApiGuild = await guildsApi.getGuild(guildId);
+
+			// Update currentGuild (keep icon / bubbles info consistent)
 			currentGuild.value = {
 				...data,
 				icon: data.icon ?? null,
 				hasBubbles: true,
 			};
-			currentGuildStats.value = {
-				memberCount: data.memberCount ?? 0,
-				onlineMembers: data.onlineCount ?? 0,
-				channelCount: 0,
-				roleCount: 0,
+
+			const extended = data as ApiGuild & {
+				channels?: unknown[];
+				roles?: unknown[];
+				onlineCount?: number;
+			};
+
+			const stats: GuildStats = {
+				memberCount: extended.memberCount ?? 0,
+				onlineMembers: extended.onlineCount ?? 0,
+				channelCount: extended.channels?.length ?? 0,
+				roleCount: extended.roles?.length ?? 0,
 				activeModules: [],
 			};
+
+			currentGuildStats.value = stats;
+			statsCache.set(guildId, { data: stats, fetchedAt: now });
 		} catch (error) {
 			console.error('Failed to fetch guild stats:', error);
 			currentGuildStats.value = null;

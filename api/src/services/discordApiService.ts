@@ -159,6 +159,11 @@ interface ModifyGuildOptions {
 }
 
 export class DiscordApiService {
+	// Simple member cache: key = `${guildId}:${userId}`
+	private static memberCache: Map<string, { data: any; fetchedAt: number }> =
+		new Map();
+	private static MEMBER_TTL_MS = 60_000; // 1 minute
+
 	private botToken: string;
 	private baseURL = 'https://discord.com/api/v10';
 
@@ -214,7 +219,9 @@ export class DiscordApiService {
 	// Guild operations
 	async getGuild(guildId: string): Promise<any> {
 		try {
-			const guild = await this.makeRequest(`/guilds/${guildId}`);
+			const guild = await this.makeRequest(
+				`/guilds/${guildId}?with_counts=true`
+			);
 			return guild;
 		} catch (error) {
 			logger.error(`Failed to fetch guild ${guildId}:`, error);
@@ -243,10 +250,21 @@ export class DiscordApiService {
 	}
 
 	async getGuildMember(guildId: string, userId: string): Promise<any> {
+		const cacheKey = `${guildId}:${userId}`;
+		const now = Date.now();
+		const cached = DiscordApiService.memberCache.get(cacheKey);
+		if (cached && now - cached.fetchedAt < DiscordApiService.MEMBER_TTL_MS) {
+			return cached.data;
+		}
+
 		try {
 			const member = await this.makeRequest(
 				`/guilds/${guildId}/members/${userId}`
 			);
+			DiscordApiService.memberCache.set(cacheKey, {
+				data: member,
+				fetchedAt: now,
+			});
 			return member;
 		} catch (error) {
 			logger.error(

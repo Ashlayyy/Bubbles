@@ -10,7 +10,8 @@ export const getUserGuilds = async () => {
 
 export const getGuild = async (guildId: string) => {
 	const { data } = await apiClient().get(`/guilds/${guildId}`);
-	return data as Guild;
+	const payload = (data as { data?: Guild }).data ?? data;
+	return payload as Guild;
 };
 
 export const getGuildChannels = async (guildId: string) => {

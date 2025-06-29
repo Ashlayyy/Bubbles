@@ -1,77 +1,79 @@
 <template>
 	<header class="bg-card border-b border-border px-6 py-4">
 		<div class="flex items-center justify-between">
-			<!-- Global Search -->
-			<div class="flex-1 max-w-2xl">
-				<div class="relative">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="20"
-						height="20"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						class="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground"
-					>
-						<circle cx="11" cy="11" r="8" />
-						<path d="m21 21-4.35-4.35" />
-					</svg>
-					<input
-						v-model="searchQuery"
-						@input="handleSearch"
-						@keydown.enter="performSearch"
-						@focus="showResults = true"
-						type="text"
-						placeholder="Search commands, users, settings, logs... (Ctrl+K)"
-						class="w-full pl-10 pr-4 py-2 bg-input border border-border rounded-lg text-foreground placeholder-muted-foreground focus:ring-2 focus:ring-primary outline-none"
-					/>
-
-					<!-- Search Results Dropdown -->
-					<div
-						v-if="showResults && (searchResults.length > 0 || searchQuery)"
-						class="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto"
-					>
-						<div
-							v-if="searchResults.length === 0 && searchQuery"
-							class="p-4 text-muted-foreground text-center"
+			<!-- Brand + Search group -->
+			<div class="flex items-center gap-4 flex-1">
+				<div class="flex-1 max-w-2xl">
+					<div class="relative">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="20"
+							height="20"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							class="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground"
 						>
-							No results found for "{{ searchQuery }}"
-						</div>
+							<circle cx="11" cy="11" r="8" />
+							<path d="m21 21-4.35-4.35" />
+						</svg>
+						<input
+							v-model="searchQuery"
+							@input="handleSearch"
+							@keydown.enter="performSearch"
+							@focus="showResults = true"
+							type="text"
+							placeholder="Search commands, users, settings, logs... (Ctrl+K)"
+							class="w-full pl-10 pr-4 py-2 bg-input border border-border rounded-lg text-foreground placeholder-muted-foreground focus:ring-2 focus:ring-primary outline-none"
+						/>
+
+						<!-- Search Results Dropdown -->
 						<div
-							v-for="(group, category) in groupedResults"
-							:key="category"
-							class="border-b border-border last:border-b-0"
+							v-if="showResults && (searchResults.length > 0 || searchQuery)"
+							class="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto"
 						>
 							<div
-								class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/50"
+								v-if="searchResults.length === 0 && searchQuery"
+								class="p-4 text-muted-foreground text-center"
 							>
-								{{ category }}
+								No results found for "{{ searchQuery }}"
 							</div>
 							<div
-								v-for="result in group"
-								:key="result.id"
-								@click="navigateToResult(result)"
-								class="px-4 py-3 hover:bg-muted cursor-pointer flex items-center gap-3"
+								v-for="(group, category) in groupedResults"
+								:key="category"
+								class="border-b border-border last:border-b-0"
 							>
 								<div
-									class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center"
+									class="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/50"
 								>
-									<component :is="result.icon" class="w-4 h-4 text-primary" />
+									{{ category }}
 								</div>
-								<div class="flex-1">
-									<div class="font-medium text-foreground">
-										{{ result.title }}
+								<div
+									v-for="result in group"
+									:key="result.id"
+									@click="navigateToResult(result)"
+									class="px-4 py-3 hover:bg-muted cursor-pointer flex items-center gap-3"
+								>
+									<div
+										class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center"
+									>
+										<component :is="result.icon" class="w-4 h-4 text-primary" />
 									</div>
-									<div class="text-sm text-muted-foreground">
-										{{ result.description }}
+									<div class="flex-1">
+										<div class="font-medium text-foreground">
+											{{ result.title }}
+										</div>
+										<div class="text-sm text-muted-foreground">
+											{{ result.description }}
+										</div>
 									</div>
+									<kbd class="px-2 py-1 text-xs bg-muted rounded">{{
+										result.shortcut
+									}}</kbd>
 								</div>
-								<kbd class="px-2 py-1 text-xs bg-muted rounded">{{
-									result.shortcut
-								}}</kbd>
 							</div>
 						</div>
 					</div>
@@ -183,12 +185,6 @@
 						v-if="showUserMenu"
 						class="absolute right-0 mt-2 w-40 bg-card border border-border rounded-lg shadow-lg z-50"
 					>
-						<button
-							@click="router.push('/settings')"
-							class="w-full text-left px-4 py-2 hover:bg-muted transition-colors"
-						>
-							Profile / Settings
-						</button>
 						<button
 							@click="logoutUser"
 							class="w-full text-left px-4 py-2 hover:bg-muted transition-colors text-destructive"

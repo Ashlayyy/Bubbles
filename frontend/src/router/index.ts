@@ -173,7 +173,10 @@ router.beforeEach(async (to) => {
 		const gid = to.params.guildId as string;
 		if (!guildsStore.currentGuild || guildsStore.currentGuild.id !== gid) {
 			const found = guildsStore.guilds.find((g: GuildItem) => g.id === gid);
-			if (found) guildsStore.setCurrentGuild(found);
+			if (found) {
+				guildsStore.setCurrentGuild(found);
+				await guildsStore.fetchGuildStats(gid);
+			}
 		}
 	}
 
