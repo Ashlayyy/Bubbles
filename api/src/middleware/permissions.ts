@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import type { ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from './auth.js';
 import { discordApi } from '../services/discordApiService.js';
+import { createLogger } from '../types/shared.js';
 
 // Discord permission flags
 export const DiscordPermissions = {
@@ -132,59 +133,81 @@ const GUILD_ROLES_TTL = 5 * 60 * 1000; // 5 minutes
 const userPermsCache: Map<string, CacheEntry<string>> = new Map();
 const guildRolesCache: Map<string, CacheEntry<any[]>> = new Map();
 
+// Map to track in-flight permission fetches to avoid duplicate Discord API requests
+const userPermsInFlight: Map<string, Promise<string>> = new Map();
+
+const permLogger = createLogger('permissions');
+
 // Helper to get effective permission bitfield for a user in a guild
 async function getUserGuildPermissions(
 	guildId: string,
 	userId: string
 ): Promise<string> {
 	const cacheKey = `${guildId}:${userId}`;
+
+	// 1) Serve from cache if still valid
 	const cached = userPermsCache.get(cacheKey);
 	if (cached && cached.expires > Date.now()) {
 		return cached.value;
 	}
 
-	try {
-		// Fetch & cache guild roles (shared across users)
-		let roles: any[] | undefined;
-		const guildRolesCached = guildRolesCache.get(guildId);
-		if (guildRolesCached && guildRolesCached.expires > Date.now()) {
-			roles = guildRolesCached.value;
-		} else {
-			roles = await discordApi.getGuildRoles(guildId);
-			guildRolesCache.set(guildId, {
-				value: roles,
-				expires: Date.now() + GUILD_ROLES_TTL,
-			});
-		}
-
-		// Fetch member
-		const member = await discordApi.getGuildMember(guildId, userId);
-
-		const roleMap = new Map<string, string>();
-		roles.forEach((r: any) => roleMap.set(r.id, r.permissions));
-
-		let permissions = BigInt(0);
-
-		// @everyone role – id == guildId in Discord
-		const everyoneRole = roles.find((r: any) => r.id === guildId);
-		if (everyoneRole) permissions |= BigInt(everyoneRole.permissions);
-
-		// Aggregate role permissions
-		(member.roles || []).forEach((roleId: string) => {
-			const perms = roleMap.get(roleId);
-			if (perms) permissions |= BigInt(perms);
-		});
-
-		const bitfield = permissions.toString();
-		userPermsCache.set(cacheKey, {
-			value: bitfield,
-			expires: Date.now() + USER_PERMS_TTL,
-		});
-
-		return bitfield;
-	} catch {
-		return '0'; // fallback – no permissions
+	// 2) If another request is already fetching, wait for it instead of hitting Discord again
+	const inFlight = userPermsInFlight.get(cacheKey);
+	if (inFlight) {
+		return inFlight;
 	}
+
+	// 3) Create the fetch promise and store in the map to deduplicate
+	const fetchPromise = (async () => {
+		try {
+			// Fetch & cache guild roles (shared across users)
+			let roles: any[] | undefined;
+			const guildRolesCached = guildRolesCache.get(guildId);
+			if (guildRolesCached && guildRolesCached.expires > Date.now()) {
+				roles = guildRolesCached.value;
+			} else {
+				roles = await discordApi.getGuildRoles(guildId);
+				guildRolesCache.set(guildId, {
+					value: roles,
+					expires: Date.now() + GUILD_ROLES_TTL,
+				});
+			}
+
+			// Fetch member
+			const member = await discordApi.getGuildMember(guildId, userId);
+
+			const roleMap = new Map<string, string>();
+			roles.forEach((r: any) => roleMap.set(r.id, r.permissions));
+
+			let permissions = BigInt(0);
+
+			// @everyone role – id == guildId in Discord
+			const everyoneRole = roles.find((r: any) => r.id === guildId);
+			if (everyoneRole) permissions |= BigInt(everyoneRole.permissions);
+
+			// Aggregate role permissions
+			(member.roles || []).forEach((roleId: string) => {
+				const perms = roleMap.get(roleId);
+				if (perms) permissions |= BigInt(perms);
+			});
+
+			const bitfield = permissions.toString();
+			userPermsCache.set(cacheKey, {
+				value: bitfield,
+				expires: Date.now() + USER_PERMS_TTL,
+			});
+
+			return bitfield;
+		} catch {
+			return '0'; // fallback – no permissions
+		} finally {
+			// Clean up the in-flight entry regardless of outcome
+			userPermsInFlight.delete(cacheKey);
+		}
+	})();
+
+	userPermsInFlight.set(cacheKey, fetchPromise);
+	return fetchPromise;
 }
 
 // Middleware factory for permission checking
@@ -206,6 +229,14 @@ export const requirePermissions = (permissions: string[]) => {
 				guildId,
 				user.id
 			);
+
+			permLogger.debug('[PERM-CHECK]', {
+				route: req.originalUrl,
+				userId: user.id,
+				guildId,
+				required: permissions,
+				userPerms: userGuildPermissions,
+			});
 
 			if (!hasPermission(userGuildPermissions, permissions)) {
 				return res.status(403).json({

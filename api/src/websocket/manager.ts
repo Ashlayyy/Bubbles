@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 
 const logger = createLogger('websocket-manager');
-const LOG_ALL_WS = process.env.WS_LOG_ALL === 'true';
+const LOG_ALL_WS = process.env.WS_LOG_ALL !== 'false';
 
 export interface WebSocketConnection {
 	id: string;

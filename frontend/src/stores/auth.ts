@@ -1,6 +1,8 @@
+/* eslint-disable react-hooks/rules-of-hooks, react-hooks/exhaustive-deps */
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { apiClient } from '@/lib/apiClient';
+import { useWebsocketStore } from '@/stores/ws';
 
 export interface User {
 	id: string;
@@ -52,13 +54,14 @@ export const useAuthStore = defineStore('auth', () => {
 
 	const logout = async () => {
 		try {
-			// Only try to call logout API if not a demo user
 			if (!isDemoUser.value) {
 				await apiClient().post('/auth/logout');
 			}
 		} catch (error) {
 			console.error('Logout failed, logging out locally:', error);
 		} finally {
+			const ws = useWebsocketStore();
+			ws.disconnect();
 			user.value = null;
 			isAuthenticated.value = false;
 			isDemoUser.value = false;
@@ -72,21 +75,28 @@ export const useAuthStore = defineStore('auth', () => {
 		token.value = payload.token;
 		expiresAt.value = Math.floor(Date.now() / 1000) + payload.expiresIn;
 		isAuthenticated.value = true;
+		const ws = useWebsocketStore();
+		ws.connect(token.value);
 	};
 
 	const refreshToken = async () => {
-		if (!token.value) throw new Error('No token');
-		const { data } = await apiClient().get('/auth/refresh');
-		const payload =
-			(data as { data?: AuthResponse }).data ?? (data as AuthResponse);
-		token.value = payload.token;
-		expiresAt.value = Math.floor(Date.now() / 1000) + payload.expiresIn;
+		// Call refresh endpoint regardless of existing token
+		try {
+			const { data } = await apiClient().get('/auth/refresh');
+			const payload =
+				(data as { data?: AuthResponse }).data ?? (data as AuthResponse);
+			token.value = payload.token;
+			expiresAt.value = Math.floor(Date.now() / 1000) + payload.expiresIn;
+			const ws = useWebsocketStore();
+			ws.reauth(token.value);
+		} catch (err) {
+			console.error('Token refresh failed', err);
+		}
 	};
 
 	const checkAuth = async () => {
 		if (isAuthenticated.value) return;
 
-		// If we're already a demo user, don't make API calls
 		if (isDemoUser.value) return;
 
 		loading.value = true;
@@ -99,8 +109,9 @@ export const useAuthStore = defineStore('auth', () => {
 			user.value = payload as User;
 			isAuthenticated.value = true;
 			isDemoUser.value = false;
+			const ws = useWebsocketStore();
+			if (token.value) ws.connect(token.value);
 		} catch (error) {
-			// Only reset auth state if we're not a demo user
 			if (!isDemoUser.value) {
 				user.value = null;
 				isAuthenticated.value = false;

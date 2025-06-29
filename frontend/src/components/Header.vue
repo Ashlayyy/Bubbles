@@ -80,6 +80,11 @@
 
 			<!-- Header Actions -->
 			<div class="flex items-center gap-4">
+				<!-- Connection status indicator -->
+				<div
+					:title="connectionTitle"
+					:class="['w-3 h-3 rounded-full', connectionColor]"
+				/>
 				<!-- Notifications -->
 				<button
 					@click="showNotifications = !showNotifications"
@@ -154,19 +159,42 @@
 				</div>
 
 				<!-- User Menu -->
-				<div v-if="authStore.user" class="flex items-center gap-2">
-					<img
-						v-if="authStore.avatarUrl"
-						:src="authStore.avatarUrl"
-						class="w-8 h-8 rounded-full"
-					/>
-					<div
-						v-else
-						class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center"
+				<div v-if="authStore.user" class="relative">
+					<button
+						@click="showUserMenu = !showUserMenu"
+						class="focus:outline-none"
 					>
-						<span class="text-white text-sm font-bold">{{
-							authStore.user.username.charAt(0)
-						}}</span>
+						<img
+							v-if="authStore.avatarUrl"
+							:src="authStore.avatarUrl"
+							class="w-8 h-8 rounded-full"
+						/>
+						<div
+							v-else
+							class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center"
+						>
+							<span class="text-white text-sm font-bold">{{
+								authStore.user.username.charAt(0)
+							}}</span>
+						</div>
+					</button>
+
+					<div
+						v-if="showUserMenu"
+						class="absolute right-0 mt-2 w-40 bg-card border border-border rounded-lg shadow-lg z-50"
+					>
+						<button
+							@click="router.push('/settings')"
+							class="w-full text-left px-4 py-2 hover:bg-muted transition-colors"
+						>
+							Profile / Settings
+						</button>
+						<button
+							@click="logoutUser"
+							class="w-full text-left px-4 py-2 hover:bg-muted transition-colors text-destructive"
+						>
+							Logout
+						</button>
 					</div>
 				</div>
 			</div>
@@ -229,6 +257,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { useToastStore } from '@/stores/toast';
 import { useAuthStore } from '@/stores/auth';
 import { useGuildsStore } from '@/stores/guilds';
+import { useWebsocketStore } from '@/stores/ws';
 import { storeToRefs } from 'pinia';
 
 const router = useRouter();
@@ -236,8 +265,10 @@ const route = useRoute();
 const toastStore = useToastStore();
 const authStore = useAuthStore();
 const guildsStore = useGuildsStore();
+const wsStore = useWebsocketStore();
 const { currentGuild } = storeToRefs(guildsStore);
 const { getGuildIconUrl } = guildsStore;
+const { connected: wsConnected } = storeToRefs(wsStore);
 
 const searchQuery = ref('');
 const showResults = ref(false);
@@ -475,7 +506,10 @@ const handleKeydown = (e: KeyboardEvent) => {
 		switch (e.key) {
 			case 'k':
 				e.preventDefault();
-				document.querySelector('input[placeholder*="Search"]')?.focus();
+				const inputEl = document.querySelector(
+					'input[placeholder*="Search"]'
+				) as HTMLInputElement | null;
+				inputEl?.focus();
 				break;
 			case 'd':
 				e.preventDefault();
@@ -509,6 +543,19 @@ const handleClickOutside = (e: Event) => {
 		showNotifications.value = false;
 		showQuickActions.value = false;
 	}
+};
+
+const connectionColor = computed(() =>
+	wsConnected.value ? 'bg-green-500' : 'bg-red-500'
+);
+const connectionTitle = computed(() =>
+	wsConnected.value ? 'WebSocket Connected' : 'WebSocket Disconnected'
+);
+
+const showUserMenu = ref(false);
+const logoutUser = async () => {
+	await authStore.logout();
+	router.push('/login');
 };
 
 onMounted(() => {

@@ -324,8 +324,20 @@ export const validate = (
 			} as ApiResponse);
 		}
 
-		// Replace the original data with validated and sanitized data
-		req[source] = value;
+		// Replace the original data with validated and sanitized data.
+		// Some request objects (e.g., from `router`) expose req.query/params as
+		// getters without a setter, so assigning a new object throws.
+		// Instead, mutate the target object in place.
+
+		if (source === 'query' || source === 'params') {
+			Object.keys(req[source] as any).forEach(
+				(k) => delete (req as any)[source][k]
+			);
+			Object.assign(req[source], value);
+		} else {
+			(req as any)[source] = value;
+		}
+
 		next();
 	};
 };

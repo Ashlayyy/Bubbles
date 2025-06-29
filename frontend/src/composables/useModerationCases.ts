@@ -14,8 +14,14 @@ export function useModerationCases() {
 			const { data } = await moderationEndpoints.getCases(
 				guildStore.currentGuild.id
 			);
-			// Assume API returns array of AuditLogEntry compatible objects
-			moderationCases.value = data as AuditLogEntry[];
+			const payload =
+				(data as { data?: Record<string, unknown> }).data ??
+				(data as Record<string, unknown>);
+			moderationCases.value = Array.isArray(payload)
+				? (payload as AuditLogEntry[])
+				: Array.isArray(payload.cases)
+				? (payload.cases as AuditLogEntry[])
+				: [];
 		} catch (e) {
 			console.error('Failed to fetch moderation cases', e);
 		}

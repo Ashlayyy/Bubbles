@@ -16,7 +16,14 @@ export function useMutedUsers() {
 			const { data } = await moderationEndpoints.getMutes(
 				guildStore.currentGuild.id
 			);
-			mutedUsers.value = data as MutedUser[];
+			const payload =
+				(data as { data?: Record<string, unknown> }).data ??
+				(data as Record<string, unknown>);
+			mutedUsers.value = Array.isArray(payload)
+				? (payload as MutedUser[])
+				: Array.isArray(payload.mutes)
+				? (payload.mutes as MutedUser[])
+				: [];
 		} catch (e) {
 			console.error('Failed to fetch mutes', e);
 		}

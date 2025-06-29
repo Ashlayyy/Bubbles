@@ -16,7 +16,14 @@ export function useBannedUsers() {
 			const { data } = await moderationEndpoints.getBans(
 				guildStore.currentGuild.id
 			);
-			bannedUsers.value = data as BannedUser[];
+			const payload =
+				(data as { data?: Record<string, unknown> }).data ??
+				(data as Record<string, unknown>);
+			bannedUsers.value = Array.isArray(payload)
+				? (payload as BannedUser[])
+				: Array.isArray(payload.bans)
+				? (payload.bans as BannedUser[])
+				: [];
 		} catch (e) {
 			console.error('Failed to fetch bans', e);
 		}

@@ -1,7 +1,7 @@
 export interface WebSocketMessage {
 	type: string;
 	event: string;
-	data: any;
+	data: unknown;
 	guildId?: string;
 	timestamp: number;
 	messageId: string;
@@ -13,13 +13,21 @@ export class FrontendWebSocketService {
 	private reconnectAttempts = 0;
 	private maxReconnectAttempts = 5;
 	private reconnectDelay = 5000;
-	private eventHandlers = new Map<string, ((data: any) => void)[]>();
+	private eventHandlers = new Map<string, ((data: unknown) => void)[]>();
+	private currentToken: string | null = null;
+	private currentGuildId: string | undefined;
+	private pingInterval: NodeJS.Timeout | null = null;
+	private lastPingSent = 0;
 
 	constructor(private apiUrl: string) {}
 
 	public async connect(token: string, guildId?: string): Promise<void> {
-		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-			console.warn('WebSocket is already connected');
+		if (
+			this.ws &&
+			(this.ws.readyState === WebSocket.OPEN ||
+				this.ws.readyState === WebSocket.CONNECTING)
+		) {
+			console.warn('WebSocket is already connecting/connected');
 			return;
 		}
 
@@ -28,11 +36,18 @@ export class FrontendWebSocketService {
 
 		this.ws = new WebSocket(wsUrl);
 
+		this.currentToken = token;
+		this.currentGuildId = guildId;
+
 		this.ws.onopen = () => {
 			console.log('WebSocket connection opened');
 			this.authenticated = false;
 			this.reconnectAttempts = 0;
-			this.authenticate(token, guildId);
+			if (this.pingInterval) {
+				clearInterval(this.pingInterval);
+				this.pingInterval = null;
+			}
+			this.authenticate(this.currentToken!, this.currentGuildId);
 		};
 
 		this.ws.onmessage = (event) => {
@@ -49,7 +64,12 @@ export class FrontendWebSocketService {
 				`WebSocket connection closed: ${event.code} - ${event.reason}`
 			);
 			this.authenticated = false;
-			this.scheduleReconnect(token, guildId);
+			if (this.pingInterval) {
+				clearInterval(this.pingInterval);
+				this.pingInterval = null;
+			}
+			this.emit('disconnected', { code: event.code, reason: event.reason });
+			this.scheduleReconnect(this.currentToken!, this.currentGuildId);
 		};
 
 		this.ws.onerror = (error) => {
@@ -58,6 +78,7 @@ export class FrontendWebSocketService {
 	}
 
 	private authenticate(token: string, guildId?: string): void {
+		if (!token) return;
 		if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
 		const authMessage = {
@@ -88,6 +109,10 @@ export class FrontendWebSocketService {
 				this.handleSystemMessage(message);
 				break;
 
+			case 'PONG':
+				this.handlePong(message);
+				break;
+
 			default:
 				console.debug(`Received unknown message type: ${message.type}`);
 		}
@@ -98,6 +123,9 @@ export class FrontendWebSocketService {
 			this.authenticated = true;
 			console.log('Successfully authenticated with API server');
 			this.emit('authenticated', message.data);
+			if (!this.pingInterval) {
+				this.pingInterval = setInterval(() => this.sendPing(), 30000);
+			}
 		} else {
 			console.error('Authentication failed:', message.data);
 			this.emit('auth_failed', message.data);
@@ -119,6 +147,17 @@ export class FrontendWebSocketService {
 	private handleSystemMessage(message: WebSocketMessage): void {
 		console.log(`System message: ${message.event}`, message.data);
 		this.emit('system_message', message.data);
+	}
+
+	private handlePong(_message: WebSocketMessage): void {
+		const latency = Date.now() - this.lastPingSent;
+		this.emit('pong', latency);
+	}
+
+	private sendPing(): void {
+		if (!this.isConnected()) return;
+		this.lastPingSent = Date.now();
+		this.sendMessage('PING', 'PING', { timestamp: this.lastPingSent });
 	}
 
 	public subscribe(events: string[], guildId?: string): void {
@@ -145,7 +184,7 @@ export class FrontendWebSocketService {
 		console.log(`Subscribed to events:`, events);
 	}
 
-	public sendMessage(type: string, event: string, data: any): void {
+	public sendMessage(type: string, event: string, data: unknown): void {
 		if (
 			!this.ws ||
 			this.ws.readyState !== WebSocket.OPEN ||
@@ -168,23 +207,27 @@ export class FrontendWebSocketService {
 		this.ws.send(JSON.stringify(message));
 	}
 
-	public sendClientAction(action: string, data: any, guildId?: string): void {
+	public sendClientAction(
+		action: string,
+		data: unknown,
+		guildId?: string
+	): void {
 		this.sendMessage('CLIENT_ACTION', action, {
 			action,
 			guildId,
-			...data,
+			...(data as Record<string, unknown>),
 		});
 	}
 
 	// Event handling
-	public on(event: string, handler: (data: any) => void): void {
+	public on(event: string, handler: (data: unknown) => void): void {
 		if (!this.eventHandlers.has(event)) {
 			this.eventHandlers.set(event, []);
 		}
 		this.eventHandlers.get(event)!.push(handler);
 	}
 
-	public off(event: string, handler: (data: any) => void): void {
+	public off(event: string, handler: (data: unknown) => void): void {
 		const handlers = this.eventHandlers.get(event);
 		if (handlers) {
 			const index = handlers.indexOf(handler);
@@ -194,7 +237,7 @@ export class FrontendWebSocketService {
 		}
 	}
 
-	private emit(event: string, data: any): void {
+	private emit(event: string, data: unknown): void {
 		const handlers = this.eventHandlers.get(event);
 		if (handlers) {
 			handlers.forEach((handler) => {
@@ -234,11 +277,22 @@ export class FrontendWebSocketService {
 			this.ws.close();
 			this.ws = null;
 		}
+		if (this.pingInterval) {
+			clearInterval(this.pingInterval);
+			this.pingInterval = null;
+		}
 		this.authenticated = false;
 	}
 
 	public isConnected(): boolean {
 		return this.ws?.readyState === WebSocket.OPEN && this.authenticated;
+	}
+
+	public updateToken(newToken: string): void {
+		this.currentToken = newToken;
+		if (this.isConnected()) {
+			this.authenticate(this.currentToken!, this.currentGuildId);
+		}
 	}
 }
 
