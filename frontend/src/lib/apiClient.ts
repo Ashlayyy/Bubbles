@@ -8,9 +8,26 @@ import axios, {
 } from 'axios';
 import { useAuthStore } from '@/stores/auth';
 import { useToastStore } from '@/stores/toast';
+import Bottleneck from 'bottleneck';
 
 // Lazy singleton so stores are available after Pinia initialises
 let api: AxiosInstance | null = null;
+
+// ----------------------------------------------------------------------------
+// ⏱️  Rate-limit handling
+// ----------------------------------------------------------------------------
+// A single limiter instance for every request made through apiClient.  Discord
+// global application limit is 50 req/second per token – we stay way below that.
+// We also keep a low concurrency to avoid browser-side flooding.
+const limiter = new Bottleneck({
+	maxConcurrent: 4, // at most 4 parallel HTTP calls
+	minTime: 250, // ~4 requests per second sustained
+});
+
+/**
+ * Utility that wraps a promise-returning fn in the Bottleneck schedule.
+ */
+const schedule = <T>(fn: () => Promise<T>): Promise<T> => limiter.schedule(fn);
 
 function createApiClient(): AxiosInstance {
 	const instance = axios.create({
@@ -21,7 +38,9 @@ function createApiClient(): AxiosInstance {
 		withCredentials: true, // Include cookies for session management
 	});
 
-	// Request interceptor – attach JWT
+	// ---------------------------------------------------------------------
+	// Request interceptor – attach JWT & run through limiter
+	// ---------------------------------------------------------------------
 	instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 		const auth = useAuthStore();
 		if (auth.token) {
@@ -30,12 +49,28 @@ function createApiClient(): AxiosInstance {
 				config.headers as AxiosRequestHeaders
 			).Authorization = `Bearer ${auth.token}`;
 		}
-		return config;
+		// Wrap the config in the limiter so the request is queued before it is
+		// sent.  We can simply resolve with the same config because Axios will
+		// proceed only after the promise resolves.
+		return schedule(() => Promise.resolve(config));
 	});
 
-	// Response interceptor – global error & token refresh
+	// ---------------------------------------------------------------------
+	// Response interceptors – ratelimit & auth handling
+	// ---------------------------------------------------------------------
 	instance.interceptors.response.use(
-		(res: AxiosResponse) => res,
+		(res: AxiosResponse) => {
+			// If the API forwards Discord rate-limit headers we respect them.
+			const rlRemaining = res.headers['x-ratelimit-remaining'];
+			const rlResetAfter = res.headers['x-ratelimit-reset-after'];
+
+			if (rlRemaining !== undefined && rlRemaining === '0' && rlResetAfter) {
+				const pauseMs = Math.ceil(parseFloat(rlResetAfter) * 1000);
+				limiter.schedule(() => new Promise((r) => setTimeout(r, pauseMs)));
+			}
+
+			return res;
+		},
 		async (error: AxiosError) => {
 			const toast = useToastStore();
 			const auth = useAuthStore();
@@ -44,10 +79,25 @@ function createApiClient(): AxiosInstance {
 				_retry?: boolean;
 			};
 
-			if (
-				error.response?.status === 401 &&
-				originalRequest.url !== '/auth/me'
-			) {
+			const status = error.response?.status;
+
+			// 429 handling – obey Retry-After and retry once
+			if (status === 429) {
+				const retryAfter =
+					(error.response?.headers?.['retry-after'] as string | undefined) ??
+					(error.response?.headers?.['x-ratelimit-reset-after'] as
+						| string
+						| undefined);
+
+				if (retryAfter && !originalRequest._retry) {
+					const pauseMs = Math.ceil(parseFloat(retryAfter) * 1000);
+					await new Promise((r) => setTimeout(r, pauseMs));
+					originalRequest._retry = true;
+					return instance(originalRequest);
+				}
+			}
+
+			if (status === 401 && originalRequest.url !== '/auth/me') {
 				if (!originalRequest._retry) {
 					originalRequest._retry = true;
 					try {

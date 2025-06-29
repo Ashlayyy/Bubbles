@@ -1,3 +1,17 @@
 export * as authApi from './auth';
 export * as guildsApi from './guilds';
 export * as moderationApi from './moderation';
+export * as analyticsApi from './analytics';
+export * as appealsApi from './appeals';
+export * as applicationsApi from './applications';
+export * as auditApi from './audit';
+export * as channelsApi from './channels';
+export * as rolesApi from './roles';
+export * as messagesApi from './messages';
+export * as musicApi from './music';
+export * as starboardApi from './starboard';
+export * as remindersApi from './reminders';
+export * as automationApi from './automation';
+export * as entertainmentApi from './entertainment';
+export * as webhooksApi from './webhooks';
+export * as invitesApi from './invites';
