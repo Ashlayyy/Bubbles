@@ -266,13 +266,13 @@ export class ProtocolHealthMonitor {
       if (health.redis) {
         return {
           primary: "queue",
-          fallback: "bot-websocket",
+          fallback: "direct",
           reason: "Reliability requirement with healthy Redis",
         };
       } else {
         return {
-          primary: "bot-websocket",
-          fallback: "direct",
+          primary: "direct",
+          fallback: "bot-websocket",
           reason: "Reliability requirement but Redis unhealthy",
         };
       }
@@ -308,17 +308,19 @@ export class ProtocolHealthMonitor {
     const healthyProtocols = Object.values(summary.protocols).filter((p) => p.healthy).length;
     const totalProtocols = Object.keys(summary.protocols).length;
 
-    logger.info("System health summary:", {
-      overall: summary.overall,
-      healthyProtocols: `${healthyProtocols}/${totalProtocols}`,
-      overloaded: summary.overloaded,
-      protocols: Object.fromEntries(
-        Object.entries(summary.protocols).map(([name, status]) => [
-          name,
-          { healthy: status.healthy, state: status.circuitBreakerState },
-        ])
-      ),
-    });
+    logger.info(
+      `System health summary: ${JSON.stringify({
+        overall: summary.overall,
+        healthyProtocols: `${healthyProtocols}/${totalProtocols}`,
+        overloaded: summary.overloaded,
+        protocols: Object.fromEntries(
+          Object.entries(summary.protocols).map(([name, status]) => [
+            name,
+            { healthy: status.healthy, state: status.circuitBreakerState },
+          ])
+        ),
+      })}`
+    );
   }
 
   shutdown(): void {

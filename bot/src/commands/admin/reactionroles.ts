@@ -19,8 +19,6 @@ import {
 } from "discord.js";
 
 import type { ReactionRole } from "@shared/database";
-import camelCaseFn from "lodash/camelCase.js";
-import kebabCaseFn from "lodash/kebabCase.js";
 import { prisma } from "../../database/index.js";
 import {
   addReactionRole,
@@ -37,67 +35,6 @@ import { GuildChatInputCommandInteraction } from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import type { CommandConfig, CommandResponse, SlashCommandInteraction } from "../_core/index.js";
 import { AdminCommand } from "../_core/specialized/AdminCommand.js";
-
-// Helper functions
-const kebabCase = kebabCaseFn;
-const camelCase = camelCaseFn;
-
-// Main command builder
-const commandBuilder = (() => {
-  const builder = new SlashCommandBuilder()
-    .setName("reactionroles")
-    .setDescription("ADMIN ONLY: Manage reaction role system")
-    .setDefaultMemberPermissions(0) // Hide from all regular users
-
-    // Message Management Group
-    .addSubcommandGroup((group) =>
-      group
-        .setName("message")
-        .setDescription("Create and manage reaction role messages")
-        .addSubcommand((sub) =>
-          sub.setName("create").setDescription("Create a new reaction role message with interactive builder")
-        )
-        .addSubcommand((sub) => sub.setName("list").setDescription("List all reaction role messages in this server"))
-        .addSubcommand((sub) =>
-          sub
-            .setName("delete")
-            .setDescription("Delete a reaction role message")
-            .addStringOption((opt) =>
-              opt.setName("message-id").setDescription("ID of the message to delete").setRequired(true)
-            )
-        )
-    )
-
-    // Role Mapping Group
-    .addSubcommandGroup((group) =>
-      group
-        .setName("mapping")
-        .setDescription("Add, remove, and manage individual role mappings")
-        .addSubcommand((sub) =>
-          sub
-            .setName("add")
-            .setDescription("Add a reaction role to an existing message")
-            .addStringOption((opt) => opt.setName("message-id").setDescription("ID of the message").setRequired(true))
-            .addStringOption((opt) => opt.setName("emoji").setDescription("Emoji for the reaction").setRequired(true))
-            .addRoleOption((opt) => opt.setName("role").setDescription("Role to assign").setRequired(true))
-        )
-        .addSubcommand((sub) =>
-          sub
-            .setName("remove")
-            .setDescription("Remove a reaction role from a message")
-            .addStringOption((opt) => opt.setName("message-id").setDescription("ID of the message").setRequired(true))
-            .addStringOption((opt) => opt.setName("emoji").setDescription("Emoji to remove").setRequired(true))
-        )
-        .addSubcommand((sub) =>
-          sub
-            .setName("list")
-            .setDescription("List all reaction roles for a specific message")
-            .addStringOption((opt) => opt.setName("message-id").setDescription("ID of the message").setRequired(true))
-        )
-    );
-
-  return builder;
-})();
 
 // Functions for subcommands
 async function findMessageById(guild: Guild, messageId: string): Promise<Message | null> {
@@ -742,6 +679,10 @@ export class ReactionRolesCommand extends AdminCommand {
 
     try {
       switch (subcommand) {
+        case "create": {
+          await handleMessageCreate(this.client, this.interaction as GuildChatInputCommandInteraction);
+          return { content: "🔧 Reaction role wizard started.", ephemeral: true };
+        }
         case "list":
           return await this.handleList();
         case "remove":
@@ -791,20 +732,18 @@ export class ReactionRolesCommand extends AdminCommand {
         `**${reactionRoles.length}** reaction role${reactionRoles.length === 1 ? "" : "s"} configured.`
       );
 
-      // Group by message for better display
-      const messageGroups: Record<string, typeof reactionRoles> = {};
+      // Group by channel-message to collate roles; allow undefined entries initially
+      const messageGroups: Partial<Record<string, typeof reactionRoles>> = {};
       for (const rr of reactionRoles) {
         const key = `${rr.channelId}-${rr.messageId}`;
-        if (!messageGroups[key]) {
-          messageGroups[key] = [];
-        }
-        messageGroups[key].push(rr);
+        (messageGroups[key] ??= []).push(rr);
       }
 
       const fields: { name: string; value: string; inline: boolean }[] = [];
       let fieldCount = 0;
 
       for (const [key, roles] of Object.entries(messageGroups)) {
+        if (!roles) continue; // Shouldn't happen but satisfies type checker
         if (fieldCount >= 25) break; // Discord embed field limit
 
         const firstRole = roles[0];
@@ -941,23 +880,10 @@ export class ReactionRolesCommand extends AdminCommand {
     const channelId = this.getStringOption("channel_id");
 
     try {
-      let deleted;
-      if (channelId) {
-        // Clear reaction roles for specific channel
-        deleted = await prisma.reactionRole.deleteMany({
-          where: {
-            guildId: this.guild.id,
-            channelId: channelId,
-          },
-        });
-      } else {
-        // Clear all reaction roles for the guild
-        deleted = await prisma.reactionRole.deleteMany({
-          where: {
-            guildId: this.guild.id,
-          },
-        });
-      }
+      // Clear reaction roles (specific channel if provided, else entire guild)
+      const deleted = await prisma.reactionRole.deleteMany({
+        where: channelId ? { guildId: this.guild.id, channelId } : { guildId: this.guild.id },
+      });
 
       if (deleted.count === 0) {
         return {
@@ -1052,4 +978,5 @@ export const builder = new SlashCommandBuilder()
       .addStringOption((opt) =>
         opt.setName("channel_id").setDescription("Channel ID to clear (leave empty to clear entire server)")
       )
-  );
+  )
+  .addSubcommand((sub) => sub.setName("create").setDescription("Create a new reaction role message (wizard)"));

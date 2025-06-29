@@ -41,6 +41,14 @@ export class WebSocketService extends EventEmitter {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 5000; // 5 seconds
   private permissionListenersSetup = false;
+  private pendingRequests = new Map<
+    string,
+    {
+      resolve: (value: unknown) => void;
+      reject: (reason?: unknown) => void;
+      timeout: NodeJS.Timeout;
+    }
+  >();
 
   constructor(client: Client) {
     super();
@@ -163,6 +171,12 @@ export class WebSocketService extends EventEmitter {
 
       case "SYSTEM":
         this.handleSystemMessage(message);
+        break;
+
+      case "BOT_EVENT":
+        if (message.event === "BOT_COMMAND_RESPONSE") {
+          this.handleCommandResponse(message);
+        }
         break;
 
       default:
@@ -617,5 +631,53 @@ export class WebSocketService extends EventEmitter {
         this.sendPermissionUpdate(guild.id, me.permissions.bitfield);
       }
     });
+  }
+
+  public async sendRequest(request: any): Promise<unknown> {
+    if (!this.authenticated || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error("WebSocket not connected or authenticated");
+    }
+
+    const messageId = this.generateMessageId();
+
+    const payload = {
+      type: "CLIENT_ACTION" as const,
+      event: request.type ?? "UNKNOWN_REQUEST",
+      data: {
+        ...request,
+        _requestId: messageId,
+      },
+      timestamp: Date.now(),
+      messageId,
+    };
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(messageId);
+        reject(new Error("WebSocket request timed out"));
+      }, 15000);
+
+      this.pendingRequests.set(messageId, { resolve, reject, timeout });
+
+      this.ws!.send(JSON.stringify(payload));
+    });
+  }
+
+  private handleCommandResponse(message: WebSocketMessage): void {
+    const { data } = message;
+    if (!data || typeof data !== "object" || !("requestId" in data)) return;
+
+    const reqId = (data as any).requestId as string;
+    const pending = this.pendingRequests.get(reqId);
+    if (!pending) return;
+
+    clearTimeout(pending.timeout);
+    this.pendingRequests.delete(reqId);
+
+    if ((data as any).success) {
+      pending.resolve((data as any).result);
+    } else {
+      pending.reject(new Error((data as any).error ?? "Request failed"));
+    }
   }
 }

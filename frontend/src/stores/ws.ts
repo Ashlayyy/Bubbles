@@ -4,6 +4,14 @@ import { ref, watch } from 'vue';
 import { websocketService } from '@/services/websocketService';
 import { useGuildsStore } from '@/stores/guilds';
 
+const DEFAULT_EVENTS = [
+	'MESSAGE_CREATE',
+	'MESSAGE_DELETE',
+	'GUILD_BAN_ADD',
+	'GUILD_BAN_REMOVE',
+	'GUILD_MEMBER_UPDATE',
+];
+
 export const useWebsocketStore = defineStore('ws', () => {
 	const connected = ref(false);
 	const latency = ref<number | null>(null);
@@ -32,6 +40,10 @@ export const useWebsocketStore = defineStore('ws', () => {
 	const connect = (token: string) => {
 		const guildStore = useGuildsStore();
 		websocketService.connect(token, guildStore.currentGuild?.id);
+		// Subscribe once connected & authenticated – handled via event
+		websocketService.on('authenticated', () => {
+			subscribe(DEFAULT_EVENTS);
+		});
 	};
 
 	const subscribe = (events: string[]) => {
@@ -50,7 +62,7 @@ export const useWebsocketStore = defineStore('ws', () => {
 		(gid) => {
 			if (connected.value && gid) {
 				// resubscribe default events for new guild
-				subscribe(['MESSAGE_CREATE', 'MESSAGE_DELETE']);
+				subscribe(DEFAULT_EVENTS);
 			}
 		}
 	);

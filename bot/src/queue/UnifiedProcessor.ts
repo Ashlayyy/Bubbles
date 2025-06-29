@@ -221,8 +221,16 @@ export class UnifiedProcessor {
     const startTime = performance.now();
 
     try {
-      // Send request via WebSocket
-      const result: unknown = await wsService.sendRequest?.(request);
+      if (typeof wsService.sendRequest !== "function") {
+        throw new Error("WebSocket service does not implement sendRequest");
+      }
+
+      // Send request via WebSocket and ensure a non-undefined result
+      const result: unknown = await wsService.sendRequest(request);
+
+      if (result === undefined) {
+        throw new Error("WebSocket sendRequest returned undefined");
+      }
 
       return {
         success: true,
