@@ -104,6 +104,8 @@ export const getGuild = async (req: AuthenticatedRequest, res: Response) => {
 		const channels = await discordApi.getGuildChannels(guildId);
 		const roles = await discordApi.getGuildRoles(guildId);
 
+		console.log(guild);
+
 		const guildData = {
 			id: guild.id,
 			name: guild.name,
@@ -401,6 +403,7 @@ export const getGuildSettings = async (
 				ticketAccessRoleId: guildConfig.ticketAccessRoleId,
 				ticketAccessPermission: guildConfig.ticketAccessPermission,
 				ticketLogChannelId: guildConfig.ticketLogChannelId,
+				moderation_case_rules: (guildConfig as any).moderation_case_rules ?? {},
 			},
 			logging: guildConfig.logSettings,
 			appeals: guildConfig.appealSettings,
@@ -454,6 +457,7 @@ export const updateGuildSettings = async (
 				ticketAccessRoleId: updates.config?.ticketAccessRoleId,
 				ticketAccessPermission: updates.config?.ticketAccessPermission,
 				ticketLogChannelId: updates.config?.ticketLogChannelId,
+				moderation_case_rules: updates.config?.moderation_case_rules ?? {},
 			},
 			include: {
 				logSettings: true,

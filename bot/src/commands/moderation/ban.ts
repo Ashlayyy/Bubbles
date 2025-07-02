@@ -1,14 +1,8 @@
 import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
-import {
-  expandAlias,
-  parseDuration,
-  parseEvidence,
-  ResponseBuilder,
-  type CommandConfig,
-  type CommandResponse,
-} from "../_core/index.js";
+import { expandAlias, parseDuration, parseEvidence, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
+import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
 
 /**
  * Ban Command - Bans a user from the server
@@ -94,6 +88,12 @@ export class BanCommand extends ModerationCommand {
       const evidence = parseEvidence(evidenceStr ?? undefined);
 
       // Execute the ban using moderation manager
+      const invocation = {
+        interactionId: this.interaction.id,
+        commandName: this.interaction.commandName,
+        interactionLatency: Date.now() - this.interaction.createdTimestamp,
+      };
+
       const case_ = await this.client.moderationManager.ban(
         this.guild,
         targetUser.id,
@@ -101,26 +101,19 @@ export class BanCommand extends ModerationCommand {
         reason,
         duration,
         evidence.all.length > 0 ? evidence.all : undefined,
-        !silent
+        !silent,
+        invocation
       );
 
-      // Success response with better formatting
-      const durationText = duration ? ` for **${this.formatDuration(duration)}**` : "";
-      const memberStatus = member ? "Member" : "User (not in server)";
-
-      return new ResponseBuilder()
-        .success("Ban Applied")
-        .content(
-          `🔨 **${targetUser.username}** has been banned${durationText}.\n\n` +
-            `📋 **Case #${String(case_.caseNumber)}** created\n` +
-            `👤 **Target:** ${memberStatus}\n` +
-            (reason !== "No reason provided" ? `📝 **Reason:** ${reason}\n` : "") +
-            (evidence.all.length > 0 ? `📎 **Evidence:** ${evidence.all.length} item(s) attached\n` : "") +
-            (deleteDays > 0 ? `🗑️ **Messages deleted:** Last ${deleteDays} day(s)\n` : "") +
-            (!silent ? `📨 User was notified via DM` : `🔕 Silent ban (user not notified)`)
-        )
-        .ephemeral()
-        .build();
+      return buildModSuccess({
+        title: "Ban Applied",
+        target: targetUser,
+        moderator: this.user,
+        reason,
+        duration,
+        notified: !silent,
+        caseNumber: case_.caseNumber,
+      });
     } catch (error) {
       return this.createModerationError(
         "ban",

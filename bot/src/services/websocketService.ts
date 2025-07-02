@@ -334,8 +334,13 @@ export class WebSocketService extends EventEmitter {
     try {
       const guild = await this.client.guilds.fetch(guildId);
       const member = await guild.members.fetch(userId);
-      await member.timeout(duration, (typeof reason === "string" ? reason : undefined) ?? "No reason provided");
-      logger.info(`User ${userId} timed out in guild ${guildId} for ${duration.toString()}ms`);
+
+      // Determine if duration is seconds (<= 28 days) or already milliseconds
+      const maxSeconds = 28 * 24 * 60 * 60; // 28 days in seconds
+      const durationMs = duration <= maxSeconds ? duration * 1000 : duration;
+
+      await member.timeout(durationMs, (typeof reason === "string" ? reason : undefined) ?? "No reason provided");
+      logger.info(`User ${userId} timed out in guild ${guildId} for ${durationMs.toString()}ms`);
     } catch (error) {
       logger.error(`Failed to timeout user ${userId} in guild ${guildId}:`, error);
     }
@@ -633,7 +638,7 @@ export class WebSocketService extends EventEmitter {
     });
   }
 
-  public async sendRequest(request: any): Promise<unknown> {
+  public async sendRequest(request: Record<string, unknown> & { type?: string }): Promise<unknown> {
     if (!this.authenticated || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error("WebSocket not connected or authenticated");
     }
@@ -649,7 +654,7 @@ export class WebSocketService extends EventEmitter {
       },
       timestamp: Date.now(),
       messageId,
-    };
+    } as const;
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -659,7 +664,12 @@ export class WebSocketService extends EventEmitter {
 
       this.pendingRequests.set(messageId, { resolve, reject, timeout });
 
-      this.ws!.send(JSON.stringify(payload));
+      const wsInstance = this.ws;
+      if (!wsInstance) {
+        reject(new Error("WebSocket disconnected"));
+        return;
+      }
+      wsInstance.send(JSON.stringify(payload));
     });
   }
 
@@ -667,17 +677,23 @@ export class WebSocketService extends EventEmitter {
     const { data } = message;
     if (!data || typeof data !== "object" || !("requestId" in data)) return;
 
-    const reqId = (data as any).requestId as string;
-    const pending = this.pendingRequests.get(reqId);
+    const response = data as {
+      requestId: string;
+      success?: boolean;
+      result?: unknown;
+      error?: string;
+    };
+
+    const pending = this.pendingRequests.get(response.requestId);
     if (!pending) return;
 
     clearTimeout(pending.timeout);
-    this.pendingRequests.delete(reqId);
+    this.pendingRequests.delete(response.requestId);
 
-    if ((data as any).success) {
-      pending.resolve((data as any).result);
+    if (response.success) {
+      pending.resolve(response.result);
     } else {
-      pending.reject(new Error((data as any).error ?? "Request failed"));
+      pending.reject(new Error(response.error ?? "Request failed"));
     }
   }
 }

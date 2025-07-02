@@ -1,13 +1,8 @@
 import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
-import {
-  expandAlias,
-  parseEvidence,
-  ResponseBuilder,
-  type CommandConfig,
-  type CommandResponse,
-} from "../_core/index.js";
+import { expandAlias, parseEvidence, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
+import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
 
 /**
  * Warn Command - Warns a user with configurable points
@@ -76,6 +71,12 @@ export class WarnCommand extends ModerationCommand {
       // Parse evidence automatically
       const evidence = parseEvidence(evidenceStr ?? undefined);
 
+      const invocation = {
+        interactionId: this.interaction.id,
+        commandName: this.interaction.commandName,
+        interactionLatency: Date.now() - this.interaction.createdTimestamp,
+      };
+
       // Execute the warning using moderation manager
       const case_ = await this.client.moderationManager.warn(
         this.guild,
@@ -84,7 +85,8 @@ export class WarnCommand extends ModerationCommand {
         reason,
         evidence.all.length > 0 ? evidence.all : undefined,
         points,
-        !silent
+        !silent,
+        invocation
       );
 
       // Get user's total points for display
@@ -93,18 +95,14 @@ export class WarnCommand extends ModerationCommand {
       // Success response with better formatting
       const pointsText = points === 1 ? "1 point" : `${points} points`;
 
-      return new ResponseBuilder()
-        .success("Warning Applied")
-        .content(
-          `⚠️ **${targetUser.username}** has been warned (${pointsText}).\n\n` +
-            `📋 **Case #${String(case_.caseNumber)}** created\n` +
-            `🔢 **Total Points:** ${totalPoints}\n` +
-            (reason !== "No reason provided" ? `📝 **Reason:** ${reason}\n` : "") +
-            (evidence.all.length > 0 ? `📎 **Evidence:** ${evidence.all.length} item(s) attached\n` : "") +
-            (!silent ? `📨 User was notified via DM` : `🔕 Silent warning (user not notified)`)
-        )
-        .ephemeral()
-        .build();
+      return buildModSuccess({
+        title: "Warning Issued",
+        target: targetUser,
+        moderator: this.user,
+        reason,
+        notified: !silent,
+        caseNumber: case_.caseNumber,
+      });
     } catch (error) {
       return this.createModerationError(
         "warn",

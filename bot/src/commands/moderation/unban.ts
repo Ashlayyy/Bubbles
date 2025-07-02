@@ -1,7 +1,8 @@
 import { PermissionsBitField, SlashCommandBuilder, User } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
-import { expandAlias, ResponseBuilder, type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { expandAlias, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
+import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
 
 /**
  * Unban Command - Removes a ban from a user
@@ -117,6 +118,12 @@ export class UnbanCommand extends ModerationCommand {
         moderator: this.user,
       });
 
+      const invocation = {
+        interactionId: this.interaction.id,
+        commandName: this.interaction.commandName,
+        interactionLatency: Date.now() - this.interaction.createdTimestamp,
+      };
+
       // Execute the unban using moderation manager
       const case_ = await this.client.moderationManager.moderate(this.guild, {
         type: "UNBAN",
@@ -126,19 +133,19 @@ export class UnbanCommand extends ModerationCommand {
         severity: "MEDIUM",
         points: 0, // No points for unbans
         notifyUser: !silent,
+        invocation,
       });
 
       // Success response with better formatting
-      return new ResponseBuilder()
-        .success("Unban Applied")
-        .content(
-          `✅ **${userTag}** has been unbanned from this server.\n\n` +
-            `📋 **Case #${String(case_.caseNumber)}** created\n` +
-            (reason !== "No reason provided" ? `📝 **Reason:** ${reason}\n` : "") +
-            (!silent ? `📨 User was notified via DM` : `🔕 Silent unban (user not notified)`)
-        )
-        .ephemeral()
-        .build();
+      return buildModSuccess({
+        title: "Unban Applied",
+        target: resolvedUser ?? { username: userTag, id: userId },
+        moderator: this.user,
+        reason,
+        notified: !silent,
+        caseNumber: case_.caseNumber,
+        resolved: true,
+      });
     } catch (error) {
       return this.createModerationError(
         "unban",

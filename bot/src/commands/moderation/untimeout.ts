@@ -1,7 +1,8 @@
 import { SlashCommandBuilder } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
-import { expandAlias, ResponseBuilder, type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { expandAlias, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
+import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
 
 /**
  * Untimeout Command - Remove timeout from a user
@@ -91,17 +92,15 @@ export class UntimeoutCommand extends ModerationCommand {
       });
 
       // Success response with better formatting
-      return new ResponseBuilder()
-        .success("Timeout Removed")
-        .content(
-          `🔊 **${targetUser.username}** timeout has been removed.\n\n` +
-            `📋 **Case #${String(case_.caseNumber)}** created\n` +
-            (reason !== "No reason provided" ? `📝 **Reason:** ${reason}\n` : "") +
-            (!silent ? `📨 User was notified via DM` : `🔕 Silent removal (user not notified)`) +
-            `\n\n💡 **Note:** User can now participate normally in the server.`
-        )
-        .ephemeral()
-        .build();
+      return buildModSuccess({
+        title: "Timeout Removed",
+        target: targetUser,
+        moderator: this.user,
+        reason,
+        notified: !silent,
+        caseNumber: case_.caseNumber,
+        resolved: true,
+      });
     } catch (error) {
       return this.createModerationError(
         "untimeout",

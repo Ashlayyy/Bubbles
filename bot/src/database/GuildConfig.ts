@@ -8,12 +8,13 @@ export const defaults: Omit<GuildConfig, "guildId" | "id"> & {
   notify_user: boolean;
   reportChannelId: string | null;
   reportPingRoleId: string | null;
+  moderation_case_rules: Record<string, string>;
 } = {
-  maxMessagesCleared: 100,
+  maxMessagesCleared: 250,
   musicChannelId: "",
   defaultRepeatMode: 0,
   reactionRoleChannels: [],
-  logReactionRoles: false,
+  logReactionRoles: true,
   welcomeChannelId: null,
   goodbyeChannelId: null,
   welcomeEnabled: true,
@@ -31,6 +32,7 @@ export const defaults: Omit<GuildConfig, "guildId" | "id"> & {
   ticketLogChannelId: null,
   reportChannelId: null,
   reportPingRoleId: null,
+  moderation_case_rules: {},
   logSettingsId: null,
   appealSettingsId: null,
   notify_user: false,
@@ -45,6 +47,7 @@ export const descriptions: Record<string, string> = {
   notify_user: "Send direct messages to users for moderation actions by default.",
   reportChannelId: "Channel where user reports will be sent.",
   reportPingRoleId: "Role that will be pinged when a new user report is submitted.",
+  moderation_case_rules: "Per-action moderation case behaviour (NEW/UPDATE).",
 };
 
 /**

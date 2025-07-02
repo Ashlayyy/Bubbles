@@ -31,6 +31,7 @@ import { isDevEnvironment } from "../functions/general/environment.js";
 import { forNestedDirsFiles, importDefaultESM } from "../functions/general/fs.js";
 import { camel2Display, isOnlyDigits } from "../functions/general/strings.js";
 import logger from "../logger.js";
+import { ScheduledActionService } from "../services/scheduledActionService.js";
 import { UnifiedQueueService } from "../services/unifiedQueueService.js";
 import { WebSocketService } from "../services/websocketService.js";
 import Command, { isCommand } from "./Command.js";
@@ -74,6 +75,7 @@ export default class Client extends DiscordClient {
   public queueService: UnifiedQueueService | null = null;
   // Health service for monitoring
   public healthService: any = null;
+  public scheduledActionService: ScheduledActionService | null = null;
 
   /** Get/Generate singleton instance */
   static async get() {
@@ -239,6 +241,14 @@ export default class Client extends DiscordClient {
       } catch (error) {
         logger.error("Failed to initialize health service:", error);
         logger.warn("Bot will continue without health monitoring");
+      }
+
+      // Start scheduled action service (unban / untimeout)
+      try {
+        this.scheduledActionService = new ScheduledActionService(this);
+        this.scheduledActionService.start();
+      } catch (error) {
+        logger.error("Failed to start ScheduledActionService:", error);
       }
 
       this.started = true;

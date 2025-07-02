@@ -6,6 +6,8 @@ import { getGuildConfig } from "../database/GuildConfig.js";
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import { cacheService } from "../services/cacheService.js";
+import ModerationMutex, { MutexError } from "../utils/ModerationMutex.js";
+import { ModerationThrottle, ThrottleError } from "../utils/ModerationThrottle.js";
 import type Client from "./Client.js";
 import type LogManager from "./LogManager.js";
 
@@ -21,6 +23,13 @@ export interface ModerationAction {
   publicNote?: string;
   staffNote?: string;
   notifyUser?: boolean;
+  invocation?: {
+    interactionId?: string;
+    commandName?: string;
+    interactionLatency?: number;
+  };
+  /** How to handle moderation case creation. If omitted, guild config default is used */
+  caseHandling?: "NEW" | "UPDATE";
 }
 
 export interface ModerationCase {
@@ -58,59 +67,113 @@ export default class ModerationManager {
   }
 
   /**
-   * Main moderation method - handles any moderation action
-   * Now uses queue system for Discord actions!
+   * Main moderation method - handles any moderation action with flexible case handling.
    */
   async moderate(guild: Guild, action: ModerationAction): Promise<ModerationCase> {
     try {
-      // Get next case number for this guild
-      const caseNumber = await this.getNextCaseNumber(guild.id);
+      // Acquire mutex to avoid concurrent actions on same user
+      try {
+        ModerationMutex.acquire(guild.id, action.userId);
+      } catch (err) {
+        if (err instanceof MutexError) {
+          throw err;
+        }
+      }
 
-      // Create the moderation case first
-      const moderationCase = await this.createCase(guild.id, caseNumber, action);
+      // Rate-limit check
+      try {
+        ModerationThrottle.check(guild.id, action.moderatorId, action.type);
+      } catch (err) {
+        if (err instanceof ThrottleError) {
+          throw err;
+        }
+      }
 
-      // Queue the Discord action instead of executing directly
-      await this.queueDiscordAction(guild, action, moderationCase);
-
-      // Determine whether to notify the user (guild default can be overridden per command)
+      // Resolve handling behaviour
       const guildConfig = await getGuildConfig(guild.id);
+      const rules =
+        (guildConfig as unknown as { moderation_case_rules?: Record<string, string> }).moderation_case_rules ?? {};
+
+      const configHandling = rules[action.type] as "NEW" | "UPDATE" | undefined;
+      const handling: "NEW" | "UPDATE" =
+        action.caseHandling ??
+        configHandling ??
+        (action.type === "UNBAN" || action.type === "UNTIMEOUT" ? "UPDATE" : "NEW");
+
+      let moderationCase: ModerationCase | null = null;
+
+      if (handling === "UPDATE") {
+        const reverseType = this.getReverseAction(action.type);
+        if (reverseType) {
+          moderationCase = (await prisma.moderationCase.findFirst({
+            where: { guildId: guild.id, userId: action.userId, type: reverseType, isActive: true },
+            orderBy: { caseNumber: "desc" },
+          })) as ModerationCase | null;
+
+          if (moderationCase) {
+            await prisma.moderationCase.update({
+              where: { id: moderationCase.id },
+              data: { isActive: false, staffNote: `Resolved by ${action.type}` },
+            });
+          }
+        }
+      }
+
+      // If NEW or UPDATE without match, create new case
+      if (!moderationCase) {
+        const caseNumber = await this.getNextCaseNumber(guild.id);
+        moderationCase = await this.createCase(guild.id, caseNumber, action);
+      }
+
+      const modCase = moderationCase;
+
+      // Execute the Discord action (always have a case)
+      await this.queueDiscordAction(guild, action, modCase);
+
+      // Notify user (guild default may override)
       const guildNotifyDefault = (guildConfig as unknown as { notify_user?: boolean }).notify_user ?? false;
       const shouldNotify = action.notifyUser ?? guildNotifyDefault;
-
       if (shouldNotify) {
-        await this.notifyUser(action.userId, moderationCase, guild);
+        await this.notifyUser(action.userId, modCase, guild);
       }
 
-      // Update infraction points
-      await this.updateInfractionPoints(guild.id, action.userId, action.points ?? 0);
-
-      // Schedule automatic actions if needed (unban, untimeout, etc.)
+      // Schedule follow-up action (unban etc.)
       if (action.duration && action.type !== "WARN") {
-        await this.scheduleAction(guild.id, action.userId, action.type, action.duration, moderationCase.id);
+        await this.scheduleAction(guild.id, action.userId, action.type, action.duration, modCase.id);
       }
 
-      // Log to comprehensive logging system
+      // Logging
+      const startTime = Date.now();
       await this.logManager.log(guild.id, `MOD_${action.type}`, {
         userId: action.userId,
         executorId: action.moderatorId,
         reason: action.reason,
-        caseId: moderationCase.id,
+        caseId: modCase.id,
         metadata: {
-          caseNumber: moderationCase.caseNumber,
+          caseNumber: modCase.caseNumber,
           severity: action.severity,
           points: action.points,
           duration: action.duration,
+          shardId: this.client.shard && this.client.shard.ids.length > 0 ? this.client.shard.ids[0] : 0,
+          processingLatency: Date.now() - startTime,
+          gatewayPing: this.client.ws.ping,
+          interactionId: action.invocation?.interactionId,
+          commandName: action.invocation?.commandName,
+          interactionLatency: action.invocation?.interactionLatency,
         },
       });
 
       logger.info(
-        `Moderation action ${action.type} processed for user ${action.userId} in guild ${guild.id}, case #${caseNumber}`
+        `Moderation action ${action.type} processed for user ${action.userId} in guild ${guild.id} (handling: ${handling})`
       );
 
-      return moderationCase;
+      return modCase;
     } catch (error) {
       logger.error("Error in moderation action:", error);
       throw error;
+    } finally {
+      // Always release mutex
+      ModerationMutex.release(guild.id, action.userId);
     }
   }
 
@@ -123,7 +186,8 @@ export default class ModerationManager {
     moderatorId: string,
     reason?: string,
     evidence?: string[],
-    notifyUser?: boolean
+    notifyUser?: boolean,
+    invocation?: { interactionId?: string; commandName?: string; interactionLatency?: number }
   ): Promise<ModerationCase> {
     return this.moderate(guild, {
       type: "KICK",
@@ -134,6 +198,7 @@ export default class ModerationManager {
       severity: "MEDIUM",
       points: 3,
       notifyUser,
+      invocation,
     });
   }
 
@@ -144,7 +209,8 @@ export default class ModerationManager {
     reason?: string,
     duration?: number,
     evidence?: string[],
-    notifyUser?: boolean
+    notifyUser?: boolean,
+    invocation?: { interactionId?: string; commandName?: string; interactionLatency?: number }
   ): Promise<ModerationCase> {
     return this.moderate(guild, {
       type: "BAN",
@@ -156,6 +222,7 @@ export default class ModerationManager {
       severity: duration ? "HIGH" : "CRITICAL",
       points: duration ? 5 : 10,
       notifyUser,
+      invocation,
     });
   }
 
@@ -166,7 +233,8 @@ export default class ModerationManager {
     reason: string,
     evidence?: string[],
     points = 1,
-    notifyUser?: boolean
+    notifyUser?: boolean,
+    invocation?: { interactionId?: string; commandName?: string; interactionLatency?: number }
   ): Promise<ModerationCase> {
     return this.moderate(guild, {
       type: "WARN",
@@ -177,6 +245,7 @@ export default class ModerationManager {
       severity: "LOW",
       points,
       notifyUser,
+      invocation,
     });
   }
 
@@ -187,7 +256,8 @@ export default class ModerationManager {
     duration: number,
     reason?: string,
     evidence?: string[],
-    notifyUser?: boolean
+    notifyUser?: boolean,
+    invocation?: { interactionId?: string; commandName?: string; interactionLatency?: number }
   ): Promise<ModerationCase> {
     return this.moderate(guild, {
       type: "TIMEOUT",
@@ -199,6 +269,7 @@ export default class ModerationManager {
       severity: "MEDIUM",
       points: 2,
       notifyUser,
+      invocation,
     });
   }
 
@@ -207,8 +278,7 @@ export default class ModerationManager {
     userId: string,
     moderatorId: string,
     note: string,
-    isInternal = false,
-    notifyUser?: boolean
+    invocation?: { interactionId?: string; commandName?: string; interactionLatency?: number }
   ): Promise<ModerationCase> {
     return this.moderate(guild, {
       type: "NOTE",
@@ -217,9 +287,7 @@ export default class ModerationManager {
       reason: note,
       severity: "LOW",
       points: 0,
-      staffNote: isInternal ? note : undefined,
-      publicNote: !isInternal ? note : undefined,
-      notifyUser: notifyUser ?? !isInternal,
+      invocation,
     });
   }
 
@@ -422,14 +490,14 @@ export default class ModerationManager {
             }
 
             case "TIMEOUT": {
-              const timeoutDuration = (action.duration ?? 0) * 1000;
+              // Pass duration in seconds; processor will convert to milliseconds once
               await this.client.queueService.processRequest({
                 type: "TIMEOUT_USER",
                 data: {
                   targetUserId: action.userId,
                   guildId: guild.id,
                   reason: action.reason,
-                  duration: timeoutDuration,
+                  duration: action.duration ?? 0,
                 },
                 source: "rest",
                 userId: action.moderatorId,
@@ -666,11 +734,8 @@ export default class ModerationManager {
   }
 
   private getReverseAction(actionType: string): string | null {
-    const reverseMap = {
-      BAN: "UNBAN",
-      TIMEOUT: "UNTIMEOUT",
-    };
-    return reverseMap[actionType as keyof typeof reverseMap] || null;
+    if (actionType === "BAN") return "UNBAN";
+    return null;
   }
 
   private getActionColor(actionType: string): number {

@@ -12,10 +12,7 @@ applySecureRouterPatch();
 import apiRoutes from './routes/index.js';
 import queueManager from './queue/manager.js';
 import { wsManager } from './websocket/manager.js';
-import {
-	initializePrisma,
-	checkDatabaseHealth,
-} from './services/databaseService.js';
+import { initializePrisma } from './services/databaseService.js';
 
 // Queue names enum
 const QUEUE_NAMES = {
@@ -58,22 +55,6 @@ app.use(
 // Add monitoring middleware for integration tracking
 const { monitoringMiddleware } = await import('./middleware/monitoring.js');
 app.use(monitoringMiddleware);
-
-// Health check endpoint
-app.get('/', async (req, res) => {
-	const isDbHealthy = await checkDatabaseHealth();
-
-	res.json({
-		status: isDbHealthy ? 'healthy' : 'degraded',
-		timestamp: new Date().toISOString(),
-		version: '1.0.0',
-		services: {
-			database: isDbHealthy ? 'healthy' : 'unhealthy',
-			redis: 'unknown', // Will implement Redis health check later
-			websocket: 'unknown', // Will implement WebSocket health check later
-		},
-	});
-});
 
 // Mount API routes
 app.use('/api/v1', apiRoutes);
@@ -202,7 +183,9 @@ const startServer = async () => {
 		// Start HTTP server
 		server.listen(PORT, () => {
 			logger.info(`🚀 API Server running on port ${PORT}`);
-			logger.info(`📋 Health check available at http://localhost:${PORT}/`);
+			logger.info(
+				`📋 Health check available at http://localhost:${PORT}/api/v1/health`
+			);
 			logger.info(`🔗 CORS origin: ${config.cors.origin}`);
 			logger.info(`🧪 Dev routes: POST /dev/test-queue, GET /dev/queue-stats`);
 			logger.info(`🔌 WebSocket server available at ws://localhost:${PORT}/ws`);

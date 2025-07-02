@@ -1,7 +1,8 @@
 import { SlashCommandBuilder } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
-import { expandAlias, ResponseBuilder, type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { expandAlias, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
+import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
 
 /**
  * Note Command - Add a note about a user
@@ -30,8 +31,6 @@ export class NoteCommand extends ModerationCommand {
 
     const targetUser = this.getUserOption("user", true);
     let content = this.getStringOption("content", true);
-    const isInternal = this.getBooleanOption("internal") ?? false;
-    const silent = this.getBooleanOption("silent") ?? false;
 
     try {
       // Validate content length
@@ -51,31 +50,29 @@ export class NoteCommand extends ModerationCommand {
         moderator: this.user,
       });
 
+      const invocation = {
+        interactionId: this.interaction.id,
+        commandName: this.interaction.commandName,
+        interactionLatency: Date.now() - this.interaction.createdTimestamp,
+      };
+
       // Execute the note using the moderation system
       const case_ = await this.client.moderationManager.note(
         this.guild,
         targetUser.id,
         this.user.id,
         content,
-        isInternal,
-        !silent
+        invocation
       );
 
       // Success response with better formatting
-      const noteType = isInternal ? "internal" : "public";
-      const noteIcon = isInternal ? "🔒" : "📝";
-
-      return new ResponseBuilder()
-        .success("Note Added")
-        .content(
-          `${noteIcon} Added **${noteType}** note about **${targetUser.username}**.\n\n` +
-            `📋 **Case #${String(case_.caseNumber)}** created\n` +
-            `📄 **Content:** ${content.length > 100 ? `${content.substring(0, 100)}...` : content}\n` +
-            `🔐 **Visibility:** ${isInternal ? "Staff only" : "Viewable by user"}\n` +
-            (!silent ? `📨 User was notified` : `🔕 Silent note (user not notified)`)
-        )
-        .ephemeral()
-        .build();
+      return buildModSuccess({
+        title: "Note Added",
+        target: targetUser,
+        moderator: this.user,
+        reason: content,
+        caseNumber: case_.caseNumber,
+      });
     } catch (error) {
       return this.createModerationError(
         "note",
@@ -99,8 +96,4 @@ export const builder = new SlashCommandBuilder()
   .setName("note")
   .setDescription("Add a note about a user")
   .addUserOption((option) => option.setName("user").setDescription("The user to add a note about").setRequired(true))
-  .addStringOption((option) => option.setName("content").setDescription("The note content").setRequired(true))
-  .addBooleanOption((option) =>
-    option.setName("internal").setDescription("Make this note internal (staff-only, default: false)").setRequired(false)
-  )
-  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false));
+  .addStringOption((option) => option.setName("content").setDescription("The note content").setRequired(true));

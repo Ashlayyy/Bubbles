@@ -1,13 +1,8 @@
-import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
+import { PermissionsBitField, SlashCommandBuilder, type User } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
-import {
-  expandAlias,
-  parseEvidence,
-  ResponseBuilder,
-  type CommandConfig,
-  type CommandResponse,
-} from "../_core/index.js";
+import { expandAlias, parseEvidence, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
+import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
 
 /**
  * Kick Command - Kicks a user from the server
@@ -35,87 +30,111 @@ export class KickCommand extends ModerationCommand {
       throw new Error("This command only supports slash command format");
     }
 
-    const targetUser = this.getUserOption("user", true);
+    const singleUser = this.getUserOption("user");
+    const idsInput = this.getStringOption("users");
+    const listAttachment = this.getAttachmentOption("list");
+
     const reasonInput = this.getStringOption("reason") ?? "No reason provided";
     const evidenceStr = this.getStringOption("evidence");
     const silent = this.getBooleanOption("silent") ?? false;
 
-    try {
-      // Check if user is in the server (required for kicks)
-      const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
-      if (!member) {
-        return this.createModerationError(
-          "kick",
-          targetUser,
-          `❌ **${targetUser.username}** is not a member of this server.\n\n` +
-            `**User ID:** \`${targetUser.id}\`\n\n` +
-            `💡 **Tips:**\n` +
-            `• You can only kick active server members\n` +
-            `• Use \`/ban\` to punish users who have left\n` +
-            `• Use \`/note\` to add notes about former members`
-        );
+    // Build target ID list
+    const idSet = new Set<string>();
+    if (singleUser) idSet.add(singleUser.id);
+
+    if (idsInput) {
+      idsInput
+        .split(/[\s,]+/)
+        .map((id) => id.trim())
+        .filter((id) => /^\d{17,20}$/.test(id))
+        .forEach((id) => idSet.add(id));
+    }
+
+    if (listAttachment) {
+      const contentType = listAttachment.contentType ?? "";
+      const fileName = listAttachment.name;
+      const isTxtOrCsv = /text\/(plain|csv)/i.test(contentType) || /\.(txt|csv)$/i.test(fileName);
+
+      if (!isTxtOrCsv) {
+        return this.createModerationError("kick", this.user, "Unsupported attachment type. Only .txt or .csv allowed.");
       }
 
-      // Validate moderation target (hierarchy, self-moderation, etc.)
       try {
-        this.validateModerationTarget(member);
-      } catch (error) {
-        return this.createModerationError(
-          "kick",
-          targetUser,
-          `${error instanceof Error ? error.message : "Unknown validation error"}\n\n` +
-            `💡 **Tips:**\n` +
-            `• Check your role hierarchy\n` +
-            `• Ensure you have kick permissions\n` +
-            `• Verify the bot's role position`
+        const txt = await (await fetch(listAttachment.url)).text();
+        txt
+          .split(/[\s,\n]+/)
+          .map((id) => id.trim())
+          .filter((id) => /^\d{17,20}$/.test(id))
+          .forEach((id) => idSet.add(id));
+      } catch {
+        return this.createModerationError("kick", this.user, "Failed to download or parse attachment");
+      }
+    }
+
+    const targetIds = Array.from(idSet);
+
+    if (targetIds.length === 0) {
+      return this.createModerationError("kick", this.user, "No valid target user IDs provided.");
+    }
+
+    try {
+      let success = 0;
+      let failed = 0;
+
+      for (const id of targetIds) {
+        const fetched: User | null = await this.client.users.fetch(id).catch(() => null);
+        const displayUser = fetched ?? ({ id, username: "Unknown" } as User);
+
+        // Check member presence
+        const member = await this.guild.members.fetch(id).catch(() => null);
+        if (!member) {
+          failed++;
+          continue;
+        }
+
+        // Validate hierarchy etc.
+        try {
+          this.validateModerationTarget(member);
+        } catch {
+          failed++;
+          continue;
+        }
+
+        // Expand alias with per-user context
+        const reason = await expandAlias(reasonInput, {
+          guild: this.guild,
+          user: displayUser,
+          moderator: this.user,
+        });
+
+        const evidence = parseEvidence(evidenceStr ?? undefined);
+
+        await this.client.moderationManager.kick(
+          this.guild,
+          id,
+          this.user.id,
+          reason,
+          evidence.all.length > 0 ? evidence.all : undefined,
+          !silent,
+          {
+            interactionId: this.interaction.id,
+            commandName: this.interaction.commandName,
+            interactionLatency: Date.now() - this.interaction.createdTimestamp,
+          }
         );
+
+        success++;
       }
 
-      // Expand alias with automatic variable substitution
-      const reason = await expandAlias(reasonInput, {
-        guild: this.guild,
-        user: targetUser,
+      return buildModSuccess({
+        title: "Kick Complete",
+        target: this.user,
         moderator: this.user,
+        reason: `Kicked ${success}/${targetIds.length} users (${failed} failed).`,
+        notified: !silent,
       });
-
-      // Parse evidence automatically
-      const evidence = parseEvidence(evidenceStr ?? undefined);
-
-      // Execute the kick using moderation manager
-      const case_ = await this.client.moderationManager.kick(
-        this.guild,
-        targetUser.id,
-        this.user.id,
-        reason,
-        evidence.all.length > 0 ? evidence.all : undefined,
-        !silent
-      );
-
-      // Success response with better formatting
-      return new ResponseBuilder()
-        .success("Kick Applied")
-        .content(
-          `👢 **${targetUser.username}** has been kicked from the server.\n\n` +
-            `📋 **Case #${String(case_.caseNumber)}** created\n` +
-            (reason !== "No reason provided" ? `📝 **Reason:** ${reason}\n` : "") +
-            (evidence.all.length > 0 ? `📎 **Evidence:** ${evidence.all.length} item(s) attached\n` : "") +
-            (!silent ? `📨 User was notified via DM` : `🔕 Silent kick (user not notified)`) +
-            `\n\n💡 **Note:** User can rejoin with a new invite link.`
-        )
-        .ephemeral()
-        .build();
     } catch (error) {
-      return this.createModerationError(
-        "kick",
-        targetUser,
-        `${error instanceof Error ? error.message : "Unknown error"}\n\n` +
-          `💡 **Common solutions:**\n` +
-          `• Check if the user is still in the server\n` +
-          `• Verify you have kick permissions\n` +
-          `• Ensure proper role hierarchy\n` +
-          `• Check if the bot has kick permissions\n\n` +
-          `📖 **Need help?** Contact an administrator.`
-      );
+      return this.createModerationError("kick", this.user, error instanceof Error ? error.message : "Unknown error");
     }
   }
 }
@@ -128,11 +147,14 @@ export const builder = new SlashCommandBuilder()
   .setName("kick")
   .setDescription("Kick a user from the server")
   .setDefaultMemberPermissions(0) // Hide from all regular users
-  .addUserOption((option) => option.setName("user").setDescription("The user to kick").setRequired(true))
-  .addStringOption((option) =>
-    option.setName("reason").setDescription("Reason for the kick (or alias name)").setRequired(false)
+  .addUserOption((option) => option.setName("user").setDescription("The user to kick").setRequired(false))
+  .addStringOption((opt) =>
+    opt.setName("users").setDescription("User IDs separated by space/comma/newline to kick").setRequired(false)
+  )
+  .addAttachmentOption((opt) =>
+    opt.setName("list").setDescription("Attachment (.txt/.csv) with user IDs").setRequired(false)
   )
   .addStringOption((option) =>
-    option.setName("evidence").setDescription("Evidence links (comma-separated)").setRequired(false)
+    option.setName("reason").setDescription("Reason for the kick (or alias name)").setRequired(false)
   )
   .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false));

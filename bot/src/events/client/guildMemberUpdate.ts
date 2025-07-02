@@ -1,6 +1,7 @@
 import type { GuildMember, PartialGuildMember } from "discord.js";
 import { Events } from "discord.js";
 
+import { prisma } from "../../database/index.js";
 import { ClientEvent } from "../../structures/Event.js";
 
 export default new ClientEvent(
@@ -45,6 +46,41 @@ export default new ClientEvent(
       changes.push("timeout");
       before.communicationDisabledUntil = oldMember.communicationDisabledUntil?.toISOString();
       after.communicationDisabledUntil = newMember.communicationDisabledUntil?.toISOString();
+    }
+
+    // NEW_CODE: Automatically resolve expired timeouts
+    if (oldMember.communicationDisabledUntil && !newMember.communicationDisabledUntil) {
+      try {
+        const guildId = newMember.guild.id;
+        const userId = newMember.id;
+
+        // Find the latest active TIMEOUT moderation case
+        const modCase = await prisma.moderationCase.findFirst({
+          where: { guildId, userId, type: "TIMEOUT", isActive: true },
+          orderBy: { caseNumber: "desc" },
+        });
+
+        if (modCase) {
+          await prisma.moderationCase.update({
+            where: { id: modCase.id },
+            data: {
+              isActive: false,
+              staffNote: "Timeout expired automatically",
+            },
+          });
+        }
+
+        // Emit dedicated moderation log entry
+        await client.logManager.log(guildId, "MOD_UNTIMEOUT", {
+          userId,
+          executorId: client.user?.id,
+          reason: "Timeout expired automatically",
+          caseId: modCase?.id,
+          metadata: { caseNumber: modCase?.caseNumber },
+        });
+      } catch (err) {
+        console.warn("[guildMemberUpdate] Failed to process automatic untimeout:", err);
+      }
     }
 
     // Try to get audit log information for who made the change

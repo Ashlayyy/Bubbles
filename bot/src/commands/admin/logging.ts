@@ -226,6 +226,16 @@ class LoggingCommand extends AdminCommand {
     super(config);
   }
 
+  /**
+   * Disable the BaseCommand automatic defer behaviour so each sub-command
+   * inside this LoggingCommand can control deferral on its own. Most helper
+   * functions already call `interaction.deferReply()` where necessary, and
+   * the automatic deferral was leading to InteractionAlreadyReplied errors.
+   */
+  protected shouldAutoDefer(): boolean {
+    return false;
+  }
+
   protected async execute(): Promise<CommandResponse> {
     if (!this.interaction.guild || !this.interaction.isChatInputCommand()) {
       return {};

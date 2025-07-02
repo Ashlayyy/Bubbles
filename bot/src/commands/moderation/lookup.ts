@@ -1,4 +1,11 @@
-import { GuildMember, SlashCommandBuilder, time, TimestampStyles, User } from "discord.js";
+import {
+  GuildMember,
+  SlashCommandBuilder,
+  time,
+  TimestampStyles,
+  User,
+  type ChatInputCommandInteraction,
+} from "discord.js";
 import type { ModerationCase } from "../../structures/ModerationManager.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { type CommandConfig, type CommandResponse } from "../_core/index.js";
@@ -125,19 +132,28 @@ export class LookupCommand extends ModerationCommand {
           inline: false,
         });
 
-        // Add recent cases if detailed
+        // Show detailed case list with pagination
         if (detailed && cases.length > 0) {
-          const recentCases = cases.slice(0, 5);
-          embed.addFields({
-            name: "📋 Recent Cases",
-            value: recentCases
-              .map(
-                (c) =>
-                  `**#${c.caseNumber}** - ${c.type} (${c.points}pts) - ${time(c.createdAt, TimestampStyles.ShortDate)}\n${c.reason ?? "No reason"}`
-              )
-              .join("\n\n"),
+          const fields = cases.map((c) => ({
+            name: `#${c.caseNumber} • ${c.type} • ${c.points} pts`,
+            value: `${c.reason ?? "No reason"}\n<t:${Math.floor(c.createdAt.getTime() / 1000)}:R>`,
             inline: false,
+          }));
+
+          // Send paginated embed
+          await this.client.sendMultiPageEmbed(this.interaction as ChatInputCommandInteraction, fields, {
+            maxFieldsPerEmbed: 6,
+            otherEmbedData: {
+              title: `📋 Case History for ${targetUser.tag}`,
+              color: getRiskColor(riskAssessment.level),
+              footer: { text: `Total cases: ${cases.length}` },
+              thumbnail: { url: targetUser.displayAvatarURL({ size: 128 }) },
+            },
+            otherReplyOptions: { ephemeral: true },
           });
+
+          // Also send the summary embed silently (components only on paginated)
+          return { embeds: [embed], ephemeral: true };
         }
       }
 

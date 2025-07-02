@@ -2,12 +2,14 @@ import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import camelCaseFn from "lodash/camelCase.js";
 import kebabCaseFn from "lodash/kebabCase.js";
 
+import { ChannelType } from "discord.js";
 import {
   getGuildConfig,
   defaults as guildConfigDefaults,
   descriptions as guildConfigDescriptions,
   updateGuildConfig,
 } from "../../database/GuildConfig.js";
+import { prisma } from "../../database/index.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { AdminCommand } from "../_core/specialized/AdminCommand.js";
@@ -78,6 +80,10 @@ export class ConfigCommand extends AdminCommand {
         return await this.handleModerationNotifyUser();
       }
 
+      if (subcommandGroup === "moderation" && subcommand === "case_rule") {
+        return await this.handleModerationCaseRule();
+      }
+
       // Handle specific subcommands
       switch (subcommand) {
         case "set-welcome-channel":
@@ -90,6 +96,8 @@ export class ConfigCommand extends AdminCommand {
           return this.handleLoggingHelp();
         case "reset":
           return await this.handleResetSettings();
+        case "set-modlog-channel":
+          return await this.handleSetModlogChannel();
         default:
           // Handle grouped settings
           if (subcommandGroup) {
@@ -131,6 +139,33 @@ export class ConfigCommand extends AdminCommand {
     return this.createAdminSuccess(
       "Moderation Settings Updated",
       `DM notifications have been ${enabled ? "enabled" : "disabled"}.`
+    );
+  }
+
+  private async handleModerationCaseRule(): Promise<CommandResponse> {
+    const action = this.getStringOption("action", true).toUpperCase();
+    const handling = this.getStringOption("handling", true).toUpperCase();
+
+    const allowedActions = ["BAN", "UNBAN", "TIMEOUT", "UNTIMEOUT", "KICK", "WARN", "NOTE"];
+    const allowedModes = ["NEW", "UPDATE"];
+
+    if (!allowedActions.includes(action)) {
+      throw new Error(`Unknown action ${action}`);
+    }
+    if (!allowedModes.includes(handling)) {
+      throw new Error(`Handling must be NEW or UPDATE`);
+    }
+
+    const config = await getGuildConfig(this.guild.id);
+    const rules: Record<string, string> =
+      (config as unknown as { moderation_case_rules?: Record<string, string> }).moderation_case_rules ?? {};
+    rules[action] = handling;
+
+    await updateGuildConfig(this.guild.id, { moderation_case_rules: rules } as Record<string, unknown>);
+
+    return this.createAdminSuccess(
+      "Moderation Case Rule Updated",
+      `Action **${action}** will now use **${handling}** handling.`
     );
   }
 
@@ -205,6 +240,34 @@ export class ConfigCommand extends AdminCommand {
     return this.createAdminSuccess("Settings Reset", "All settings have been reset to their default values.");
   }
 
+  private async handleSetModlogChannel(): Promise<CommandResponse> {
+    const channel = this.getChannelOption("channel", true);
+
+    // Build channelRouting map for all moderation log types
+    const types = ["MOD_BAN", "MOD_KICK", "MOD_TIMEOUT", "MOD_UNTIMEOUT", "MOD_WARN", "MOD_NOTE", "MOD_UNBAN"];
+
+    const routing: Record<string, string> = {};
+    types.forEach((t) => (routing[t] = channel.id));
+
+    await prisma.logSettings.upsert({
+      where: { guildId: this.guild.id },
+      update: {
+        channelRouting: routing,
+        enabledLogTypes: { set: types },
+      },
+      create: {
+        guildId: this.guild.id,
+        channelRouting: routing,
+        enabledLogTypes: types,
+      },
+    });
+
+    return this.createAdminSuccess(
+      "Moderation Log Channel Set",
+      `All moderation actions will now be logged to ${channel}.`
+    );
+  }
+
   private async handleGroupedSetting(subcommandGroup: string, subcommand: string): Promise<CommandResponse> {
     const camelCase = camelCaseFn;
     const groupSettings = settingGroups[subcommandGroup];
@@ -221,6 +284,11 @@ export class ConfigCommand extends AdminCommand {
       newVal = this.getBooleanOption("new-value", true);
     } else if (typeof defaultVal === "number") {
       newVal = this.getIntegerOption("new-value", true);
+    } else if (settingKey.toLowerCase().includes("channelid")) {
+      // Accept any guild channel
+      newVal = this.getChannelOption("new-value");
+    } else if (settingKey.toLowerCase().includes("roleid")) {
+      newVal = this.getRoleOption("new-value");
     } else {
       // Attempt to fetch as channel / role / string
       newVal = this.getStringOption("new-value", true);
@@ -263,6 +331,33 @@ export const builder = (() => {
             .setName("notify_user")
             .setDescription("Toggle DM notifications for moderation actions")
             .addBooleanOption((opt) => opt.setName("enabled").setDescription("Enable or disable").setRequired(true))
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName("case_rule")
+            .setDescription("Set how a moderation action creates or updates cases")
+            .addStringOption((opt) =>
+              opt
+                .setName("action")
+                .setDescription("Moderation action")
+                .setRequired(true)
+                .addChoices(
+                  { name: "BAN", value: "BAN" },
+                  { name: "UNBAN", value: "UNBAN" },
+                  { name: "TIMEOUT", value: "TIMEOUT" },
+                  { name: "UNTIMEOUT", value: "UNTIMEOUT" },
+                  { name: "KICK", value: "KICK" },
+                  { name: "WARN", value: "WARN" },
+                  { name: "NOTE", value: "NOTE" }
+                )
+            )
+            .addStringOption((opt) =>
+              opt
+                .setName("handling")
+                .setDescription("Behaviour")
+                .setRequired(true)
+                .addChoices({ name: "NEW", value: "NEW" }, { name: "UPDATE", value: "UPDATE" })
+            )
         )
     )
     .addSubcommand((s) =>
@@ -309,7 +404,15 @@ export const builder = (() => {
             )
         )
     )
-    .addSubcommand((s) => s.setName("reset").setDescription("Reset all settings to defaults"));
+    .addSubcommand((s) => s.setName("reset").setDescription("Reset all settings to defaults"))
+    .addSubcommand((s) =>
+      s
+        .setName("set-modlog-channel")
+        .setDescription("Set the channel where moderation logs are sent")
+        .addChannelOption((o) =>
+          o.setName("channel").setDescription("Channel").addChannelTypes(ChannelType.GuildText).setRequired(true)
+        )
+    );
 
   // ----------------------------------------------------------------
   // Dynamically generate grouped subcommands for each setting
@@ -332,6 +435,11 @@ export const builder = (() => {
             sub.addBooleanOption((opt) => opt.setName("new-value").setDescription("New value").setRequired(true));
           } else if (typeof defaultVal === "number") {
             sub.addIntegerOption((opt) => opt.setName("new-value").setDescription("New value").setRequired(true));
+          } else if (key.toLowerCase().includes("channelid")) {
+            // Accept any guild channel
+            sub.addChannelOption((opt) => opt.setName("new-value").setDescription("Channel").setRequired(true));
+          } else if (key.toLowerCase().includes("roleid")) {
+            sub.addRoleOption((opt) => opt.setName("new-value").setDescription("Role").setRequired(true));
           } else {
             sub.addStringOption((opt) => opt.setName("new-value").setDescription("New value").setRequired(true));
           }

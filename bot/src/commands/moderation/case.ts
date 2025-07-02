@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, type User } from "discord.js";
+import { prisma } from "../../database/index.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import {
   formatDuration,
@@ -43,6 +44,10 @@ export class CaseCommand extends ModerationCommand {
           return await this.handleUserHistory();
         case "note":
           return await this.handleAddNote();
+        case "edit":
+          return await this.handleEditCase();
+        case "delete":
+          return await this.handleDeleteCase();
         default:
           throw new Error("Unknown subcommand");
       }
@@ -139,7 +144,6 @@ export class CaseCommand extends ModerationCommand {
   private async handleAddNote(): Promise<CommandResponse> {
     const caseNumber = this.getIntegerOption("number", true);
     const note = this.getStringOption("note", true);
-    const isInternal = this.getBooleanOption("internal") ?? false;
 
     const case_ = await this.client.moderationManager.getCase(this.guild.id, caseNumber);
 
@@ -151,12 +155,78 @@ export class CaseCommand extends ModerationCommand {
       );
     }
 
-    await this.client.moderationManager.addCaseNote(case_.id, this.user.id, note, isInternal);
+    await this.client.moderationManager.addCaseNote(case_.id, this.user.id, note);
 
     return this.createModerationResponse(
       "note added",
       { username: "Case", id: "system" } as User,
-      `Added ${isInternal ? "internal" : "public"} note to case #${caseNumber}.`
+      `Added note to case #${caseNumber}.`
+    );
+  }
+
+  private async handleEditCase(): Promise<CommandResponse> {
+    const caseNumber = this.getIntegerOption("number", true);
+    const newReason = this.getStringOption("reason");
+    const newPoints = this.getIntegerOption("points");
+    const newSeverity = this.getStringOption("severity");
+
+    if (!newReason && newPoints === null && !newSeverity) {
+      return this.createModerationError(
+        "edit case",
+        { username: "N/A", id: "unknown" } as User,
+        "You must provide at least one field to update (reason, points, severity)."
+      );
+    }
+
+    const case_ = await this.client.moderationManager.getCase(this.guild.id, caseNumber);
+    if (!case_) {
+      return this.createModerationError(
+        "edit case",
+        { username: "N/A", id: "unknown" } as User,
+        `Case #${caseNumber} not found.`
+      );
+    }
+
+    await prisma.moderationCase.update({
+      where: { id: case_.id },
+      data: {
+        reason: newReason ?? undefined,
+        points: newPoints ?? undefined,
+        severity: newSeverity ?? undefined,
+      },
+    });
+
+    return this.createModerationResponse(
+      "case updated",
+      { username: "Case", id: "system" } as User,
+      `Updated case #${caseNumber}.`
+    );
+  }
+
+  private async handleDeleteCase(): Promise<CommandResponse> {
+    const caseNumber = this.getIntegerOption("number", true);
+
+    const case_ = await this.client.moderationManager.getCase(this.guild.id, caseNumber);
+    if (!case_) {
+      return this.createModerationError(
+        "delete case",
+        { username: "N/A", id: "unknown" } as User,
+        `Case #${caseNumber} not found.`
+      );
+    }
+
+    await prisma.moderationCase.update({
+      where: { id: case_.id },
+      data: {
+        isActive: false,
+        staffNote: (case_.staffNote ?? "") + `\n[Soft-deleted by ${this.user.id} at ${new Date().toISOString()}]`,
+      },
+    });
+
+    return this.createModerationResponse(
+      "case archived",
+      { username: "Case", id: "system" } as User,
+      `Archival complete for case #${caseNumber}.`
     );
   }
 }
@@ -193,4 +263,30 @@ export const builder = new SlashCommandBuilder()
       .addBooleanOption((opt) =>
         opt.setName("internal").setDescription("Make this note internal (staff-only)").setRequired(false)
       )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("edit")
+      .setDescription("Edit a moderation case")
+      .addIntegerOption((opt) => opt.setName("number").setDescription("Case number").setRequired(true))
+      .addStringOption((opt) => opt.setName("reason").setDescription("New reason").setRequired(false))
+      .addIntegerOption((opt) => opt.setName("points").setDescription("New point value").setRequired(false))
+      .addStringOption((opt) =>
+        opt
+          .setName("severity")
+          .setDescription("New severity")
+          .addChoices(
+            { name: "LOW", value: "LOW" },
+            { name: "MEDIUM", value: "MEDIUM" },
+            { name: "HIGH", value: "HIGH" },
+            { name: "CRITICAL", value: "CRITICAL" }
+          )
+          .setRequired(false)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("delete")
+      .setDescription("Delete a moderation case")
+      .addIntegerOption((opt) => opt.setName("number").setDescription("Case number").setRequired(true))
   );

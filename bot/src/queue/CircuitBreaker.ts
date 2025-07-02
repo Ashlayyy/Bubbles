@@ -84,15 +84,15 @@ export class CircuitBreaker {
   private logMetrics(): void {
     const errorRate = this.requests > 0 ? ((this.requests - this.successes) / this.requests) * 100 : 0;
 
-    logger.debug(`Circuit breaker ${this.name} metrics:`, {
-      state: this.state,
-      failures: this.failures,
-      requests: this.requests,
-      successes: this.successes,
-      errorRate: `${errorRate.toFixed(2)}%`,
-      lastFailure: this.lastFailure ? new Date(this.lastFailure).toISOString() : "none",
-      lastSuccess: this.lastSuccess ? new Date(this.lastSuccess).toISOString() : "none",
-    });
+    logger.debug(
+      `Circuit breaker ${this.name} metrics: ${JSON.stringify({
+        state: this.state,
+        failures: this.failures,
+        requests: this.requests,
+        successes: this.successes,
+        errorRate: `${errorRate.toFixed(2)}%`,
+      })} `
+    );
   }
 
   getStatus() {
