@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import jwt from "jsonwebtoken";
+import { SignJWT } from "jose";
 import { WebSocket } from "ws";
 import logger from "../logger.js";
 import type Client from "../structures/Client.js";
@@ -111,37 +111,45 @@ export class WebSocketService extends EventEmitter {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
     // Create a bot JWT token for authentication
-    const botToken = this.generateBotToken();
+    this.generateBotToken()
+      .then((botToken) => {
+        const authMessage = {
+          type: "AUTH",
+          data: {
+            token: botToken,
+            type: "BOT",
+            shardId: this.client.shard?.ids[0] ?? 0,
+          },
+        };
 
-    const authMessage = {
-      type: "AUTH",
-      data: {
-        token: botToken,
-        type: "BOT",
-        shardId: this.client.shard?.ids[0] ?? 0,
-      },
-    };
-
-    this.ws.send(JSON.stringify(authMessage));
-    logger.info("Sent authentication message to API");
+        this.ws.send(JSON.stringify(authMessage));
+        logger.info("Sent authentication message to API");
+      })
+      .catch((error) => {
+        logger.error("Error generating bot token:", error);
+        this.emit("auth_failed", error);
+      });
   }
 
-  private generateBotToken(): string {
-    // Generate a JWT token for bot authentication
+  private async generateBotToken(): Promise<string> {
+    // Generate a JWT token for bot authentication using jose (HS256)
     const payload = {
       type: "bot",
       clientId: process.env.DISCORD_CLIENT_ID,
       shardId: this.client.shard?.ids[0] ?? 0,
       permissions: ["BOT_COMMANDS", "SEND_EVENTS"],
-      iat: Math.floor(Date.now() / 1000),
-    };
+    } as Record<string, unknown>;
 
-    // Use the unified JWT_SECRET for consistency with API
     const secret = process.env.JWT_SECRET;
     if (!secret) {
       throw new Error("JWT_SECRET environment variable is required for bot authentication");
     }
-    return jwt.sign(payload, secret, { expiresIn: "24h" });
+
+    const key = new TextEncoder().encode(secret);
+
+    const token = await new SignJWT(payload).setProtectedHeader({ alg: "HS256" }).setExpirationTime("24h").sign(key);
+
+    return token;
   }
 
   private handleMessage(message: WebSocketMessage): void {

@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { createLogger } from '../types/shared.js';
 import { EventEmitter } from 'events';
-import jwt from 'jsonwebtoken';
+import { jwtVerify } from 'jose';
 import { config } from '../config/index.js';
 
 const logger = createLogger('websocket-manager');
@@ -228,13 +228,20 @@ export class WebSocketManager extends EventEmitter {
 			const { token, type, shardId, guildId } = message.data;
 
 			// Verify JWT token
-			const decoded = jwt.verify(token, config.jwt.secret) as any;
+			const secret = new TextEncoder().encode(config.jwt.secret);
+			const { payload } = (await jwtVerify(token, secret)) as {
+				payload: {
+					userId?: string;
+					permissions?: string[];
+					metadata?: Record<string, any>;
+				};
+			};
 
 			connection.authenticated = true;
 			connection.type = type || 'CLIENT';
-			connection.userId = decoded.userId;
-			connection.permissions = decoded.permissions || [];
-			connection.metadata = decoded.metadata || {};
+			connection.userId = payload.userId;
+			connection.permissions = payload.permissions || [];
+			connection.metadata = payload.metadata || {};
 
 			if (type === 'BOT' && typeof shardId === 'number') {
 				connection.shardId = shardId;

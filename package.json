@@ -45,7 +45,25 @@
 		"typecheck:api": "cd api && npx tsc --noEmit",
 		"typecheck:frontend": "cd frontend && npx tsc --noEmit",
 		"dev:metrics": "echo \"Start Prometheus with ./prometheus.yml\"",
-		"audit": "npm audit --audit-level=high"
+		"audit": "npm audit --audit-level=high",
+		"audit:all": "npm run audit:root && npm run audit:shared && npm run audit:bot && npm run audit:api && npm run audit:frontend",
+		"audit:root": "npm audit --audit-level=high",
+		"audit:shared": "cd shared && npm audit --audit-level=high",
+		"audit:bot": "cd bot && npm audit --audit-level=high",
+		"audit:api": "cd api && npm audit --audit-level=high",
+		"audit:frontend": "cd frontend && npm audit --audit-level=high",
+		"audit:fix": "npm run audit:fix:root && npm run audit:fix:shared && npm run audit:fix:bot && npm run audit:fix:api && npm run audit:fix:frontend",
+		"audit:fix:root": "npm audit fix",
+		"audit:fix:shared": "cd shared && npm audit fix",
+		"audit:fix:bot": "cd bot && npm audit fix",
+		"audit:fix:api": "cd api && npm audit fix",
+		"audit:fix:frontend": "cd frontend && npm audit fix",
+		"audit:production": "npm run audit:production:root && npm run audit:production:shared && npm run audit:production:bot && npm run audit:production:api && npm run audit:production:frontend",
+		"audit:production:root": "npm audit --production --audit-level=high",
+		"audit:production:shared": "cd shared && npm audit --production --audit-level=high",
+		"audit:production:bot": "cd bot && npm audit --production --audit-level=high",
+		"audit:production:api": "cd api && npm audit --production --audit-level=high",
+		"audit:production:frontend": "cd frontend && npm audit --production --audit-level=high"
 	},
 	"devDependencies": {
 		"@types/express-session": "^1.18.2",
@@ -66,10 +84,10 @@
 		"express-session": "^1.18.1",
 		"helmet": "^8.1.0",
 		"joi": "^17.13.3",
-		"jsonwebtoken": "^9.0.2",
 		"rimraf": "^6.0.1",
 		"rm": "^0.1.8",
 		"prom-client": "^14.2.0",
-		"envalid": "^8.0.0"
+		"envalid": "^8.0.0",
+		"jose": "^5.2.0"
 	}
 }

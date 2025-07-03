@@ -23,6 +23,7 @@ model GuildConfig {
   goodbyeChannelId       String?
   welcomeEnabled         Boolean         @default(true)
   goodbyeEnabled         Boolean         @default(true)
+  preferredLanguage      String          @default("en")
   // Ticket system fields
   ticketChannelId        String?
   ticketCategoryId       String?

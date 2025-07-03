@@ -1,5 +1,5 @@
 import { getPrismaClient } from './databaseService.js';
-import jwt from 'jsonwebtoken';
+import { decodeJwt } from 'jose';
 import crypto from 'crypto';
 
 // Helper to hash the raw JWT – avoids storing the full token in DB
@@ -18,7 +18,7 @@ export async function blacklistToken(
 ): Promise<void> {
 	try {
 		const prisma = getPrismaClient();
-		const decoded: any = jwt.decode(token);
+		const decoded: any = decodeJwt(token);
 		const expiresAt = decoded?.exp
 			? new Date(decoded.exp * 1000)
 			: new Date(Date.now() + 24 * 60 * 60 * 1000);

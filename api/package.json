@@ -11,7 +11,8 @@
 		"setup": "npm install && npm run build",
 		"lint": "echo 'Linting not configured yet'",
 		"format": "echo 'Formatting not configured yet'",
-		"clean": "rimraf dist"
+		"clean": "rimraf dist",
+		"rotate-keys": "tsx src/scripts/rotate-keys.ts"
 	},
 	"dependencies": {
 		"@bubbles/shared": "file:../shared",
@@ -27,11 +28,18 @@
 		"helmet": "^7.2.0",
 		"ioredis": "^5.4.1",
 		"joi": "^17.13.3",
-		"jsonwebtoken": "^9.0.2",
 		"rimraf": "^6.0.1",
 		"socket.io": "^4.7.5",
-		"winston": "^3.17.0",
 		"ws": "^8.17.1",
+		"jose": "^5.2.0",
+		"pino": "^8.14.1",
+		"pino-pretty": "^10.3.0",
+		"cron": "^3.1.0",
+		"yaml": "^2.3.4",
+		"dotenv-flow": "^3.2.0",
+		"dotenv-expand": "^10.0.0",
+		"@opentelemetry/sdk-node": "^0.46.0",
+		"@sentry/node": "^7.94.0",
 		"zod": "^3.22.2"
 	},
 	"devDependencies": {

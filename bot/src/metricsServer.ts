@@ -66,6 +66,19 @@ export function startMetricsServer(client: Client, queueService: UnifiedQueueSer
           res.writeHead(500);
           res.end("failed to collect metrics");
         });
+    } else if (req.url === "/health") {
+      // Basic health information; extend as needed
+      const overall = "ok";
+      const payload = {
+        overall,
+        timestamp: Date.now(),
+        components: {
+          discord: client.isReady(),
+          queue: !!queueService,
+        },
+      };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(payload));
     } else {
       res.writeHead(404);
       res.end();

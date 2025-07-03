@@ -1,9 +1,7 @@
-import { createLogger, format, transports } from "winston";
+import pino from "pino";
 
 import { getConfigFile } from "./botConfig.js";
 import { isDevEnvironment } from "./functions/general/environment.js";
-
-const { timestamp, combine, printf, errors, colorize, json } = format;
 
 /* The following top-level code will execute BEFORE anything else */
 
@@ -14,41 +12,38 @@ function initLogger() {
   const service = `${name}@${version ?? "UNKNOWN"}`;
 
   if (isDevEnvironment()) {
-    // Initialize development logger
-    return createLogger({
-      defaultMeta: { service },
-      format: combine(errors({ stack: true }), timestamp({ format: "HH:mm:ss:SS" })),
+    // Pretty-printed output in development
+    return pino({
+      name: service,
       level: "debug",
-      transports: [
-        new transports.Console({
-          format: combine(
-            colorize(),
-            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-            printf(({ level, message, timestamp, stack }) => `[${timestamp}] ${level}: ${stack ?? message}`)
-          ),
-        }),
-        new transports.File({
-          filename: "logs/complete-dev.log",
-          format: json(),
-        }),
-      ],
-    });
-  } else {
-    // Initialize production logger
-    return createLogger({
-      defaultMeta: { service },
-      format: combine(timestamp(), errors({ stack: true }), json()),
-      level: "debug",
-      transports: [
-        new transports.Console(),
-        new transports.File({ filename: "logs/error.log", level: "error" }),
-        new transports.File({ filename: "logs/warn.log", level: "warn" }),
-        new transports.File({ filename: "logs/info.log", level: "info" }),
-        new transports.File({ filename: "logs/complete.log" }),
-      ],
+      transport: {
+        target: "pino-pretty",
+        options: {
+          colorize: true,
+          translateTime: "HH:MM:ss.l",
+          ignore: "pid,hostname",
+        },
+      },
+      base: { service },
     });
   }
+
+  // JSON logs in production – structured & high-performance
+  return pino({
+    name: service,
+    level: "info",
+    base: { service },
+  });
 }
 
-const logger = initLogger();
+// Extend Pino logger with a `verbose` alias that maps to `debug` so the rest of the codebase keeps working.
+interface ExtendedLogger extends pino.Logger {
+  verbose: pino.Logger["debug"];
+}
+
+const baseLogger = initLogger();
+const logger: ExtendedLogger = baseLogger as unknown as ExtendedLogger;
+// eslint-disable-next-line @typescript-eslint/unbound-method
+logger.verbose = baseLogger.debug.bind(baseLogger);
+
 export default logger;

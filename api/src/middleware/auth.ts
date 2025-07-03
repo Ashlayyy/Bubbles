@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { jwtVerify } from 'jose';
 import { config } from '../config/index.js';
 import { isTokenBlacklisted } from '../services/tokenBlacklistService.js';
 import 'express-session';
@@ -46,8 +46,11 @@ export const authenticateToken = async (
 	}
 
 	try {
-		const decoded = jwt.verify(token, config.jwt.secret) as any;
-		req.user = decoded.user;
+		const secret = new TextEncoder().encode(config.jwt.secret);
+		const { payload } = (await jwtVerify(token, secret)) as {
+			payload: { user?: User };
+		};
+		req.user = payload.user;
 		next();
 	} catch (error) {
 		return res.status(403).json({
@@ -75,8 +78,11 @@ export const optionalAuth = async (
 	if (token) {
 		try {
 			if (!(await isTokenBlacklisted(token))) {
-				const decoded = jwt.verify(token, config.jwt.secret) as any;
-				req.user = decoded.user;
+				const secret = new TextEncoder().encode(config.jwt.secret);
+				const { payload } = (await jwtVerify(token, secret)) as {
+					payload: { user?: User };
+				};
+				req.user = payload.user;
 			}
 		} catch (error) {
 			// invalid token ignored for optional auth

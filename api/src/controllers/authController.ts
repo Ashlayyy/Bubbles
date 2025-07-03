@@ -2,7 +2,7 @@ import type { Response } from 'express';
 import { createLogger, type ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { config } from '../config/index.js';
-import jwt from 'jsonwebtoken';
+import { SignJWT } from 'jose';
 import { blacklistToken } from '../services/tokenBlacklistService.js';
 import { Session, SessionData } from 'express-session';
 import 'express-session';
@@ -144,10 +144,12 @@ export const discordCallback = async (
 			(req.session as any).user = userData;
 		}
 
-		// Generate JWT for frontend authentication
-		const jwtToken = jwt.sign({ user: userData }, config.jwt.secret, {
-			expiresIn: config.jwt.expiresIn,
-		} as jwt.SignOptions);
+		// Generate JWT for frontend authentication using jose
+		const secret = new TextEncoder().encode(config.jwt.secret);
+		const jwtToken = await new SignJWT({ user: userData })
+			.setProtectedHeader({ alg: 'HS256' })
+			.setExpirationTime(config.jwt.expiresIn)
+			.sign(secret);
 
 		logger.info(
 			`User authenticated: ${userData.username}#${userData.discriminator}`
@@ -258,10 +260,12 @@ export const refreshToken = async (req: AuthRequest, res: Response) => {
 			} as ApiResponse);
 		}
 
-		// Generate new JWT token
-		const newToken = jwt.sign({ user }, config.jwt.secret, {
-			expiresIn: config.jwt.expiresIn,
-		} as jwt.SignOptions);
+		// Generate new JWT token using jose
+		const secret = new TextEncoder().encode(config.jwt.secret);
+		const newToken = await new SignJWT({ user })
+			.setProtectedHeader({ alg: 'HS256' })
+			.setExpirationTime(config.jwt.expiresIn)
+			.sign(secret);
 
 		logger.info(
 			`Token refreshed for user: ${user.username}#${user.discriminator}`

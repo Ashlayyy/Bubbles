@@ -1,145 +1,69 @@
-import type { JSONSchemaType } from "ajv";
-import { Ajv } from "ajv";
-import addErrors from "ajv-errors";
-import addFormats from "ajv-formats";
 import { ActivityType } from "discord.js";
 import { constants, copyFileSync, existsSync, readFileSync, writeFileSync } from "fs";
 import lodash from "lodash";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { z } from "zod";
 
 import { isDevEnvironment } from "./functions/general/environment.js";
 
 // eslint-disable-next-line @typescript-eslint/unbound-method
 const { capitalize } = lodash;
 
+// Zod schemas
+const ActivityOptionSchema = z
+  .object({
+    name: z.string(),
+    type: z.enum(["playing", "streaming", "listening", "watching", "competing"]),
+    url: z
+      .string()
+      .regex(/^https:\/\/(www\.)?(twitch\.tv|youtube\.com)\/.+$/, "must be a valid youtube or twitch url")
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      // URL should only be present when type is streaming
+      if (data.type !== "streaming" && data.url !== undefined) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'URL should only be present when type is "streaming"',
+      path: ["url"],
+    }
+  );
+
+const WelcomeGoodbyeConfigSchema = z.object({
+  messages: z.array(
+    z.object({
+      title: z.string(),
+      description: z.string(),
+      color: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/i, "must be a valid hex color"),
+    })
+  ),
+});
+
+const BotConfigSchema = z.object({
+  name: z.string(),
+  activities: z.array(ActivityOptionSchema).min(1, "should have at least one activity"),
+  welcome: WelcomeGoodbyeConfigSchema.optional(),
+  goodbye: WelcomeGoodbyeConfigSchema.optional(),
+});
+
+// TypeScript types inferred from Zod schemas
 export interface ActivityOption {
-  /** String after type string */
   name: string;
-  /** Supported activity types {@link https://discord.com/developers/docs/events/gateway-events#activity-object-activity-structure for a bot}
-   */
   type: Exclude<ActivityType, ActivityType.Custom>;
-  /** Stream url. Either a {@link https://discord.com/developers/docs/events/gateway-events#activity-object-activity-types Twitch or YouTube url}
-   *
-   * Should only be present if `type` is `ActivityType.Streaming`
-   */
   url?: string;
 }
 
-export interface WelcomeGoodbyeConfig {
-  messages: {
-    title: string;
-    description: string;
-    color: string;
-  }[];
-}
-
+export type WelcomeGoodbyeConfig = z.infer<typeof WelcomeGoodbyeConfigSchema>;
 export interface BotConfig {
   name: string;
   activities: ActivityOption[];
   welcome?: WelcomeGoodbyeConfig;
   goodbye?: WelcomeGoodbyeConfig;
 }
-
-const ajv = addErrors(addFormats(new Ajv({ allErrors: true })));
-
-// Format for ActivityOption.url
-ajv.addFormat("streaming-uri", /^https:\/\/(www\.)?(twitch\.tv|youtube\.com)\/.+$/);
-ajv.addFormat("hex-color", /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/i);
-
-interface ActivityOptionJSON {
-  name: string;
-  type: "playing" | "streaming" | "listening" | "watching" | "competing";
-  url?: string;
-}
-
-interface BotConfigJSON {
-  name: string;
-  activities: ActivityOptionJSON[];
-  welcome?: WelcomeGoodbyeConfig;
-  goodbye?: WelcomeGoodbyeConfig;
-}
-
-const welcomeGoodbyeSchema: JSONSchemaType<WelcomeGoodbyeConfig> = {
-  type: "object",
-  properties: {
-    messages: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          description: { type: "string" },
-          color: { type: "string", format: "hex-color" },
-        },
-        required: ["title", "description", "color"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["messages"],
-  additionalProperties: false,
-};
-
-const schema: JSONSchemaType<BotConfigJSON> = {
-  type: "object",
-  properties: {
-    name: { type: "string" },
-    activities: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          name: { type: "string" },
-          type: {
-            type: "string",
-            enum: ["playing", "streaming", "listening", "watching", "competing"],
-            errorMessage: {
-              enum: `must equal one of the allowed values (case-sensitive): "playing", "streaming", "listening", "watching", "competing"`,
-            },
-          },
-          url: {
-            type: "string",
-            format: "streaming-uri",
-            nullable: true,
-            errorMessage: {
-              format: "must be a valid youtube or twitch url",
-            },
-          },
-        },
-        additionalProperties: false,
-        required: ["name", "type"],
-        errorMessage: {
-          additionalProperties: `should not have properties other than "name", "type", and (optionally) "url"`,
-          required: {
-            name: `should have a string property "name"`,
-            type: `should have a integer property "type"`,
-          },
-        },
-      },
-      minItems: 1,
-      errorMessage: {
-        minItems: "should have at least one entry",
-      },
-    },
-    welcome: {
-      ...welcomeGoodbyeSchema,
-      nullable: true,
-    },
-    goodbye: {
-      ...welcomeGoodbyeSchema,
-      nullable: true,
-    },
-  },
-  additionalProperties: false,
-  required: ["name", "activities"],
-  errorMessage: {
-    additionalProperties: `should not have properties other than "name", and "activities"`,
-    required: {
-      name: `should have a string property "name"`,
-      activities: `should have a object property "activities"`,
-    },
-  },
-};
-const validate = ajv.compile(schema);
 
 let config: BotConfig | undefined;
 
@@ -149,10 +73,10 @@ let config: BotConfig | undefined;
  */
 export function getConfigFile(): BotConfig {
   if (config === undefined) {
-    const DEFAULT_CONFIG_FILE_NAME = "config.default.json";
+    const DEFAULT_CONFIG_FILE_NAME = "config.default.yaml";
 
     const isDev = isDevEnvironment();
-    const configFileName = isDev ? "config.dev.json" : "config.json";
+    const configFileName = isDev ? "config.dev.yaml" : "config.yaml";
 
     if (!existsSync(configFileName)) {
       console.info(`Generating "${configFileName}"`);
@@ -160,10 +84,10 @@ export function getConfigFile(): BotConfig {
       if (isDev) {
         // Edit and then copy
 
-        const defaultJson = parseFile(DEFAULT_CONFIG_FILE_NAME);
-        defaultJson.name = defaultJson.name + "-dev";
+        const defaultConfig = parseFile(DEFAULT_CONFIG_FILE_NAME);
+        defaultConfig.name = defaultConfig.name + "-dev";
 
-        writeFileSync(configFileName, `${JSON.stringify(defaultJson, null, "  ")}\n`, {
+        writeFileSync(configFileName, stringifyYaml(defaultConfig), {
           encoding: "utf-8",
           flag: "wx", // error if already exists
         });
@@ -175,48 +99,43 @@ export function getConfigFile(): BotConfig {
 
       console.info(`Successfully generated "${configFileName}"\n`);
     }
-    config = fromJSON(parseFile(configFileName));
+    config = parseFile(configFileName);
   }
 
   return config;
 }
 
-function parseFile(fileName: string): BotConfigJSON {
-  const json: unknown = JSON.parse(readFileSync(fileName, "utf-8"));
+function parseFile(fileName: string): BotConfig {
+  const fileContent = readFileSync(fileName, "utf-8");
 
-  if (!validate(json)) {
-    let errorMsg = "Invalid config file:";
-    validate.errors?.forEach(({ instancePath, message }) => {
-      errorMsg += `\n\t${instancePath} ${message ?? ""}.`;
-    });
-    throw new Error(errorMsg);
+  let rawData: unknown;
+  if (fileName.endsWith(".yaml") || fileName.endsWith(".yml")) {
+    rawData = parseYaml(fileContent);
+  } else {
+    // Fallback to JSON for backward compatibility
+    rawData = JSON.parse(fileContent);
   }
 
-  // TODO: make this check with schema instead of manual check
-  const manualInvalid = json.activities
-    .map((a, i) => {
-      return { a, i }; // need index for error message
-    })
-    .filter(({ a }) => {
-      return a.type !== "streaming" && a.url !== undefined;
-    });
-  if (manualInvalid.length !== 0) {
-    let errorMsg = "Invalid config file:";
-    manualInvalid.forEach(({ i }) => {
-      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-      errorMsg += `\n\t/activities/${i}/url should only have "url" property when "type" is "streaming"`;
-    });
-    throw new Error(errorMsg);
+  try {
+    const validatedData = BotConfigSchema.parse(rawData);
+    return fromValidatedData(validatedData);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      let errorMsg = "Invalid config file:";
+      error.errors.forEach(({ path, message }) => {
+        errorMsg += `\n\t${path.join(".")} ${message}`;
+      });
+      throw new Error(errorMsg);
+    }
+    throw error;
   }
-
-  return json;
 }
 
-function fromJSON(data: BotConfigJSON): BotConfig {
+function fromValidatedData(data: z.infer<typeof BotConfigSchema>): BotConfig {
   const activities: ActivityOption[] = data.activities.map((a) => {
     return {
       name: a.name,
-      type: ActivityType[capitalize(a.type)],
+      type: ActivityType[capitalize(a.type) as keyof typeof ActivityType] as Exclude<ActivityType, ActivityType.Custom>,
       url: a.url,
     };
   });

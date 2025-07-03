@@ -1,5 +1,5 @@
-import dotenv from "dotenv";
-import { existsSync } from "fs";
+import dotenvExpand from "dotenv-expand";
+import * as dotenvFlow from "dotenv-flow";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -26,19 +26,17 @@ export function loadEnvironment(): void {
       // PM2 mode - use current working directory paths (PM2 handles this)
       console.log("🔧 Loading environment variables for PM2...");
 
-      // Load root .env first
-      const rootEnvPath = resolve(process.cwd(), ".env");
-      if (existsSync(rootEnvPath)) {
-        dotenv.config({ path: rootEnvPath });
-        console.log(`✅ Loaded ${rootEnvPath}`);
-      }
+      // Use dotenv-flow for PM2 mode
+      const result = dotenvFlow.config({
+        path: process.cwd(),
+        pattern: ".env[.node_env][.local]",
+        node_env: process.env.NODE_ENV ?? "development",
+      });
 
-      // Load environment-specific override
-      const nodeEnv = process.env.NODE_ENV ?? "development";
-      const envSpecificPath = resolve(process.cwd(), `.env.${nodeEnv}`);
-      if (existsSync(envSpecificPath)) {
-        dotenv.config({ path: envSpecificPath, override: true });
-        console.log(`✅ Loaded ${envSpecificPath}`);
+      if (result && !result.error && result.parsed) {
+        // Enable variable expansion
+        dotenvExpand.expand(result);
+        console.log(`✅ Loaded environment files from ${process.cwd()}`);
       }
     } else {
       // Local development mode - use relative paths from bot directory
@@ -47,33 +45,30 @@ export function loadEnvironment(): void {
       // Get the project root (3 levels up from this file: bot/src/functions/general/)
       const projectRoot = resolve(__dirname, "../../../../");
 
-      // Load root .env first
-      const rootEnvPath = resolve(projectRoot, ".env");
-      if (existsSync(rootEnvPath)) {
-        dotenv.config({ path: rootEnvPath });
-        console.log(`✅ Loaded ${rootEnvPath}`);
+      // Load from project root with dotenv-flow
+      const result = dotenvFlow.config({
+        path: projectRoot,
+        pattern: ".env[.node_env][.local]",
+        node_env: process.env.NODE_ENV ?? "development",
+      });
+
+      if (result && !result.error && result.parsed) {
+        // Enable variable expansion
+        dotenvExpand.expand(result);
+        console.log(`✅ Loaded environment files from ${projectRoot}`);
       }
 
-      // Load environment-specific override
-      const nodeEnv = process.env.NODE_ENV ?? "development";
-      const envSpecificPath = resolve(projectRoot, `.env.${nodeEnv}`);
-      if (existsSync(envSpecificPath)) {
-        dotenv.config({ path: envSpecificPath, override: true });
-        console.log(`✅ Loaded ${envSpecificPath}`);
-      }
-
-      // Also try local bot-specific files as final override
+      // Also try bot-specific files as final override
       const botDir = resolve(__dirname, "../../../");
-      const botEnvPath = resolve(botDir, ".env");
-      if (existsSync(botEnvPath)) {
-        dotenv.config({ path: botEnvPath, override: true });
-        console.log(`✅ Loaded bot-specific ${botEnvPath}`);
-      }
+      const botResult = dotenvFlow.config({
+        path: botDir,
+        pattern: ".env[.node_env][.local]",
+        node_env: process.env.NODE_ENV ?? "development",
+      });
 
-      const botEnvLocalPath = resolve(botDir, ".env.local");
-      if (existsSync(botEnvLocalPath)) {
-        dotenv.config({ path: botEnvLocalPath, override: true });
-        console.log(`✅ Loaded bot-specific ${botEnvLocalPath}`);
+      if (botResult && !botResult.error && botResult.parsed) {
+        dotenvExpand.expand(botResult);
+        console.log(`✅ Loaded bot-specific environment files from ${botDir}`);
       }
     }
 

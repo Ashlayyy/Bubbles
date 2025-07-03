@@ -153,7 +153,12 @@ export abstract class BaseCommand {
   protected async checkCooldown(): Promise<void> {
     if (!this.config.cooldown) return;
 
-    const consumed = await cooldownStore.tryConsume(this.context.user.id, this.config.name, this.config.cooldown);
+    const consumed = await cooldownStore.requestToken({
+      userId: this.context.user.id,
+      guildId: this.context.guild.id,
+      commandName: this.config.name,
+      cooldownMs: this.config.cooldown,
+    });
 
     if (!consumed) {
       const remaining = await cooldownStore.getRemaining(this.context.user.id, this.config.name);
@@ -163,6 +168,18 @@ export abstract class BaseCommand {
         true
       );
     }
+  }
+
+  // Helper method for manual cooldown checking
+  protected async cooldown(interaction: CommandInteraction): Promise<boolean> {
+    if (!this.config.cooldown) return true;
+
+    return await cooldownStore.requestToken({
+      userId: interaction.user.id,
+      guildId: interaction.guild?.id,
+      commandName: this.config.name,
+      cooldownMs: this.config.cooldown,
+    });
   }
 
   // Auto-defer logic

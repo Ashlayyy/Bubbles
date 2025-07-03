@@ -6,6 +6,7 @@ import type {
   InteractionReplyOptions,
   InteractionUpdateOptions,
   MessageContextMenuCommandInteraction,
+  RESTGetAPIApplicationCommandsResult,
   RESTPostAPIApplicationCommandsJSONBody,
 } from "discord.js";
 import {
@@ -28,18 +29,20 @@ import { BaseCommand } from "../commands/_core/BaseCommand.js";
 import { getGuildConfig } from "../database/GuildConfig.js";
 import { connect as connectToDB } from "../database/index.js";
 import { isDevEnvironment } from "../functions/general/environment.js";
-import { forNestedDirsFiles, importDefaultESM } from "../functions/general/fs.js";
-import { camel2Display, isOnlyDigits } from "../functions/general/strings.js";
 import logger from "../logger.js";
 import { startMetricsServer } from "../metricsServer.js";
 import { ScheduledActionService } from "../services/scheduledActionService.js";
 import { UnifiedQueueService } from "../services/unifiedQueueService.js";
 import { WebSocketService } from "../services/websocketService.js";
-import Command, { isCommand } from "./Command.js";
-import { EventEmitterType, eventEmitterTypeFromDir, isBaseEvent } from "./Event.js";
-import LogManager from "./LogManager.js";
-import ModerationManager from "./ModerationManager.js";
+import Command from "./Command.js";
+import type LogManager from "./LogManager.js";
+import type ModerationManager from "./ModerationManager.js";
 import PermissionManager from "./PermissionManager.js";
+import { CommandLoader } from "./helpers/CommandLoader.js";
+import { validateDevelopment, validateRequired } from "./helpers/EnvironmentValidator.js";
+import { EventLoader } from "./helpers/EventLoader.js";
+import { initializeManagers } from "./helpers/ManagerInitializer.js";
+import { ShutdownManager } from "./helpers/ShutdownManager.js";
 
 export enum DiscordAPIAction {
   /** Update commands. Will NOT remove commands with names that are no longer in use! */
@@ -65,10 +68,13 @@ export default class Client extends DiscordClient {
   /** All loaded commands from disk, indexed by command name */
   readonly commands: Collection<string, BaseCommand | Command> = new Collection<string, BaseCommand | Command>();
   readonly commandCategories: string[] = [];
+  private commandLoader: CommandLoader;
+  private eventLoader: EventLoader;
+  private shutdownManager: ShutdownManager;
 
   // Add the managers
-  readonly logManager: LogManager;
-  readonly moderationManager: ModerationManager;
+  public logManager!: LogManager;
+  public moderationManager!: ModerationManager;
 
   // WebSocket service for API communication
   public wsService: WebSocketService | null = null;
@@ -128,32 +134,12 @@ export default class Client extends DiscordClient {
 
       logger.verbose("Verifying environment variables are set in a valid form... ");
 
-      // Always required environment variables
-      /* eslint-disable @typescript-eslint/no-unnecessary-condition */
-      if (process.env.DISCORD_TOKEN === undefined)
-        throw new ReferenceError("DISCORD_TOKEN environment variable was not set!");
-      if (process.env.DB_URL === undefined) throw new ReferenceError("DB_URL environment variable was not set!");
-      if (process.env.DISCORD_CLIENT_ID === undefined) {
-        throw new ReferenceError("DISCORD_CLIENT_ID environment variable was not set!");
-      } else {
-        // Validate form of DISCORD_CLIENT_ID
-        if (!isOnlyDigits(process.env.DISCORD_CLIENT_ID)) {
-          throw new TypeError("DISCORD_CLIENT_ID environment variable must contain only digits!");
-        }
-      }
-      /* eslint-enable @typescript-eslint/no-unnecessary-condition */
-
-      // Development environment variables
+      // Validate environment variables
+      validateRequired();
       if (this.devMode) {
-        if (process.env.TEST_GUILD_ID === undefined) {
-          throw new ReferenceError("TEST_GUILD_ID environment variable was not set!");
-        } else {
-          // Validate form of TEST_GUILD_ID
-          if (!isOnlyDigits(process.env.TEST_GUILD_ID)) {
-            throw new TypeError("TEST_GUILD_ID environment variable must contain only digits!");
-          }
-        }
+        validateDevelopment();
       }
+
       logger.verbose("Successfully verified that environment variables are set in a valid form!");
       logger.warn(
         "Note that environment variable *values* can NOT be verified. They may still error at first use if the value(s) are invalid!"
@@ -163,10 +149,10 @@ export default class Client extends DiscordClient {
       this.config = getConfigFile();
       logger.info(`Loaded config for "${this.config.name}"`);
 
-      // Initialize managers
-      logger.info("Initializing managers");
-      this.logManager = new LogManager(this);
-      this.moderationManager = new ModerationManager(this, this.logManager);
+      // Initialize helper classes
+      this.commandLoader = new CommandLoader(this.devMode);
+      this.eventLoader = new EventLoader(this.devMode);
+      this.shutdownManager = new ShutdownManager(this);
 
       // Initialize WebSocket service for API communication
       this.wsService = null; // Will be initialized after login
@@ -185,6 +171,12 @@ export default class Client extends DiscordClient {
     }
 
     try {
+      // Initialize managers after construction
+      logger.info("Initializing managers");
+      const managers = initializeManagers(this);
+      this.logManager = managers.logManager;
+      this.moderationManager = managers.moderationManager;
+
       if (this.devMode) await this.manageDiscordAPICommands(DiscordAPIAction.Register);
 
       await connectToDB();
@@ -292,92 +284,20 @@ export default class Client extends DiscordClient {
     }
   }
 
-  /** Load slash commands */
+  /** Load slash commands using CommandLoader helper */
   private async loadCommands(): Promise<void> {
-    logger.info("Loading commands");
+    const { commands, commandCategories } = await this.commandLoader.loadCommands();
 
-    const commandsDir = this.devMode ? "./src/commands" : "./build/bot/src/commands";
+    // Copy to client properties for backward compatibility
+    this.commands.clear();
+    commands.forEach((command, name) => this.commands.set(name, command));
+    this.commandCategories.length = 0;
+    this.commandCategories.push(...commandCategories);
+  }
 
-    // Use a Set to avoid duplicates if a command is somehow in multiple places
-    const loadedCommandFiles = new Set<string>();
-
-    const processCommandFile = async (commandFilePath: string, category: string) => {
-      if (loadedCommandFiles.has(commandFilePath)) {
-        return; // Already loaded this file, skip.
-      }
-
-      // Skip helper directories that contain base classes and utilities
-      if (category === "_core" || category === "_shared") {
-        return;
-      }
-
-      if (category === "dev" && !this.devMode) {
-        logger.error(new Error(`Development only commands are present in production environment`));
-        process.exit(1);
-      }
-
-      const command = await importDefaultESM(commandFilePath, isCommand);
-
-      // Set category for both command types
-      command.category = category;
-
-      // Handle command name and builder
-      let commandName: string;
-      if (command instanceof BaseCommand) {
-        // For BaseCommand, we need to import the builder separately
-        try {
-          // Convert file path to proper import URL for ES modules (same approach as importDefaultESM)
-          const path = await import("path");
-          const url = await import("url");
-          const normalizedPath = commandFilePath.replace(/\\/g, "/");
-          const absolutePath = path.resolve(normalizedPath);
-          const fileUrl = url.pathToFileURL(absolutePath).href;
-
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          const module = await import(fileUrl);
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-          const builder = module.builder;
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          if (builder && typeof builder.toJSON === "function") {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            command.builder = builder;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            commandName = (builder.name as string) || `${category}-basecommand-${this.commands.size}`;
-          } else {
-            logger.warn(`BaseCommand at ${commandFilePath} has no valid builder export`);
-            commandName = `${category}-basecommand-${this.commands.size}`;
-          }
-        } catch (error) {
-          logger.warn(`Failed to load builder for BaseCommand at ${commandFilePath}:`, error);
-          commandName = `${category}-basecommand-${this.commands.size}`;
-        }
-      } else {
-        // For legacy Command instances, the builder is already attached
-        commandName = command.builder.name;
-      }
-
-      // Only add slash command categories to the user-facing list
-      if (category !== "context" && category !== "message" && category !== "user") {
-        if (!this.commandCategories.includes(category)) {
-          logger.debug(`\t${camel2Display(category)}`);
-          this.commandCategories.push(category);
-        }
-      }
-
-      this.commands.set(commandName, command);
-      loadedCommandFiles.add(commandFilePath);
-
-      logger.debug(`\t\t${commandName}`);
-    };
-
-    // Load top-level command categories (admin, general, etc.)
-    await forNestedDirsFiles(commandsDir, processCommandFile);
-
-    // Load context menu command categories (message, user)
-    const contextMenuDir = `${commandsDir}/context`;
-    await forNestedDirsFiles(contextMenuDir, processCommandFile);
-
-    logger.debug("Successfully loaded commands");
+  /** Load events using EventLoader helper */
+  private async loadEvents(): Promise<void> {
+    await this.eventLoader.loadEvents(this);
   }
 
   /**
@@ -442,6 +362,9 @@ export default class Client extends DiscordClient {
           return (command as BaseCommand).builder.toJSON();
         });
 
+        // Prune obsolete commands before registering new ones
+        await this.pruneObsoleteCommands(commandDataArr);
+
         logger.info("Registering commands with Discord API", {
           commands: { raw: this.commands, json: commandDataArr },
         });
@@ -501,46 +424,69 @@ export default class Client extends DiscordClient {
     }
   }
 
-  /** Load events */
-  private async loadEvents(): Promise<void> {
-    logger.info("Loading events");
+  /**
+   * Compare local commands with remote commands and delete obsolete ones
+   */
+  private async pruneObsoleteCommands(localCommands: RESTPostAPIApplicationCommandsJSONBody[]): Promise<void> {
+    const discordToken = process.env.DISCORD_TOKEN;
+    const clientId = process.env.DISCORD_CLIENT_ID;
 
-    const eventsDir = this.devMode ? "./src/events" : "./build/bot/src/events";
-    console.log(eventsDir);
-    const eventEmitterTypes: EventEmitterType[] = [];
-    await forNestedDirsFiles(eventsDir, async (eventFilePath, dir, file) => {
-      // Validate directory
-      const eventEmitterType = eventEmitterTypeFromDir(dir);
-      if (!eventEmitterTypes.includes(eventEmitterType)) {
-        logger.debug(`\t${camel2Display(EventEmitterType[eventEmitterType])}`);
-        eventEmitterTypes.push(eventEmitterType);
-      }
+    if (!discordToken || !clientId) {
+      logger.error("Missing DISCORD_TOKEN or DISCORD_CLIENT_ID for command pruning");
+      return;
+    }
 
-      // Load module
-      const event = await importDefaultESM(eventFilePath, isBaseEvent);
-      const eventFileName = file.replace(/\.[^/.]+$/, "");
+    const rest = new REST().setToken(discordToken);
+    const testGuildId = process.env.TEST_GUILD_ID;
 
-      // Bind event to its corresponding event emitter
-      if (eventEmitterType === EventEmitterType.Client && event.isClient()) {
-        event.bindToEventEmitter(this);
-      } else if (eventEmitterType === EventEmitterType.Prisma && event.isPrisma()) {
-        event.bindToEventEmitter();
+    try {
+      // Get existing commands from Discord
+      let existingCommands: RESTGetAPIApplicationCommandsResult;
+
+      if (this.devMode && testGuildId) {
+        existingCommands = (await rest.get(
+          Routes.applicationGuildCommands(clientId, testGuildId)
+        )) as RESTGetAPIApplicationCommandsResult;
       } else {
-        throw new Error(
-          `Event file does not match expected emitter type ("${EventEmitterType[eventEmitterType]}"): "${eventFileName}"` +
-            `. ` +
-            `This file probably belongs in a different directory (i.e. ...events/client instead of ...events/prisma)`
-        );
+        existingCommands = (await rest.get(
+          Routes.applicationCommands(clientId)
+        )) as RESTGetAPIApplicationCommandsResult;
       }
 
-      // Log now to signify loading this file is complete
-      if (event.event !== eventFileName) {
-        logger.debug(`\t\t"${eventFileName}" -> ${event.event}`);
-      } else {
-        logger.debug(`\t\t${eventFileName}`);
+      // Create set of local command names for quick lookup
+      const localCommandNames = new Set(localCommands.map((cmd) => cmd.name));
+
+      // Find commands that exist remotely but not locally
+      const obsoleteCommands = existingCommands.filter((remoteCmd) => !localCommandNames.has(remoteCmd.name));
+
+      if (obsoleteCommands.length === 0) {
+        logger.info("No obsolete commands found to prune");
+        return;
       }
-    });
-    logger.debug("Successfully loaded events");
+
+      logger.info(
+        `Found ${obsoleteCommands.length} obsolete commands to prune: ${obsoleteCommands.map((cmd) => cmd.name).join(", ")}`
+      );
+
+      // Delete obsolete commands
+      for (const cmd of obsoleteCommands) {
+        try {
+          if (this.devMode && testGuildId) {
+            await rest.delete(Routes.applicationGuildCommand(clientId, testGuildId, cmd.id));
+          } else {
+            await rest.delete(Routes.applicationCommand(clientId, cmd.id));
+          }
+          logger.info(`Deleted obsolete command: ${cmd.name}`);
+        } catch (error) {
+          logger.error(`Failed to delete obsolete command ${cmd.name}:`, error);
+        }
+      }
+
+      logger.info("Command pruning completed");
+    } catch (error) {
+      logger.error("Failed to prune obsolete commands:", error);
+      // Don't throw - this is not critical for registration
+    }
   }
 
   /** Generate embed with default values and check for
@@ -793,48 +739,19 @@ export default class Client extends DiscordClient {
         flags: 64 /* MessageFlags.Ephemeral */,
       };
       if (interaction.replied || interaction.deferred) {
-        await interaction
-          .followUp(errorReply)
-          .catch((e: unknown) => logger.error("Error sending followup error message:", e));
+        await interaction.followUp(errorReply).catch((e: unknown) => {
+          logger.error("Error sending followup error message:", e);
+        });
       } else {
-        await interaction
-          .reply(errorReply)
-          .catch((e: unknown) => logger.error("Error sending reply error message:", e));
+        await interaction.reply(errorReply).catch((e: unknown) => {
+          logger.error("Error sending reply error message:", e);
+        });
       }
     }
   }
 
   /** Gracefully shut down the bot */
   async shutdown(): Promise<void> {
-    logger.info("Shutting down bot...");
-
-    try {
-      // Shutdown cache and batch services first
-      const { cacheService } = await import("../services/cacheService.js");
-      const { batchOperationManager } = await import("../services/batchOperationManager.js");
-
-      logger.info("Flushing batch operations...");
-      await batchOperationManager.shutdown();
-
-      logger.info("Shutting down cache service...");
-      await cacheService.shutdown();
-
-      // Disconnect WebSocket service
-      if (this.wsService) {
-        logger.info("Disconnecting WebSocket service...");
-        this.wsService.disconnect();
-      }
-
-      // Disconnect from Discord
-      await this.destroy();
-
-      // Disconnect from database
-      const { disconnect } = await import("../database/index.js");
-      await disconnect();
-
-      logger.info("Bot shutdown complete");
-    } catch (error) {
-      logger.error("Error during shutdown:", error);
-    }
+    await this.shutdownManager.shutdown();
   }
 }
