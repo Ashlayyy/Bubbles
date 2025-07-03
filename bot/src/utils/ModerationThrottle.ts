@@ -1,6 +1,8 @@
 // Basic in-memory rate-limit helper for moderation actions
 // Will later be swapped for a distributed (Redis) version but keeps the same API.
 
+import Redis from "ioredis";
+
 interface RateLimitRule {
   /** Time window in milliseconds */
   windowMs: number;
@@ -17,8 +19,11 @@ const ACTION_RULES: Record<string, RateLimitRule> = {
   TIMEOUT: { windowMs: 5_000, max: 3 },
 };
 
-// Map key → timestamps of recent actions
-const buckets: Map<string, number[]> = new Map<string, number[]>();
+const redis = new Redis({
+  host: process.env.REDIS_HOST ?? "localhost",
+  port: parseInt(process.env.REDIS_PORT ?? "6379"),
+  password: process.env.REDIS_PASSWORD,
+});
 
 function getKey(guildId: string, moderatorId: string, actionType: string): string {
   return `${guildId}:${moderatorId}:${actionType}`;
@@ -32,18 +37,18 @@ export class ThrottleError extends Error {
 }
 
 export const ModerationThrottle = {
-  check(guildId: string, moderatorId: string, actionType: string): void {
+  async check(guildId: string, moderatorId: string, actionType: string): Promise<void> {
     const rule = ACTION_RULES[actionType] ?? DEFAULT_RULE;
     const key = getKey(guildId, moderatorId, actionType);
 
     const now = Date.now();
     const windowStart = now - rule.windowMs;
 
-    const timestamps = buckets.get(key) ?? [];
-    // Remove expired timestamps
-    const recent = timestamps.filter((ts) => ts >= windowStart);
-
-    if (recent.length >= rule.max) {
+    // Use Redis sorted set per key; score = timestamp
+    // Remove expired entries, then count
+    await redis.zremrangebyscore(key, 0, windowStart);
+    const count = await redis.zcard(key);
+    if (count >= rule.max) {
       throw new ThrottleError(
         `Please slow down – you can perform at most ${rule.max} ${actionType.toLowerCase()}(s) every ${
           rule.windowMs / 1000
@@ -51,8 +56,8 @@ export const ModerationThrottle = {
       );
     }
 
-    // Record current action
-    recent.push(now);
-    buckets.set(key, recent);
+    await redis.zadd(key, Date.now(), `${now}`);
+    // Set TTL slightly longer than window for cleanup
+    await redis.pexpire(key, rule.windowMs + 1000);
   },
 };

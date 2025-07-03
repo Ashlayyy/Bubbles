@@ -17,6 +17,7 @@ export class UnifiedQueueService {
   private workers = new Map<string, Bull.Queue>();
   private isInitialized = false;
   private workersStarted = false;
+  private completedJobs = 0;
 
   constructor(client: Client) {
     this.client = client;
@@ -163,6 +164,7 @@ export class UnifiedQueueService {
   }
 
   private sendJobCompletionNotification(job: Bull.Job<BotCommandJob>, result: unknown, success: boolean): void {
+    this.completedJobs++;
     if (!this.client.wsService || !job.data.guildId) return;
 
     try {
@@ -215,6 +217,7 @@ export class UnifiedQueueService {
         activeWorkers: this.workers.size,
         queues: Array.from(this.workers.keys()),
         redisHealthy: this.sharedQueueManager.isConnectionHealthy(),
+        completedJobs: this.completedJobs,
       },
       deadLetterQueue: this.deadLetterQueue.getDeadLetterStats(),
     };

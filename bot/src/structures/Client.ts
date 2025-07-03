@@ -31,6 +31,7 @@ import { isDevEnvironment } from "../functions/general/environment.js";
 import { forNestedDirsFiles, importDefaultESM } from "../functions/general/fs.js";
 import { camel2Display, isOnlyDigits } from "../functions/general/strings.js";
 import logger from "../logger.js";
+import { startMetricsServer } from "../metricsServer.js";
 import { ScheduledActionService } from "../services/scheduledActionService.js";
 import { UnifiedQueueService } from "../services/unifiedQueueService.js";
 import { WebSocketService } from "../services/websocketService.js";
@@ -248,7 +249,16 @@ export default class Client extends DiscordClient {
         this.scheduledActionService = new ScheduledActionService(this);
         this.scheduledActionService.start();
       } catch (error) {
-        logger.error("Failed to start ScheduledActionService:", error);
+        logger.warn("Failed to start scheduled action service:", error);
+      }
+
+      // Start metrics server (Prometheus pull model)
+      try {
+        const port = Number(process.env.METRICS_PORT ?? "9321");
+        startMetricsServer(this, this.queueService, port);
+        logger.info(`Metrics server started on port ${port}`);
+      } catch (error) {
+        logger.warn("Failed to start metrics server:", error);
       }
 
       this.started = true;

@@ -7,6 +7,12 @@ import { createLogger } from './types/shared.js';
 import { config } from './config/index.js';
 import { applySecureRouterPatch } from './utils/secureRouterPatch.js';
 import { responseEnhancer } from './middleware/response.js';
+import {
+	metricsMiddleware,
+	register as metricsRegister,
+} from './metrics/index.js';
+import '@bubbles/shared';
+import { env } from '@bubbles/shared';
 applySecureRouterPatch();
 
 import apiRoutes from './routes/index.js';
@@ -26,7 +32,21 @@ const logger = createLogger('api-server');
 const app = express();
 
 // Middleware
-app.use(helmet());
+app.use(
+	helmet({
+		contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false,
+		crossOriginEmbedderPolicy: false,
+	})
+);
+if (env.NODE_ENV === 'production') {
+	app.use(
+		helmet.hsts({
+			maxAge: 31536000,
+			includeSubDomains: true,
+			preload: true,
+		})
+	);
+}
 app.use(
 	cors({
 		origin: config.cors.origin,
@@ -56,8 +76,21 @@ app.use(
 const { monitoringMiddleware } = await import('./middleware/monitoring.js');
 app.use(monitoringMiddleware);
 
+// Add metrics middleware
+app.use(metricsMiddleware);
+
 // Mount API routes
 app.use('/api/v1', apiRoutes);
+
+// Expose Prometheus metrics (no auth)
+app.get('/metrics', async (_req, res) => {
+	try {
+		res.setHeader('Content-Type', metricsRegister.contentType);
+		res.end(await metricsRegister.metrics());
+	} catch (err) {
+		res.status(500).send('Failed to collect metrics');
+	}
+});
 
 // Development routes
 if (config.nodeEnv === 'development') {

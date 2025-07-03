@@ -16,6 +16,7 @@ import type {
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import { cooldownStore } from "../../utils/CooldownStore.js";
 import { ResponseBuilder } from "../_shared/responses/ResponseBuilder.js";
 import { CommandError, handleCommandError } from "./errors.js";
 import type {
@@ -69,7 +70,7 @@ export abstract class BaseCommand {
       this.context = this.buildContext(client, interaction);
 
       // Run middleware chain
-      this.runMiddleware();
+      await this.runMiddleware();
 
       // Auto-defer if configured
       if (this.shouldAutoDefer() && !interaction.deferred && !interaction.replied) {
@@ -121,7 +122,7 @@ export abstract class BaseCommand {
   }
 
   // Middleware execution
-  protected runMiddleware(): void {
+  protected async runMiddleware(): Promise<void> {
     // Permission checking
     this.checkPermissions();
 
@@ -131,7 +132,7 @@ export abstract class BaseCommand {
     }
 
     // Cooldown checking
-    this.checkCooldown();
+    await this.checkCooldown();
   }
 
   // Permission checking
@@ -148,10 +149,20 @@ export abstract class BaseCommand {
     }
   }
 
-  // Cooldown checking (placeholder - implement based on your cooldown system)
-  protected checkCooldown(): void {
+  // Cooldown checking
+  protected async checkCooldown(): Promise<void> {
     if (!this.config.cooldown) return;
-    // TODO: Implement cooldown checking logic
+
+    const consumed = await cooldownStore.tryConsume(this.context.user.id, this.config.name, this.config.cooldown);
+
+    if (!consumed) {
+      const remaining = await cooldownStore.getRemaining(this.context.user.id, this.config.name);
+      throw new CommandError(
+        `Please wait ${(remaining / 1000).toFixed(1)}s before using this command again.`,
+        "COOLDOWN",
+        true
+      );
+    }
   }
 
   // Auto-defer logic

@@ -1,4 +1,6 @@
+import { Gauge } from "prom-client";
 import logger from "../logger.js";
+import { metricsRegistry } from "../metrics/registry.js";
 import { CircuitBreakerOpenError, type CircuitBreakerConfig } from "./types.js";
 
 export class CircuitBreaker {
@@ -13,6 +15,9 @@ export class CircuitBreaker {
   private readonly operation: () => Promise<unknown>;
   private readonly name: string;
 
+  // Prometheus gauge for state (0=closed,1=half,2=open)
+  private stateGauge: Gauge;
+
   constructor(operation: () => Promise<unknown>, name: string, config: Partial<CircuitBreakerConfig> = {}) {
     this.operation = operation;
     this.name = name;
@@ -22,6 +27,14 @@ export class CircuitBreaker {
       monitorInterval: 10000, // 10 seconds
       ...config,
     };
+
+    // Prometheus gauge for state (0=closed,1=half,2=open)
+    this.stateGauge = new Gauge({
+      name: `circuit_breaker_state_${name.replace(/[^a-zA-Z0-9_]/g, "_")}`,
+      help: `Circuit breaker state for ${name} (0=closed,1=half_open,2=open)`,
+      registers: [metricsRegistry],
+    });
+    this.updateGauge();
 
     // Start monitoring
     this.startMonitoring();
@@ -59,6 +72,8 @@ export class CircuitBreaker {
       this.failures = 0;
       logger.info(`Circuit breaker ${this.name} closed after successful recovery`);
     }
+
+    this.updateGauge();
   }
 
   private onFailure(): void {
@@ -73,6 +88,8 @@ export class CircuitBreaker {
       this.state = "OPEN";
       logger.warn(`Circuit breaker ${this.name} reopened after failed recovery attempt`);
     }
+
+    this.updateGauge();
   }
 
   private startMonitoring(): void {
@@ -120,17 +137,28 @@ export class CircuitBreaker {
     this.lastFailure = 0;
     this.lastSuccess = 0;
     logger.info(`Circuit breaker ${this.name} has been reset`);
+
+    this.updateGauge();
   }
 
   forceOpen(): void {
     this.state = "OPEN";
     this.lastFailure = Date.now();
     logger.warn(`Circuit breaker ${this.name} has been forced OPEN`);
+
+    this.updateGauge();
   }
 
   forceClose(): void {
     this.state = "CLOSED";
     this.failures = 0;
     logger.info(`Circuit breaker ${this.name} has been forced CLOSED`);
+
+    this.updateGauge();
+  }
+
+  private updateGauge() {
+    const val = this.state === "CLOSED" ? 0 : this.state === "HALF_OPEN" ? 1 : 2;
+    this.stateGauge.set(val);
   }
 }

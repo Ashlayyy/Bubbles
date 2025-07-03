@@ -82,7 +82,7 @@ export default class ModerationManager {
 
       // Rate-limit check
       try {
-        ModerationThrottle.check(guild.id, action.moderatorId, action.type);
+        await ModerationThrottle.check(guild.id, action.moderatorId, action.type);
       } catch (err) {
         if (err instanceof ThrottleError) {
           throw err;
