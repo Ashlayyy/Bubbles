@@ -98,6 +98,13 @@ addRoute(
 				} as ApiResponse);
 			}
 
+			const MAX_BULK_OPERATIONS = 100; // Adjust based on your requirements
+			if (operations.length > MAX_BULK_OPERATIONS) {
+				return res.status(400).json({
+					success: false,
+					error: `Cannot process more than ${MAX_BULK_OPERATIONS} operations in a single request`,
+				} as ApiResponse);
+			}
 			for (const op of operations) {
 				if (!op.operation || !op.data) {
 					return res.status(400).json({
