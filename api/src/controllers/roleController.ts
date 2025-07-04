@@ -202,11 +202,10 @@ export const createRole = async (req: AuthRequest, res: Response) => {
 			data: {
 				guildId,
 				roleId: newRole.id,
-				userId: 'system',
+				userId: req.user?.id || null,
 				action: 'CREATE',
 				moderatorId: req.user?.id || 'unknown',
 				reason: reason || 'Role created via API',
-			},
 		});
 
 		// Broadcast role creation
