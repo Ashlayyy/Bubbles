@@ -439,7 +439,7 @@ export const removeRole = async (req: AuthRequest, res: Response) => {
 		if (roleConfig && roleConfig.currentUses > 0) {
 			await prisma.roleConfig.update({
 				where: { id: roleConfig.id },
-				data: { currentUses: { decrement: 1 } },
+				data: { currentUses: Math.max(0, roleConfig.currentUses - 1) },
 			});
 		}
 
