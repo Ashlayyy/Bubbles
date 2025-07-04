@@ -12,7 +12,28 @@ import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router({ mergeParams: true });
 
-router.use(authenticateToken);
+// ── api/src/routes/audit.ts ──
+
+import express from 'express';
+import { authenticateToken } from '../middleware/auth.js';
++import {
++	validateGuildId,
++	validateGuildAccess,
++} from '../middleware/validation.js';
+
+const router = express.Router();
+
+// Apply guild validation, then authentication, then access check to all audit routes
+- router.use(authenticateToken);
++ router.use(
++  '/',
++  validateGuildId,
++  authenticateToken,
++  validateGuildAccess
++);
+
+// …rest of your audit log endpoints…
+export default router;
 
 const auditPerm = {
 	discordPermissions: ['VIEW_AUDIT_LOG'],
