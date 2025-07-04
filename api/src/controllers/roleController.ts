@@ -664,6 +664,11 @@ function parsePeriod(period: string): number {
 	const [, amount, unit] = match;
 	const num = parseInt(amount);
 
+	// Validate the number is positive and reasonable
+	if (num <= 0 || num > 100) {
+		return 7 * 24 * 60 * 60 * 1000; // Default to 7 days
+	}
+
 	switch (unit) {
 		case 'd':
 			return num * 24 * 60 * 60 * 1000;
