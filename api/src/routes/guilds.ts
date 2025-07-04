@@ -16,10 +16,6 @@ import {
 } from '../middleware/validation.js';
 import {
 	generalRateLimit,
- import {
-   generalRateLimit,
- } from '../middleware/rateLimiting.js';
-} from '../middleware/rateLimiting.js';
 import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router();
