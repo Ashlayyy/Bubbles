@@ -307,16 +307,18 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 			// Create or update starboard message
 			if (!starboardMessage) {
 				// Create new starboard message
+				// Fetch the original message from Discord instead of trusting the client
+				const original = await discordApi.getMessage(req.body.channelId, messageId);
 				starboardMessage = await prisma.starboardMessage.create({
 					data: {
 						guildId,
-						channelId: req.body.channelId || '',
+						channelId: req.body.channelId,
 						messageId,
-						starboardChannelId: settings.channelId || '',
-						authorId: req.body.authorId || '',
-						content: req.body.content || '',
-						attachments: req.body.attachments || [],
-						embeds: req.body.embeds || [],
+						starboardChannelId: settings.channelId,
+						authorId: original.author.id,
+						content: original.content ?? '',
+						attachments: original.attachments.map(a => a.url),
+						embeds: original.embeds,
 						starCount: 1,
 					},
 					include: { reactions: true },
