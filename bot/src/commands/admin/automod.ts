@@ -72,11 +72,11 @@ interface AutoModActionConfig {
   replyInChannel?: boolean;
 }
 
-interface EscalationConfig {
-  enableEscalation?: boolean;
-  maxWarnings?: number;
-  escalationActions?: AutoModActionConfig[];
-}
+// interface EscalationConfig {
+//   enableEscalation?: boolean;
+//   maxWarnings?: number;
+//   escalationActions?: AutoModActionConfig[];
+// }
 
 export const builder = new SlashCommandBuilder()
   .setName("automod")
@@ -372,7 +372,7 @@ async function handleList(client: Client, interaction: ChatInputCommandInteracti
 
     const embed = new EmbedBuilder()
       .setColor(0x3498db)
-      .setTitle(`📋 Auto-Moderation Rules (${rules.length})`)
+      .setTitle(`📋 Auto-Moderation Rules (${String(rules.length)})`)
       .setTimestamp()
       .setFooter({ text: `Requested by ${interaction.user.username}` });
 
@@ -391,7 +391,7 @@ async function handleList(client: Client, interaction: ChatInputCommandInteracti
         .join("\n\n");
 
       embed.addFields({
-        name: `✅ Enabled Rules (${enabledRules.length})`,
+        name: `✅ Enabled Rules (${String(enabledRules.length)})`,
         value: enabledList + (enabledRules.length > 10 ? "\n*...and more*" : ""),
         inline: false,
       });
@@ -407,7 +407,7 @@ async function handleList(client: Client, interaction: ChatInputCommandInteracti
         .join("\n\n");
 
       embed.addFields({
-        name: `❌ Disabled Rules (${disabledRules.length})`,
+        name: `❌ Disabled Rules (${String(disabledRules.length)})`,
         value: disabledList + (disabledRules.length > 5 ? "\n*...and more*" : ""),
         inline: false,
       });
@@ -749,7 +749,10 @@ function testRuleAgainstText(rule: AutoModRuleTest, text: string): { triggered: 
       const capsPercent = ((text.match(/[A-Z]/g) ?? []).length / text.length) * 100;
       const threshold = triggers.capsPercent ?? 70;
       if (text.length >= (triggers.minLength ?? 10) && capsPercent >= threshold) {
-        return { triggered: true, reason: `${Math.round(capsPercent)}% caps (threshold: ${threshold}%)` };
+        return {
+          triggered: true,
+          reason: `${String(Math.round(capsPercent))}% caps (threshold: ${String(threshold)}%)`,
+        };
       }
       break;
     }
@@ -859,9 +862,9 @@ async function handleStats(client: Client, interaction: ChatInputCommandInteract
           {
             name: "📈 Overview",
             value:
-              `**Total Rules:** ${rules.length}\n` +
-              `**Active Rules:** ${enabledRules.length}\n` +
-              `**Disabled Rules:** ${disabledRules.length}`,
+              `**Total Rules:** ${String(rules.length)}\n` +
+              `**Active Rules:** ${String(enabledRules.length)}\n` +
+              `**Disabled Rules:** ${String(disabledRules.length)}`,
             inline: true,
           },
           { name: "⏱️ Timeframe", value: timeframe, inline: true },

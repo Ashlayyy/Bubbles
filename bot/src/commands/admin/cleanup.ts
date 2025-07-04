@@ -41,7 +41,10 @@ class CleanupCommand extends AdminCommand {
     try {
       const result = await permanentlyDeleteReactionRoles(this.guild.id);
       return this.responseBuilder
-        .success("🧹 Cleanup Completed", `Deleted **${result.count}** reaction role(s) whose messages were missing.`)
+        .success(
+          "🧹 Cleanup Completed",
+          `Deleted **${String(result.count)}** reaction role(s) whose messages were missing.`
+        )
         .ephemeral(true)
         .build();
     } catch (error) {

@@ -179,7 +179,7 @@ export abstract class ModerationCommand extends BaseCommand {
     evidence?: ParsedEvidence
   ): CommandResponse {
     const durationText = duration ? ` for ${duration.formatted}` : "";
-    const caseText = caseNumber ? `\n📋 **Case #${caseNumber}** created.` : "";
+    const caseText = caseNumber ? `\n📋 **Case #${String(caseNumber)}** created.` : "";
 
     const content = `✅ **${target.username}** has been ${action}${durationText}.${caseText}`;
 

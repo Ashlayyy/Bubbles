@@ -304,9 +304,9 @@ export abstract class BaseCommand {
   // Helper methods for getting slash command options with proper typing
   protected getStringOption(name: string, required: true): string;
   protected getStringOption(name: string, required?: false): string | null;
-  protected getStringOption(name: string, required = false): string | null {
+  protected getStringOption(name: string, _required = false): string | null {
     if (!this.isSlashCommand()) return null;
-    return (this.interaction as SlashCommandInteraction).options.getString(name, required);
+    return (this.interaction as SlashCommandInteraction).options.getString(name, _required);
   }
 
   protected getUserOption(name: string, required: true): User;

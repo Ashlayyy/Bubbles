@@ -183,11 +183,11 @@ class AliasCommand extends AdminCommand {
 
     const embed = this.client.genEmbed({
       title: `📝 Server Aliases${category ? ` - ${category}` : ""}`,
-      description: `Found ${aliases.length} alias${aliases.length !== 1 ? "es" : ""}`,
+      description: `Found ${String(aliases.length)} alias${aliases.length !== 1 ? "es" : ""}`,
       fields: Object.entries(grouped).map(([cat, catAliases]) => ({
         name: `🏷️ ${cat}`,
         value: catAliases
-          .map((alias: (typeof aliases)[0]) => `**${alias.name}** (used ${alias.usageCount} times)`)
+          .map((alias: (typeof aliases)[0]) => `**${alias.name}** (used ${String(alias.usageCount)} times)`)
           .join("\n"),
         inline: false,
       })),

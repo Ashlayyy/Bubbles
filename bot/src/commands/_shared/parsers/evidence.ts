@@ -52,7 +52,7 @@ export function formatEvidence(evidence: ParsedEvidence, maxLength = 1000): stri
   }
 
   if (evidence.attachments.length > 0) {
-    parts.push(`**Attachments:** ${evidence.attachments.length} file(s)`);
+    parts.push(`**Attachments:** ${String(evidence.attachments.length)} file(s)`);
   }
 
   if (evidence.text.length > 0) {

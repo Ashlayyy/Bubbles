@@ -47,7 +47,7 @@ export async function expandAlias(input: string, context: AliasExpansionContext)
     });
 
     return expanded;
-  } catch (error) {
+  } catch (_error) {
     // If there's an error, return the original input
     return input;
   }

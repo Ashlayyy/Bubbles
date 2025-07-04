@@ -416,7 +416,7 @@ async function showPresetSelection(interaction: ButtonInteraction): Promise<void
   AUTOMOD_PRESETS.forEach((preset) => {
     presetEmbed.addFields({
       name: `${preset.emoji} ${preset.name}`,
-      value: `${preset.description}\n\n**Includes:** ${preset.rules.length} protection rules`,
+      value: `${preset.description}\n\n**Includes:** ${String(preset.rules.length)} protection rules`,
       inline: false,
     });
   });

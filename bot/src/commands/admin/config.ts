@@ -172,14 +172,14 @@ export class ConfigCommand extends AdminCommand {
     const channel = this.getChannelOption("channel", true);
     await updateGuildConfig(this.guild.id, { welcomeChannelId: channel.id });
 
-    return this.createAdminSuccess("Welcome Channel Set", `Welcome channel has been set to ${channel}.`);
+    return this.createAdminSuccess("Welcome Channel Set", `Welcome channel has been set to <#${channel.id}>.`);
   }
 
   private async handleSetGoodbyeChannel(): Promise<CommandResponse> {
     const channel = this.getChannelOption("channel", true);
     await updateGuildConfig(this.guild.id, { goodbyeChannelId: channel.id });
 
-    return this.createAdminSuccess("Goodbye Channel Set", `Goodbye channel has been set to ${channel}.`);
+    return this.createAdminSuccess("Goodbye Channel Set", `Goodbye channel has been set to <#${channel.id}>.`);
   }
 
   private async handleDisplaySettings(): Promise<CommandResponse> {
@@ -263,7 +263,7 @@ export class ConfigCommand extends AdminCommand {
 
     return this.createAdminSuccess(
       "Moderation Log Channel Set",
-      `All moderation actions will now be logged to ${channel}.`
+      `All moderation actions will now be logged to <#${channel.id}>.`
     );
   }
 

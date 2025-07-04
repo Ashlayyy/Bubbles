@@ -45,7 +45,7 @@ export abstract class GeneralCommand extends BaseCommand {
         channelId: this.channel.id,
         metadata: { commandName, ...additionalData },
       });
-    } catch (error) {
+    } catch (_error) {
       // Don't throw on logging errors, just silently continue
     }
   }
@@ -76,7 +76,8 @@ export abstract class GeneralCommand extends BaseCommand {
     const endIndex = startIndex + itemsPerPage;
     const currentItems = items.slice(startIndex, endIndex);
 
-    const description = currentItems.join("\n") + (totalPages > 1 ? `\n\nPage ${currentPage} of ${totalPages}` : "");
+    const description =
+      currentItems.join("\n") + (totalPages > 1 ? `\n\nPage ${String(currentPage)} of ${String(totalPages)}` : "");
 
     return this.responseBuilder.info(title, description).ephemeral(false).build();
   }

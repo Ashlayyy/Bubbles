@@ -1,4 +1,4 @@
-import dotenv from "dotenv";
+import { config as dotenvConfig } from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -11,15 +11,15 @@ const environmentLoaderPath = path.resolve(__dirname, "src/functions/general/env
 try {
   const { loadEnvironment } = (await import(environmentLoaderPath)) as { loadEnvironment: () => void };
   loadEnvironment();
-} catch (error) {
+} catch (_error) {
   // Fallback to basic environment loading if the module isn't built yet
   console.warn("⚠️ Using fallback environment loading for shard.ts");
   const rootEnvPath = path.resolve(__dirname, "../.env");
-  dotenv.config({ path: rootEnvPath });
+  dotenvConfig({ path: rootEnvPath });
 
   const nodeEnv = process.env.NODE_ENV ?? "development";
   const envSpecificPath = path.resolve(__dirname, `../.env.${nodeEnv}`);
-  dotenv.config({ path: envSpecificPath, override: true });
+  dotenvConfig({ path: envSpecificPath, override: true });
 }
 
 import { ShardingManager } from "discord.js";
@@ -36,26 +36,26 @@ const manager = new ShardingManager(path.join(__dirname, "build", "bot", "src", 
 
 // Event handlers for shard management
 manager.on("shardCreate", (shard) => {
-  console.log(`🚀 Launched shard ${shard.id}`);
+  console.log(`🚀 Launched shard ${String(shard.id)}`);
 
   // Shard ready event
   shard.on("ready", () => {
-    console.log(`✅ Shard ${shard.id} is ready`);
+    console.log(`✅ Shard ${String(shard.id)} is ready`);
   });
 
   // Shard error handling
   shard.on("error", (error) => {
-    console.error(`❌ Shard ${shard.id} encountered an error:`, error);
+    console.error(`❌ Shard ${String(shard.id)} encountered an error:`, error);
   });
 
   // Shard disconnect handling
   shard.on("disconnect", () => {
-    console.warn(`⚠️ Shard ${shard.id} disconnected`);
+    console.warn(`⚠️ Shard ${String(shard.id)} disconnected`);
   });
 
   // Shard reconnecting
   shard.on("reconnecting", () => {
-    console.log(`🔄 Shard ${shard.id} reconnecting...`);
+    console.log(`🔄 Shard ${String(shard.id)} reconnecting...`);
   });
 });
 

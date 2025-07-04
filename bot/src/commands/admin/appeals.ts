@@ -67,7 +67,7 @@ async function _handleSetupWizard(client: Client, interaction: GuildChatInputCom
             value: state.config.channelId ? `<#${state.config.channelId}>` : "Not set",
             inline: true,
           },
-          { name: "⏰ Cooldown", value: `${state.config.cooldown} hours`, inline: true },
+          { name: "⏰ Cooldown", value: `${String(state.config.cooldown)} hours`, inline: true },
           { name: "🔢 Max Appeals", value: `${String(state.config.maxAppeals)} per user`, inline: true }
         );
         break;
@@ -304,7 +304,7 @@ async function _handleSetupWizard(client: Client, interaction: GuildChatInputCom
                     value: state.config.channelId ? `<#${state.config.channelId}>` : "Not set",
                     inline: true,
                   },
-                  { name: "⏰ Cooldown", value: `${state.config.cooldown} hours`, inline: true },
+                  { name: "⏰ Cooldown", value: `${String(state.config.cooldown)} hours`, inline: true },
                   { name: "🔢 Max Appeals", value: `${String(state.config.maxAppeals)} per user`, inline: true }
                 )
                 .setTimestamp();
@@ -354,7 +354,7 @@ async function _handleSetupWizard(client: Client, interaction: GuildChatInputCom
     })();
   });
 
-  collector.on("end", (collected, reason) => {
+  collector.on("end", (_collected, reason) => {
     if (reason === "time") {
       void interaction.editReply({
         content: "⏰ **Setup wizard timed out.** Use `/appeals setup wizard` to start again.",
@@ -394,7 +394,7 @@ async function _handleQuickSetup(client: Client, interaction: GuildChatInputComm
       .addFields(
         { name: "🌐 Website URL", value: website ?? "Using default from bot config", inline: false },
         { name: "📝 Review Channel", value: channel ? `<#${channel.id}>` : "Not set", inline: true },
-        { name: "⏰ Cooldown", value: `${cooldown} hours`, inline: true },
+        { name: "⏰ Cooldown", value: `${String(cooldown)} hours`, inline: true },
         { name: "🔢 Max Appeals", value: `${String(maxAppeals)} per user`, inline: true }
       )
       .setTimestamp();
@@ -447,7 +447,7 @@ async function _handleStatus(client: Client, interaction: GuildChatInputCommandI
               : "Not configured",
           inline: true,
         },
-        { name: "⏰ Cooldown", value: `${Math.floor(settings.appealCooldown / 3600)} hours`, inline: true },
+        { name: "⏰ Cooldown", value: `${String(Math.floor(settings.appealCooldown / 3600))} hours`, inline: true },
         { name: "🔢 Max Appeals", value: `${String(settings.maxAppealsPerUser)} per user`, inline: true }
       )
       .setTimestamp();

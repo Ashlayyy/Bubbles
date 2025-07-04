@@ -26,7 +26,7 @@ export function formatRole(role: Role): string {
  */
 export function formatChannel(channel: Channel): string {
   if (!("name" in channel)) return `<#${channel.id}>`;
-  return `<#${channel.id}> (${channel.name})`;
+  return `<#${channel.id}> (${(channel as { name?: string }).name ?? "Unknown"})`;
 }
 
 /**
@@ -41,7 +41,7 @@ export function formatGuild(guild: Guild): string {
  */
 export function formatTimestamp(date: Date, style: "t" | "T" | "d" | "D" | "f" | "F" | "R" = "f"): string {
   const timestamp = Math.floor(date.getTime() / 1000);
-  return `<t:${timestamp}:${style}>`;
+  return `<t:${String(timestamp)}:${style}>`;
 }
 
 /**
@@ -58,7 +58,7 @@ export function formatAccountAge(user: User): string {
   const now = new Date();
   const accountAge = now.getTime() - user.createdAt.getTime();
   const days = Math.floor(accountAge / (1000 * 60 * 60 * 24));
-  return `${days} days old`;
+  return `${String(days)} days old`;
 }
 
 /**
@@ -69,7 +69,7 @@ export function formatJoinAge(member: GuildMember): string {
   const now = new Date();
   const joinAge = now.getTime() - member.joinedAt.getTime();
   const days = Math.floor(joinAge / (1000 * 60 * 60 * 24));
-  return `${days} days ago`;
+  return `${String(days)} days ago`;
 }
 
 /**

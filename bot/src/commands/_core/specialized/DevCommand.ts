@@ -93,7 +93,7 @@ export abstract class DevCommand extends BaseCommand {
       guildCount: this.client.guilds.cache.size,
       userCount: this.client.users.cache.size,
       channelCount: this.client.channels.cache.size,
-      commandCount: this.client.commands.size || 0,
+      commandCount: this.client.commands.size,
     };
   }
 
@@ -109,7 +109,7 @@ export abstract class DevCommand extends BaseCommand {
 
     const i = Math.floor(Math.log(bytes) / Math.log(k));
 
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+    return `${String(parseFloat((bytes / Math.pow(k, i)).toFixed(dm)))} ${sizes[i]}`;
   }
 
   /**
@@ -122,10 +122,10 @@ export abstract class DevCommand extends BaseCommand {
     const secs = Math.floor(seconds % 60);
 
     const parts: string[] = [];
-    if (days > 0) parts.push(`${days}d`);
-    if (hours > 0) parts.push(`${hours}h`);
-    if (minutes > 0) parts.push(`${minutes}m`);
-    if (secs > 0) parts.push(`${secs}s`);
+    if (days > 0) parts.push(`${String(days)}d`);
+    if (hours > 0) parts.push(`${String(hours)}h`);
+    if (minutes > 0) parts.push(`${String(minutes)}m`);
+    if (secs > 0) parts.push(`${String(secs)}s`);
 
     return parts.join(" ");
   }

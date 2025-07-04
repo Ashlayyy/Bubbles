@@ -40,8 +40,8 @@ export class ClearCommand extends AdminCommand {
     if (!isInRange(quantity, 1, maxMessagesCleared)) {
       return this.createAdminError(
         "Invalid Quantity",
-        `❌ Cannot clear **${quantity}** messages!\n\n` +
-          `**Allowed range:** 1 to ${maxMessagesCleared} messages\n` +
+        `❌ Cannot clear **${String(quantity)}** messages!\n\n` +
+          `**Allowed range:** 1 to ${String(maxMessagesCleared)} messages\n` +
           `**Tip:** Server admins can adjust this limit in \`/config\``
       );
     }
@@ -83,7 +83,7 @@ export class ClearCommand extends AdminCommand {
       // Success message with embed
       return this.createAdminSuccess(
         "Messages Cleared",
-        `🧹 Successfully cleared **${deletedCount}** message${deletedCount === 1 ? "" : "s"}` +
+        `🧹 Successfully cleared **${String(deletedCount)}** message${deletedCount === 1 ? "" : "s"}` +
           (deletedCount < quantity ? `\n\n*Note: Some messages may have been too old to delete (>14 days)*` : "")
       );
     } catch (err) {

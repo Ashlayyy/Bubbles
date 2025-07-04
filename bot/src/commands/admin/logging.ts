@@ -424,7 +424,7 @@ async function showPresetSelection(interaction: ButtonInteraction): Promise<void
       value:
         `${preset.description}\n\n` +
         `**Categories:** ${categories}\n` +
-        `**Log Types:** ${preset.logTypes.length} events\n` +
+        `**Log Types:** ${String(preset.logTypes.length)} events\n` +
         `**Recommended Channels:** ${channels}`,
       inline: false,
     });
@@ -615,7 +615,7 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied!`)
       .setDescription(
         `Successfully configured logging with the **${preset.name}** preset.\n\n` +
-          `**Enabled:** ${preset.logTypes.length} log types\n` +
+          `**Enabled:** ${String(preset.logTypes.length)} log types\n` +
           `**Categories:** ${preset.categories.join(", ")}`
       )
       .addFields({
@@ -790,7 +790,7 @@ async function applyLoggingPreset(client: Client, interaction: ChatInputCommandI
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied!`)
       .setDescription(
         `Successfully applied the **${preset.name}** logging preset.\n\n` +
-          `**${preset.logTypes.length} log types** have been enabled.`
+          `**${String(preset.logTypes.length)} log types** have been enabled.`
       )
       .addFields(
         {
@@ -847,10 +847,10 @@ async function showLoggingStatus(client: Client, interaction: ChatInputCommandIn
         {
           name: "📈 Overview",
           value:
-            `**Total Available:** ${totalLogTypes} log types\n` +
-            `**Currently Enabled:** ${enabledCount}\n` +
-            `**Disabled:** ${disabledCount}\n` +
-            `**Coverage:** ${Math.round((enabledCount / totalLogTypes) * 100)}%`,
+            `**Total Available:** ${String(totalLogTypes)} log types\n` +
+            `**Currently Enabled:** ${String(enabledCount)}\n` +
+            `**Disabled:** ${String(disabledCount)}\n` +
+            `**Coverage:** ${String(Math.round((enabledCount / totalLogTypes) * 100))}%`,
           inline: true,
         },
         {
@@ -862,7 +862,7 @@ async function showLoggingStatus(client: Client, interaction: ChatInputCommandIn
                   .map(([type, channelId]) => `**${type}:** <#${channelId}>`)
                   .join("\n") +
                 (Object.keys(settings.channelRouting).length > 5
-                  ? `\n... and ${Object.keys(settings.channelRouting).length - 5} more`
+                  ? `\n... and ${String(Object.keys(settings.channelRouting).length - 5)} more`
                   : "")
               : "No channels configured yet",
           inline: true,
@@ -876,7 +876,7 @@ async function showLoggingStatus(client: Client, interaction: ChatInputCommandIn
         const percentage = Math.round((categoryEnabled.length / types.length) * 100);
         const statusIcon = percentage === 100 ? "🟢" : percentage > 0 ? "🟡" : "🔴";
 
-        return `${statusIcon} **${category}**: ${categoryEnabled.length}/${types.length} (${percentage}%)`;
+        return `${statusIcon} **${category}**: ${String(categoryEnabled.length)}/${String(types.length)} (${String(percentage)}%)`;
       })
       .join("\n");
 
@@ -1175,7 +1175,7 @@ async function handleChannelSelection(interaction: ChannelSelectMenuInteraction,
             categoryTypes
               .slice(0, 8)
               .map((type: string) => `• ${type.replace(/_/g, " ").toLowerCase()}`)
-              .join("\n") + (categoryTypes.length > 8 ? `\n• ...and ${categoryTypes.length - 8} more` : ""),
+              .join("\n") + (categoryTypes.length > 8 ? `\n• ...and ${String(categoryTypes.length - 8)} more` : ""),
           inline: false,
         },
         {
@@ -1508,7 +1508,7 @@ async function toggleCategory(client: Client, interaction: ChatInputCommandInter
     await interaction.followUp({
       content:
         `${statusEmoji} **${category}** category ${statusText}!\n\n` +
-        `**Affected log types:** ${categoryTypes.length}\n` +
+        `**Affected log types:** ${String(categoryTypes.length)}\n` +
         `Use \`/logging status\` to view your complete configuration.`,
     });
   } catch (error) {
@@ -1643,7 +1643,7 @@ async function handleChannelBinding(client: Client, interaction: ChatInputComman
             categoryTypes
               .slice(0, 8)
               .map((type: string) => `• ${type.replace(/_/g, " ").toLowerCase()}`)
-              .join("\n") + (categoryTypes.length > 8 ? `\n• ...and ${categoryTypes.length - 8} more` : ""),
+              .join("\n") + (categoryTypes.length > 8 ? `\n• ...and ${String(categoryTypes.length - 8)} more` : ""),
           inline: false,
         },
         {

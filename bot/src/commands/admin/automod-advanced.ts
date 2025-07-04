@@ -55,7 +55,8 @@ export class AutoModAdvancedCommand extends ModerationCommand {
 
   private getSubcommand(): string {
     if (!this.isSlashCommand()) return "";
-    return (this.interaction as any).options.getSubcommand() as string;
+    const interaction = this.interaction as { options: { getSubcommand(): string } };
+    return interaction.options.getSubcommand();
   }
 
   private async handleCreateRule(): Promise<CommandResponse> {
@@ -159,7 +160,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
             inline: false,
           },
         ],
-        footer: { text: `Rule ID: ${rule.id}` },
+        footer: { text: `Rule ID: ${String(rule.id)}` },
       });
 
       return { embeds: [embed], ephemeral: true };
@@ -189,7 +190,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
 
     const embed = this.client.genEmbed({
       title: "🛡️ AutoMod Rules",
-      description: `Found **${rules.length}** AutoMod rules:`,
+      description: `Found **${String(rules.length)}** AutoMod rules:`,
       color: 0x3498db,
       fields: rules.map((rule) => ({
         name: `${rule.enabled ? "✅" : "❌"} ${rule.name}`,
@@ -316,12 +317,18 @@ export class AutoModAdvancedCommand extends ModerationCommand {
     // Convert database rule to AutoModRule type
     const typedRule: AutoModRule = {
       ...rule,
-      triggers: typeof rule.triggers === "string" ? JSON.parse(rule.triggers) : rule.triggers,
-      actions: typeof rule.actions === "string" ? JSON.parse(rule.actions) : rule.actions,
+      triggers:
+        typeof rule.triggers === "string"
+          ? (JSON.parse(rule.triggers) as AutoModRule["triggers"])
+          : (rule.triggers as AutoModRule["triggers"]),
+      actions:
+        typeof rule.actions === "string"
+          ? (JSON.parse(rule.actions) as AutoModRule["actions"])
+          : (rule.actions as AutoModRule["actions"]),
       escalation: rule.escalation
         ? typeof rule.escalation === "string"
-          ? JSON.parse(rule.escalation)
-          : rule.escalation
+          ? (JSON.parse(rule.escalation) as AutoModRule["escalation"])
+          : (rule.escalation as AutoModRule["escalation"])
         : undefined,
       lastTriggered: rule.lastTriggered ?? undefined,
       logChannel: rule.logChannel ?? undefined,
@@ -371,11 +378,11 @@ export class AutoModAdvancedCommand extends ModerationCommand {
         { name: "🎯 Total Triggers", value: String(rule.triggerCount), inline: true },
         {
           name: "📅 Last Triggered",
-          value: rule.lastTriggered ? `<t:${Math.floor(rule.lastTriggered.getTime() / 1000)}:R>` : "Never",
+          value: rule.lastTriggered ? `<t:${String(Math.floor(rule.lastTriggered.getTime() / 1000))}:R>` : "Never",
           inline: true,
         },
         { name: "📈 Status", value: rule.enabled ? "✅ Active" : "❌ Disabled", inline: true },
-        { name: "🕒 Created", value: `<t:${Math.floor(rule.createdAt.getTime() / 1000)}:F>`, inline: false },
+        { name: "🕒 Created", value: `<t:${String(Math.floor(rule.createdAt.getTime() / 1000))}:F>`, inline: false },
       ],
     });
 

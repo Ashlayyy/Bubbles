@@ -46,11 +46,11 @@ export function formatDuration(seconds: number): string {
   for (const unit of units) {
     const count = Math.floor(seconds / unit.seconds);
     if (count > 0) {
-      return `${count} ${unit.name}${count !== 1 ? "s" : ""}`;
+      return `${String(count)} ${unit.name}${count !== 1 ? "s" : ""}`;
     }
   }
 
-  return `${seconds} second${seconds !== 1 ? "s" : ""}`;
+  return `${String(seconds)} second${seconds !== 1 ? "s" : ""}`;
 }
 
 /**
@@ -68,7 +68,7 @@ export function formatDurationShort(seconds: number): string {
   for (const unit of units) {
     const count = Math.floor(seconds / unit.seconds);
     if (count > 0) {
-      return `${count}${unit.name}`;
+      return `${String(count)}${unit.name}`;
     }
   }
 
