@@ -523,10 +523,11 @@ export const getRoleLogs = async (req: AuthRequest, res: Response) => {
 
 		// Build where clause
 		const where: any = { guildId };
-		if (roleId) where.roleId = roleId;
-		if (userId) where.userId = userId;
-		if (action) where.action = action;
-
+		if (roleId && typeof roleId === 'string') where.roleId = roleId;
+		if (userId && typeof userId === 'string') where.userId = userId;
+		if (action && ['CREATE', 'UPDATE', 'DELETE', 'ASSIGN', 'REMOVE'].includes(action as string)) {
+		  where.action = action;
+		}
 		// Fetch logs with pagination
 		const [logs, total] = await Promise.all([
 			prisma.roleLog.findMany({
