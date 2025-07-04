@@ -122,10 +122,10 @@ export class WebSocketService extends EventEmitter {
           },
         };
 
-        this.ws.send(JSON.stringify(authMessage));
+        this.ws?.send(JSON.stringify(authMessage));
         logger.info("Sent authentication message to API");
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         logger.error("Error generating bot token:", error);
         this.emit("auth_failed", error);
       });
@@ -455,24 +455,24 @@ export class WebSocketService extends EventEmitter {
 
       switch (event) {
         case "GET_STATS":
-          if (this.client.queueService) {
+          if (this.client.queueService?.deadLetterQueue) {
             response = {
               success: true,
-              data: this.client.queueService.getDeadLetterStats(),
+              data: this.client.queueService.deadLetterQueue.getDeadLetterStats(),
             } as Record<string, unknown>;
           } else {
-            response = { success: false, error: "Queue service not available" };
+            response = { success: false, error: "Dead letter queue not available" };
           }
           break;
 
         case "GET_QUARANTINED_JOBS":
-          if (this.client.queueService) {
+          if (this.client.queueService?.deadLetterQueue) {
             response = {
               success: true,
-              data: this.client.queueService.getQuarantinedJobs(),
+              data: this.client.queueService.deadLetterQueue.getQuarantinedJobs(),
             } as Record<string, unknown>;
           } else {
-            response = { success: false, error: "Queue service not available" };
+            response = { success: false, error: "Dead letter queue not available" };
           }
           break;
 
@@ -507,31 +507,31 @@ export class WebSocketService extends EventEmitter {
 
       switch (event) {
         case "RELEASE_QUARANTINE":
-          if (this.client.queueService) {
+          if (this.client.queueService?.deadLetterQueue) {
             const { jobId } = data as { jobId?: string };
             if (!jobId) {
               response = { success: false, error: "Missing jobId" };
               break;
             }
-            const released = this.client.queueService.releaseFromQuarantine(jobId);
+            const success = this.client.queueService.deadLetterQueue.releaseFromQuarantine(jobId);
             response = {
-              success: released,
-              message: released ? "Job released" : "Job not found",
+              success,
+              message: success ? "Job released from quarantine" : "Job not found in quarantine",
             };
           } else {
-            response = { success: false, error: "Queue service not available" };
+            response = { success: false, error: "Dead letter queue not available" };
           }
           break;
 
         case "CLEAR_DEAD_LETTER_QUEUE":
-          if (this.client.queueService) {
-            const cleared = this.client.queueService.clearDeadLetterQueue();
+          if (this.client.queueService?.deadLetterQueue) {
+            const count = this.client.queueService.deadLetterQueue.clearDeadLetterQueue();
             response = {
               success: true,
-              clearedCount: cleared,
+              message: `Cleared ${count} entries from dead letter queue`,
             };
           } else {
-            response = { success: false, error: "Queue service not available" };
+            response = { success: false, error: "Dead letter queue not available" };
           }
           break;
 

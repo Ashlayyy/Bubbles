@@ -272,10 +272,10 @@ async function handleChannelSetup(client: Client, interaction: ChatInputCommandI
   });
 
   // Notify API of ticket configuration change
-  const customClient = client as any as Client;
+  const customClient = client;
   if (customClient.queueService) {
     try {
-      await customClient.queueService.processRequest({
+      customClient.queueService.processRequest({
         type: "CONFIG_UPDATE",
         data: {
           guildId: interaction.guild.id,
@@ -333,10 +333,10 @@ async function handleThreadsConfig(client: Client, interaction: ChatInputCommand
   });
 
   // Notify API of ticket configuration change
-  const customClient = client as any as Client;
+  const customClient = client;
   if (customClient.queueService) {
     try {
-      await customClient.queueService.processRequest({
+      customClient.queueService.processRequest({
         type: "CONFIG_UPDATE",
         data: {
           guildId: interaction.guild.id,
@@ -397,10 +397,10 @@ async function handleOnCallConfig(client: Client, interaction: ChatInputCommandI
   });
 
   // Notify API of ticket configuration change
-  const customClient = client as any as Client;
+  const customClient = client;
   if (customClient.queueService) {
     try {
-      await customClient.queueService.processRequest({
+      customClient.queueService.processRequest({
         type: "CONFIG_UPDATE",
         data: {
           guildId: interaction.guild.id,
@@ -471,10 +471,10 @@ async function handleCategoryConfig(client: Client, interaction: ChatInputComman
   });
 
   // Notify API of ticket configuration change
-  const customClient = client as any as Client;
+  const customClient = client;
   if (customClient.queueService) {
     try {
-      await customClient.queueService.processRequest({
+      customClient.queueService.processRequest({
         type: "CONFIG_UPDATE",
         data: {
           guildId: interaction.guild.id,
@@ -828,10 +828,10 @@ async function handleAccessTypeConfig(client: Client, interaction: ChatInputComm
   });
 
   // Notify API of ticket configuration change
-  const customClient = client as any as Client;
+  const customClient = client;
   if (customClient.queueService) {
     try {
-      await customClient.queueService.processRequest({
+      customClient.queueService.processRequest({
         type: "CONFIG_UPDATE",
         data: {
           guildId: interaction.guild.id,
@@ -906,10 +906,10 @@ async function handleAccessRoleConfig(client: Client, interaction: ChatInputComm
   });
 
   // Notify API of ticket configuration change
-  const customClient = client as any as Client;
+  const customClient = client;
   if (customClient.queueService) {
     try {
-      await customClient.queueService.processRequest({
+      customClient.queueService.processRequest({
         type: "CONFIG_UPDATE",
         data: {
           guildId: interaction.guild.id,
@@ -1260,10 +1260,10 @@ async function applyTicketChannel(
   await updateGuildConfig(interaction.guild.id, { ticketChannelId: channel.id });
 
   // Notify queue service if available
-  const customClient = client as any as Client;
+  const customClient = client;
   if (customClient.queueService) {
     try {
-      await customClient.queueService.processRequest({
+      customClient.queueService.processRequest({
         type: "CONFIG_UPDATE",
         data: {
           guildId: interaction.guild.id,
@@ -1297,10 +1297,10 @@ async function applyTicketThreads(client: Client, interaction: ButtonInteraction
 
   await updateGuildConfig(interaction.guild.id, { useTicketThreads: enabled });
 
-  const customClient = client as any as Client;
+  const customClient = client;
   if (customClient.queueService) {
     try {
-      await customClient.queueService.processRequest({
+      customClient.queueService.processRequest({
         type: "CONFIG_UPDATE",
         data: {
           guildId: interaction.guild.id,

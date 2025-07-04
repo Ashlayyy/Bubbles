@@ -3,6 +3,22 @@ import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { DevCommand } from "../_core/specialized/DevCommand.js";
 
+interface QueueHealth {
+  overall: boolean;
+  protocols: Record<string, unknown>;
+  redis: boolean;
+  discord: boolean;
+  websocket: boolean;
+  overloaded: boolean;
+  timestamp: number;
+}
+
+interface QueueMetrics {
+  workers: { activeWorkers: number };
+  queues: Record<string, unknown>;
+  message: string;
+}
+
 class QueueStatusCommand extends DevCommand {
   constructor() {
     const config: CommandConfig = {
@@ -16,7 +32,7 @@ class QueueStatusCommand extends DevCommand {
     super(config);
   }
 
-  protected async execute(): Promise<CommandResponse> {
+  protected execute(): Promise<CommandResponse> {
     this.validateDevPermissions();
 
     const queueService = this.client.queueService;
@@ -29,12 +45,27 @@ class QueueStatusCommand extends DevCommand {
         .addFields({ name: "Status", value: "❌ Not Running", inline: true })
         .setTimestamp();
 
-      return { embeds: [embed], ephemeral: true };
+      return Promise.resolve({ embeds: [embed], ephemeral: true });
     }
 
     const isReady = queueService.isReady();
-    const health = await queueService.getHealth();
-    const metrics = queueService.getMetrics();
+
+    let health: QueueHealth;
+    let metrics: QueueMetrics;
+
+    try {
+      health = queueService.getSystemHealth();
+      metrics = queueService.getMetrics();
+    } catch (_error) {
+      const embed = new EmbedBuilder()
+        .setTitle("🔧 Queue System Status")
+        .setColor("Red")
+        .setDescription("❌ **Error retrieving queue status**\nFailed to get health or metrics data.")
+        .addFields({ name: "Status", value: "❌ Error", inline: true })
+        .setTimestamp();
+
+      return Promise.resolve({ embeds: [embed], ephemeral: true });
+    }
 
     const embed = new EmbedBuilder()
       .setTitle("🔧 Unified Queue System Status")
@@ -42,38 +73,37 @@ class QueueStatusCommand extends DevCommand {
       .addFields(
         { name: "Queue Service", value: isReady ? "✅ Ready" : "❌ Not Ready", inline: true },
         {
-          name: "WebSocket Protocol",
-          value: health.protocols.websocket.healthy ? "✅ Healthy" : "❌ Unhealthy",
+          name: "System Health",
+          value: health.overall ? "✅ Healthy" : "❌ Unhealthy",
           inline: true,
         },
         {
-          name: "Queue Protocol",
-          value: health.protocols.queue.healthy ? "✅ Healthy" : "❌ Unhealthy",
+          name: "Redis Connection",
+          value: health.redis ? "✅ Connected" : "❌ Disconnected",
           inline: true,
         },
         {
-          name: "System Metrics",
-          value: [
-            `**REST Requests:** ${metrics.restRequests}`,
-            `**WebSocket Messages:** ${metrics.websocketMessages}`,
-            `**Queue Jobs:** ${metrics.queueJobs}`,
-            `**Duplicate Operations:** ${metrics.duplicateOperations}`,
-            `**Protocol Failures:** ${metrics.totalProtocolFailures}`,
-          ].join("\n"),
-          inline: false,
+          name: "Discord API",
+          value: health.discord ? "✅ Available" : "❌ Unavailable",
+          inline: true,
         },
         {
-          name: "Cross-Protocol Performance",
-          value: [
-            `**REST→WebSocket Delay:** ${metrics.restToWebSocketDelay.toFixed(2)}ms`,
-            `**Queue→WebSocket Delay:** ${metrics.queueToWebSocketDelay.toFixed(2)}ms`,
-            `**WebSocket Fallbacks:** ${metrics.websocketFallbackToQueue}`,
-            `**Queue Fallbacks:** ${metrics.queueFallbackToWebSocket}`,
-          ].join("\n"),
+          name: "WebSocket",
+          value: health.websocket ? "✅ Connected" : "❌ Disconnected",
+          inline: true,
+        },
+        {
+          name: "System Load",
+          value: health.overloaded ? "⚠️ Overloaded" : "✅ Normal",
+          inline: true,
+        },
+        {
+          name: "Queue Metrics",
+          value: [`**Active Workers:** ${metrics.workers.activeWorkers}`, `**Status:** ${metrics.message}`].join("\n"),
           inline: false,
         }
       )
-      .setFooter({ text: "Unified system handles cross-protocol request routing" })
+      .setFooter({ text: "Queue system migrated to BullMQ" })
       .setTimestamp();
 
     if (!isReady) {
@@ -81,10 +111,10 @@ class QueueStatusCommand extends DevCommand {
         "⚠️ **Queue system not ready**\nThe unified processor may still be initializing or experiencing issues."
       );
     } else {
-      embed.setDescription("✅ Unified queue system is operating normally with multi-protocol support.");
+      embed.setDescription("✅ Unified queue system is operating normally with BullMQ integration.");
     }
 
-    return { embeds: [embed], ephemeral: true };
+    return Promise.resolve({ embeds: [embed], ephemeral: true });
   }
 }
 

@@ -61,7 +61,6 @@ export class ConfigProcessor extends BaseProcessor<ConfigUpdateJob> {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async updateGuildConfig(guildId: string, configKey: string, configValue: any): Promise<boolean> {
     try {
       // Import the database functions dynamically

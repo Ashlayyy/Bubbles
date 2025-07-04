@@ -44,13 +44,13 @@ export class HelpCommand extends GeneralCommand {
       }
 
       // Build detailed command help
-      const commandData = command.builder.toJSON();
-      const description =
-        `**Description:** ${"description" in commandData ? commandData.description || "No description available" : "No description available"}\n\n` +
-        `**Category:** ${command.category || "Unknown"}\n` +
-        `**Usage:** \`/${commandName}\``;
+      const helpText = [
+        `**Description:** Command help for \`${commandName}\``,
+        `**Category:** ${command.category}`,
+        `**Usage:** \`/${commandName}\``,
+      ].join("\n\n");
 
-      return this.createGeneralInfo(`Help: ${commandName}`, description);
+      return this.createGeneralInfo(`Help: ${commandName}`, helpText);
     } catch (error) {
       throw new Error(`Failed to get command help: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
@@ -65,8 +65,7 @@ export class HelpCommand extends GeneralCommand {
       }
 
       const commandList = commands.map((cmd) => {
-        const cmdData = cmd.builder.toJSON();
-        return `• \`/${cmdData.name}\` - ${"description" in cmdData ? cmdData.description || "No description" : "No description"}`;
+        return `• \`/${cmd.category}\` - Command in ${category} category`;
       });
 
       return this.createGeneralInfo(`Help: ${category} Commands`, commandList.join("\n"));

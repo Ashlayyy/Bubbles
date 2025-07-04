@@ -1,6 +1,6 @@
 import * as IORedis from 'ioredis';
 import type { Redis } from 'ioredis';
-import Bull from 'bull';
+import { Queue as BullQueue, Worker as BullWorker } from 'bullmq';
 import type { QueueName, QUEUE_NAMES } from '../types/queue.js';
 
 export interface QueueConfig {
@@ -10,7 +10,7 @@ export interface QueueConfig {
 		password?: string;
 		db?: number;
 	};
-	defaultJobOptions: Bull.JobOptions;
+	defaultJobOptions: any;
 }
 
 export const getQueueConfig = (): QueueConfig => {
@@ -99,15 +99,12 @@ export const createRedisConnection = (config?: QueueConfig['redis']): Redis => {
 	return redis;
 };
 
-export const createQueue = (
-	name: QueueName,
-	redisConnection?: Redis
-): Bull.Queue => {
+export const createQueue = (name: QueueName, redisConnection?: Redis): any => {
 	const config = getQueueConfig();
 	const redis = redisConnection || createRedisConnection();
 
-	return new Bull(name, {
-		redis: {
+	const bullQueue = new BullQueue(name, {
+		connection: {
 			port: config.redis.port,
 			host: config.redis.host,
 			password: config.redis.password,
@@ -115,10 +112,24 @@ export const createQueue = (
 		},
 		defaultJobOptions: config.defaultJobOptions,
 	});
+
+	// Monkey-patch .process for backward compatibility
+	(bullQueue as any).process = (
+		processor?: any,
+		callback?: (job: any) => Promise<unknown>
+	) => {
+		const handler = typeof processor === 'function' ? processor : callback;
+		const worker = new BullWorker(name, handler, {
+			connection: bullQueue.client,
+		});
+		return worker;
+	};
+
+	return bullQueue as unknown as any; // keep return type compatible
 };
 
 export class QueueManager {
-	private queues: Map<QueueName, Bull.Queue> = new Map();
+	private queues: Map<QueueName, any> = new Map();
 	private redisConnection: Redis;
 	private connectionHealthy = false;
 	private hasGivenUpReconnecting = false;
@@ -158,7 +169,7 @@ export class QueueManager {
 		});
 	}
 
-	getQueue(name: QueueName): Bull.Queue {
+	getQueue(name: QueueName): any {
 		if (!this.queues.has(name)) {
 			this.queues.set(name, createQueue(name, this.redisConnection));
 		}

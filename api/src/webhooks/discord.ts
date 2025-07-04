@@ -566,8 +566,21 @@ export class DiscordWebhookHandler {
 	}
 
 	private async storeDiscordEvent(event: DiscordWebhookEvent): Promise<void> {
-		// TODO: Implement event storage (database, Redis, etc.)
-		// Store events for analytics, audit logs, debugging, etc.
+		try {
+			const { eventStore } = await import('../services/eventStore.js');
+			await eventStore.saveDiscordEvent({
+				type: event.type,
+				guildId: event.guildId,
+				userId: (event.data as any)?.userId,
+				channelId: (event.data as any)?.channelId,
+				messageId: (event.data as any)?.id,
+				payload: event.data,
+				metadata: { botId: event.botId, shardId: event.shardId },
+			});
+		} catch (error) {
+			logger.warn('Failed to persist discord event', error);
+		}
+
 		logger.debug(`Stored Discord event: ${event.type} - ${event.id}`);
 	}
 

@@ -5,6 +5,7 @@ import { wsManager } from '../websocket/manager.js';
 import { getPrismaClient } from '../services/databaseService.js';
 import { discordApi } from '../services/discordApiService.js';
 import hybridCommunicationService from '../services/hybridCommunicationService.js';
+import { bullMQManager } from '../queue/bullmqManager.js';
 
 const logger = createLogger('moderation-controller');
 

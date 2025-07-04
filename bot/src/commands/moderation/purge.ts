@@ -76,7 +76,7 @@ export class PurgeCommand extends ModerationCommand {
       if (regexPattern) {
         try {
           // Validate regex at parse time
-          // eslint-disable-next-line no-new
+
           new RegExp(regexPattern, "i");
         } catch (err) {
           return new ResponseBuilder()

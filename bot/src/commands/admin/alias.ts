@@ -92,7 +92,7 @@ class AliasCommand extends AdminCommand {
     const customClient = this.client as any as Client;
     if (customClient.queueService) {
       try {
-        await customClient.queueService.processRequest({
+        customClient.queueService.processRequest({
           type: "ALIAS_UPDATE",
           data: {
             guildId: this.guild.id,
@@ -219,7 +219,7 @@ class AliasCommand extends AdminCommand {
     const customClient = this.client as any as Client;
     if (customClient.queueService) {
       try {
-        await customClient.queueService.processRequest({
+        customClient.queueService.processRequest({
           type: "ALIAS_UPDATE",
           data: {
             guildId: this.guild.id,
@@ -267,7 +267,7 @@ class AliasCommand extends AdminCommand {
     const customClient = this.client as any as Client;
     if (customClient.queueService) {
       try {
-        await customClient.queueService.processRequest({
+        customClient.queueService.processRequest({
           type: "ALIAS_UPDATE",
           data: {
             guildId: this.guild.id,

@@ -19,6 +19,7 @@ export const defaults: Omit<GuildConfig, "guildId" | "id"> & {
   goodbyeChannelId: null,
   welcomeEnabled: true,
   goodbyeEnabled: true,
+  preferredLanguage: "en",
   moderatorRoleIds: [],
   welcomeStats: {},
   ticketChannelId: null,

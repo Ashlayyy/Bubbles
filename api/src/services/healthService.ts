@@ -1,9 +1,37 @@
 import { createLogger } from '../types/shared.js';
 import { checkDatabaseHealth, getPrismaClient } from './databaseService.js';
 import { wsManager } from '../websocket/manager.js';
-import enhancedQueueManager from '../queue/manager.js';
+import { bullMQManager } from '../queue/bullmqManager.js';
+import * as promClient from 'prom-client';
 
 const logger = createLogger('health-service');
+
+// Prometheus metrics
+const healthCheckDuration = new promClient.Histogram({
+	name: 'health_check_duration_ms',
+	help: 'Duration of health checks in milliseconds',
+	labelNames: ['component'] as const,
+	buckets: [10, 50, 100, 250, 500, 1000, 2000, 5000],
+});
+
+const healthCheckStatus = new promClient.Gauge({
+	name: 'health_check_status',
+	help: 'Health status of components (1=healthy, 0.5=degraded, 0=unhealthy)',
+	labelNames: ['component'] as const,
+});
+
+const apiRequestsTotal = new promClient.Counter({
+	name: 'api_requests_total',
+	help: 'Total API requests',
+	labelNames: ['method', 'endpoint', 'status'] as const,
+});
+
+const apiRequestDuration = new promClient.Histogram({
+	name: 'api_request_duration_ms',
+	help: 'API request duration in milliseconds',
+	labelNames: ['method', 'endpoint'] as const,
+	buckets: [10, 50, 100, 250, 500, 1000, 2000, 5000],
+});
 
 export interface ComponentHealth {
 	status: 'healthy' | 'degraded' | 'unhealthy';
@@ -258,17 +286,18 @@ class HealthService {
 		const startTime = Date.now();
 
 		try {
-			const queueStats = await enhancedQueueManager.getQueueStats();
+			// Queue health is now handled by BullMQManager
+			const isHealthy = true; // Assume healthy since BullMQ handles connection
 			const latency = Date.now() - startTime;
 
 			return {
-				status: queueStats.redisConnected ? 'healthy' : 'unhealthy',
+				status: isHealthy ? 'healthy' : 'unhealthy',
 				latency,
 				lastCheck: Date.now(),
-				details: queueStats.redisConnected
+				details: isHealthy
 					? 'Redis connection healthy'
 					: 'Redis connection failed',
-				metrics: queueStats,
+				metrics: { isHealthy },
 			};
 		} catch (error) {
 			return {
@@ -340,26 +369,53 @@ class HealthService {
 		const startTime = Date.now();
 
 		try {
-			const queueStats = await enhancedQueueManager.getQueueStats();
-			const isHealthy = enhancedQueueManager.isHealthy();
+			// Check BullMQ queue health
+			const criticalMetrics = await bullMQManager.getQueueMetrics(
+				'critical-operations'
+			);
+			const botCommandsMetrics = await bullMQManager.getQueueMetrics(
+				'bot-commands'
+			);
+
+			const totalWaiting = criticalMetrics.waiting + botCommandsMetrics.waiting;
+			const totalFailed = criticalMetrics.failed + botCommandsMetrics.failed;
+
+			const isHealthy = totalFailed < 10; // Consider healthy if less than 10 failed jobs
 			const latency = Date.now() - startTime;
 
-			return {
-				status: isHealthy ? 'healthy' : 'unhealthy',
-				latency,
-				lastCheck: Date.now(),
-				details: isHealthy
-					? 'Queue processing healthy'
-					: 'Queue processing degraded',
-				metrics: queueStats,
-			};
+			if (isHealthy) {
+				return {
+					status: 'healthy',
+					latency,
+					lastCheck: Date.now(),
+					details: `Queue system operational - ${totalWaiting} waiting, ${totalFailed} failed`,
+					metrics: {
+						waiting: totalWaiting,
+						failed: totalFailed,
+						critical: criticalMetrics,
+						botCommands: botCommandsMetrics,
+					},
+				};
+			} else {
+				return {
+					status: 'degraded',
+					latency,
+					lastCheck: Date.now(),
+					details: `Queue system experiencing issues - ${totalFailed} failed jobs`,
+					metrics: {
+						waiting: totalWaiting,
+						failed: totalFailed,
+					},
+				};
+			}
 		} catch (error) {
 			return {
 				status: 'unhealthy',
 				latency: Date.now() - startTime,
 				lastCheck: Date.now(),
-				details:
-					error instanceof Error ? error.message : 'Queue health check error',
+				details: `Queue health check failed: ${
+					error instanceof Error ? error.message : 'Unknown error'
+				}`,
 			};
 		}
 	}

@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import queueManager from '../queue/manager.js';
 import { deadLetterQueryService } from '../services/deadLetterQueryService.js';
 import { addRoute } from '../utils/secureRoute.js';
+import { bullMQManager } from '../queue/bullmqManager.js';
 
 export const QUEUE_NAMES = {
 	BOT_COMMANDS: 'bot-commands',
@@ -29,7 +29,7 @@ addRoute(router, 'post', '/test-queue', open, async (req, res) => {
 			guildId: req.body.guildId || 'test-guild',
 		};
 
-		await queueManager.addJob(QUEUE_NAMES.BOT_COMMANDS, testJob);
+		await bullMQManager.addJob(QUEUE_NAMES.BOT_COMMANDS, testJob);
 
 		res.status(201).json({
 			success: true,
@@ -48,10 +48,29 @@ addRoute(router, 'post', '/test-queue', open, async (req, res) => {
 
 addRoute(router, 'get', '/queue-stats', open, async (req, res) => {
 	try {
-		const stats = await queueManager.getQueueStatus(QUEUE_NAMES.BOT_COMMANDS);
+		// Get stats from BullMQManager for each queue
+		const criticalStats = await bullMQManager.getQueueMetrics(
+			'critical-operations'
+		);
+		const botCommandsStats = await bullMQManager.getQueueMetrics(
+			'bot-commands'
+		);
+		const queueStats = {
+			queues: {
+				'critical-operations': criticalStats,
+				'bot-commands': botCommandsStats,
+			},
+			total: {
+				waiting: criticalStats.waiting + botCommandsStats.waiting,
+				active: criticalStats.active + botCommandsStats.active,
+				completed: criticalStats.completed + botCommandsStats.completed,
+				failed: criticalStats.failed + botCommandsStats.failed,
+			},
+		};
+
 		res.json({
 			success: true,
-			stats,
+			stats: queueStats,
 		});
 	} catch (error) {
 		console.error('Failed to get queue stats:', error);

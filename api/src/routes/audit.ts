@@ -16,21 +16,14 @@ const router = Router({ mergeParams: true });
 
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
-+import {
-+	validateGuildId,
-+	validateGuildAccess,
-+} from '../middleware/validation.js';
+import {
+	validateGuildId,
+	validateGuildAccess,
+} from '../middleware/validation.js';
 
 const router = express.Router();
 
-// Apply guild validation, then authentication, then access check to all audit routes
-- router.use(authenticateToken);
-+ router.use(
-+  '/',
-+  validateGuildId,
-+  authenticateToken,
-+  validateGuildAccess
-+);
+router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
 
 // …rest of your audit log endpoints…
 export default router;

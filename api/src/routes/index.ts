@@ -25,8 +25,10 @@ import auditRoutes from './audit.js';
 import hybridRoutes from './hybrid.js';
 import devRoutes from './dev.js';
 import healthRoutes from './health.js';
+import metricsRoutes from './metrics.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requireUniversalPermissions } from '../middleware/permissions.js';
+import eventsRoutes from './events.js';
 
 const router = Router();
 
@@ -55,6 +57,8 @@ router.use('/guilds/:guildId/messages', messagesRoutes);
 router.use('/guilds/:guildId/audit', auditRoutes);
 router.use('/hybrid', hybridRoutes);
 router.use('/health', healthRoutes);
+router.use('/metrics', metricsRoutes);
+router.use('/events', eventsRoutes);
 
 // Global security: every /guilds/:guildId/... request requires token & MANAGE_GUILD
 router.use(

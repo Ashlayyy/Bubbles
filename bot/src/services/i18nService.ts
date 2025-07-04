@@ -11,12 +11,12 @@ export class I18nService {
   private static instance: I18nService | null = null;
   private initialized = false;
 
-  private constructor() {}
+  private constructor() {
+    // Private constructor for singleton pattern
+  }
 
   static getInstance(): I18nService {
-    if (!I18nService.instance) {
-      I18nService.instance = new I18nService();
-    }
+    I18nService.instance ??= new I18nService();
     return I18nService.instance;
   }
 
@@ -58,7 +58,7 @@ export class I18nService {
   /**
    * Get translation for a key with optional interpolation
    */
-  t(key: string, options?: { [key: string]: unknown }, lng?: string): string {
+  t(key: string, options?: Record<string, unknown>, lng?: string): string {
     if (!this.initialized) {
       logger.warn("i18n service not initialized, returning key as fallback");
       return key;
@@ -70,7 +70,7 @@ export class I18nService {
   /**
    * Get translation for a guild's preferred language
    */
-  async tForGuild(guildId: string, key: string, options?: { [key: string]: unknown }): Promise<string> {
+  async tForGuild(guildId: string, key: string, options?: Record<string, unknown>): Promise<string> {
     if (!this.initialized) {
       logger.warn("i18n service not initialized, returning key as fallback");
       return key;
@@ -88,7 +88,7 @@ export class I18nService {
     if (!this.initialized) {
       return ["en"];
     }
-    return i18next.languages || ["en"];
+    return [...(i18next.languages || ["en"])];
   }
 
   /**

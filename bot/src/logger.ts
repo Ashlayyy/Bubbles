@@ -43,7 +43,7 @@ interface ExtendedLogger extends pino.Logger {
 
 const baseLogger = initLogger();
 const logger: ExtendedLogger = baseLogger as unknown as ExtendedLogger;
-// eslint-disable-next-line @typescript-eslint/unbound-method
+
 logger.verbose = baseLogger.debug.bind(baseLogger);
 
 export default logger;

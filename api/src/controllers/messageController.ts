@@ -1,5 +1,4 @@
 import type { Response } from 'express';
-import queueManager from '../queue/manager.js';
 import { createLogger, QUEUE_NAMES } from '../types/shared.js';
 import type { SendMessageJob, ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';

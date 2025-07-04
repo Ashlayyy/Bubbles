@@ -1,7 +1,6 @@
 import { createLogger } from '../types/shared.js';
-import enhancedQueueManager from '../queue/manager.js';
+import { bullMQManager } from '../queue/bullmqManager.js';
 import { wsManager } from '../websocket/manager.js';
-import type { HybridOptions } from '../queue/manager.js';
 
 const logger = createLogger('hybrid-communication');
 
@@ -18,6 +17,14 @@ export interface BulkOperationOptions {
 	delayBetweenBatches?: number;
 	priority?: 'high' | 'normal' | 'low';
 	notifyProgress?: boolean;
+}
+
+// HybridOptions type moved to BullMQManager
+interface HybridOptions {
+	preferWebSocket?: boolean;
+	requireReliability?: boolean;
+	notifyCompletion?: boolean;
+	guildId?: string;
 }
 
 /**
@@ -233,17 +240,18 @@ export class HybridCommunicationService {
 		options: HybridOptions = {}
 	): Promise<OperationResult> {
 		try {
-			const jobId = await enhancedQueueManager.addScheduledJob(
-				'bot-commands',
+			const jobId = await bullMQManager.scheduleJob(
+				'notifications',
 				{
-					operation,
+					type: 'REMINDER',
+					guildId: options.guildId,
 					data,
 					...options,
 				},
 				delay,
 				{
-					priority: options.requireReliability ? 10 : 5,
-					notifyWebSocket: true,
+					priority: 3,
+					attempts: 3,
 				}
 			);
 
@@ -277,11 +285,17 @@ export class HybridCommunicationService {
 		const websocketStats = wsManager?.getConnectionStats() || {
 			botConnections: 0,
 		};
-		const queueStats = await enhancedQueueManager.getQueueStats();
-		const queueHealth = enhancedQueueManager.isHealthy();
+		const criticalStats = await bullMQManager.getQueueMetrics(
+			'critical-operations'
+		);
+		const botCommandsStats = await bullMQManager.getQueueMetrics(
+			'bot-commands'
+		);
+		const queueHealth =
+			criticalStats.failed < 10 && botCommandsStats.failed < 10;
 
 		const websocketAvailable = websocketStats.botConnections > 0;
-		const queueAvailable = queueHealth && queueStats.redisConnected;
+		const queueAvailable = queueHealth && websocketStats.redisConnected;
 
 		let overall: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
 
@@ -299,7 +313,7 @@ export class HybridCommunicationService {
 			queue: {
 				available: queueAvailable,
 				health: queueHealth,
-				stats: queueStats,
+				stats: websocketStats,
 			},
 			overall,
 		};
@@ -389,16 +403,18 @@ export class HybridCommunicationService {
 		options: HybridOptions
 	): Promise<OperationResult> {
 		try {
-			const jobId = await enhancedQueueManager.addReliableJob(
+			const jobId = await bullMQManager.addJob(
 				'bot-commands',
 				{
+					type: 'CUSTOM_COMMAND',
 					command: operation,
-					data,
 					guildId: options.guildId,
+					data,
+					...options,
 				},
 				{
-					priority: options.requireReliability ? 10 : 5,
-					notifyWebSocket: options.notifyCompletion || true,
+					priority: 5,
+					attempts: 3,
 				}
 			);
 
@@ -422,20 +438,25 @@ export class HybridCommunicationService {
 		data: any,
 		options: HybridOptions
 	): Promise<OperationResult> {
-		const result = await enhancedQueueManager.executeHybridCommand(
+		// Execute command via BullMQ
+		const jobId = await bullMQManager.addJob(
+			'bot-commands',
 			{
+				type: 'BOT_COMMAND',
 				command: operation,
-				data,
 				guildId: options.guildId,
+				data,
+				...options,
 			},
-			options
+			{
+				priority: 5,
+				attempts: 3,
+			}
 		);
 
-		return {
-			success: result.success,
-			method: result.method,
-			jobId: result.jobId,
-		};
+		const result: OperationResult = { method: 'queue', jobId, success: true };
+
+		return result;
 	}
 
 	private notifyBulkProgress(

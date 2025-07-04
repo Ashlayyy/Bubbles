@@ -1,8 +1,7 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { ChannelType, EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import camelCaseFn from "lodash/camelCase.js";
 import kebabCaseFn from "lodash/kebabCase.js";
 
-import { ChannelType } from "discord.js";
 import {
   getGuildConfig,
   defaults as guildConfigDefaults,

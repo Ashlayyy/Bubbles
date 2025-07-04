@@ -1,6 +1,6 @@
 import { Registry, collectDefaultMetrics, Histogram, Gauge } from 'prom-client';
 import type { Request, Response, NextFunction } from 'express';
-import queueManager from '../queue/manager.js';
+import { bullMQManager } from '../queue/bullmqManager.js';
 
 // Create a dedicated registry so we don't pollute the global default one
 export const register = new Registry();
@@ -53,21 +53,23 @@ export function metricsMiddleware(
 	next();
 }
 
-// Periodically refresh queue gauges from queueManager
+// Periodically refresh queue gauges from BullMQManager
 async function refreshQueueMetrics() {
 	try {
-		const stats = await queueManager.getQueueStats();
-		/* Expected shape: { active, completed, failed, waiting } per queue; we will sum */
-		const totals = Object.values(stats).reduce(
-			(acc: any, cur: any) => {
-				acc.active += cur.active || 0;
-				acc.completed += cur.completed || 0;
-				acc.failed += cur.failed || 0;
-				acc.waiting += cur.waiting || 0;
-				return acc;
-			},
-			{ active: 0, completed: 0, failed: 0, waiting: 0 }
+		const criticalStats = await bullMQManager.getQueueMetrics(
+			'critical-operations'
 		);
+		const botCommandsStats = await bullMQManager.getQueueMetrics(
+			'bot-commands'
+		);
+
+		const totals = {
+			active: criticalStats.active + botCommandsStats.active,
+			completed: criticalStats.completed + botCommandsStats.completed,
+			failed: criticalStats.failed + botCommandsStats.failed,
+			waiting: criticalStats.waiting + botCommandsStats.waiting,
+		};
+
 		queueActive.set(totals.active);
 		queueCompleted.set(totals.completed);
 		queueFailed.set(totals.failed);

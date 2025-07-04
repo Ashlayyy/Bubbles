@@ -3,6 +3,7 @@ import { createLogger, type ApiResponse } from '../types/shared.js';
 import { healthService } from '../services/healthService.js';
 import { authenticateToken, type AuthRequest } from '../middleware/auth.js';
 import { addRoute } from '../utils/secureRoute.js';
+import { bullMQManager } from '../queue/bullmqManager.js';
 
 const router = Router();
 const logger = createLogger('health-routes');
@@ -221,6 +222,76 @@ router.get(
 				success: false,
 				error: 'Failed to ping bot',
 			} as ApiResponse);
+		}
+	}
+);
+
+/** Get dead letter queue metrics */
+router.get(
+	'/dead-letter/:queueName',
+	async (req: AuthRequest, res: Response) => {
+		try {
+			const { queueName } = req.params;
+			const metrics = await bullMQManager.getDeadLetterQueueMetrics(queueName);
+
+			res.json({
+				success: true,
+				data: metrics,
+			});
+		} catch (error) {
+			logger.error('Failed to get dead letter queue metrics:', error);
+			res.status(500).json({
+				success: false,
+				error: 'Failed to get dead letter queue metrics',
+			});
+		}
+	}
+);
+
+/** Retry failed job from dead letter queue */
+router.post(
+	'/dead-letter/:queueName/retry/:jobId',
+	async (req: AuthRequest, res: Response) => {
+		try {
+			const { queueName, jobId } = req.params;
+			const retriedJobId = await bullMQManager.retryFailedJob(queueName, jobId);
+
+			res.json({
+				success: true,
+				data: { jobId: retriedJobId },
+			});
+		} catch (error) {
+			logger.error('Failed to retry job from dead letter queue:', error);
+			res.status(500).json({
+				success: false,
+				error: 'Failed to retry job from dead letter queue',
+			});
+		}
+	}
+);
+
+/** Get failed jobs from dead letter queue */
+router.get(
+	'/dead-letter/:queueName/jobs',
+	async (req: AuthRequest, res: Response) => {
+		try {
+			const { queueName } = req.params;
+			const limit = parseInt(req.query.limit as string) || 100;
+			const failedJobs = await bullMQManager.processDeadLetterQueue(
+				queueName,
+				limit
+			);
+
+			res.json({
+				success: true,
+				data: failedJobs,
+			});
+		} catch (error) {
+			logger.error('Failed to get failed jobs from dead letter queue:', error);
+			res.status(500).json({
+				success: false,
+				error: 'Failed to get failed jobs from dead letter queue',
+			});
 		}
 	}
 );

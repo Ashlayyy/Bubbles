@@ -21,7 +21,7 @@ export class ShutdownManager {
       // Stop queue service
       if (this.client.queueService) {
         logger.info("Stopping queue service...");
-        await this.client.queueService.shutdown();
+        this.client.queueService.shutdown();
       }
 
       // Stop scheduled action service
@@ -32,7 +32,7 @@ export class ShutdownManager {
 
       // Destroy Discord client
       logger.info("Destroying Discord client...");
-      void this.client.destroy();
+      await this.client.destroy();
 
       logger.info("Bot shutdown complete");
     } catch (error) {

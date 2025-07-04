@@ -14,8 +14,7 @@ import {
 	validateGuildAccess,
 	validatePagination,
 } from '../middleware/validation.js';
-import {
-	generalRateLimit,
+import { generalRateLimit } from '../middleware/rateLimit.js';
 import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router();
@@ -33,11 +32,7 @@ router.use(
 
 guildRouter.get('/', authenticateToken, generalRateLimit, getGuildInfo);
 
-guildRouter.get(
-	'/channels',
-	generalRateLimit,
-	getGuildChannels
-);
+guildRouter.get('/channels', generalRateLimit, getGuildChannels);
 guildRouter.get('/roles', generalRateLimit, getGuildRoles);
 guildRouter.get(
 	'/members',

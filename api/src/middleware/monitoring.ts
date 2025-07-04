@@ -1,8 +1,37 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createLogger } from '../types/shared.js';
 import { healthService } from '../services/healthService.js';
+import * as promClient from 'prom-client';
 
 const logger = createLogger('monitoring-middleware');
+
+// Prometheus metrics
+const apiRequestsTotal = new promClient.Counter({
+	name: 'api_requests_total',
+	help: 'Total API requests',
+	labelNames: ['method', 'endpoint', 'status'] as const,
+});
+
+const apiRequestDuration = new promClient.Histogram({
+	name: 'api_request_duration_ms',
+	help: 'API request duration in milliseconds',
+	labelNames: ['method', 'endpoint'] as const,
+	buckets: [10, 50, 100, 250, 500, 1000, 2000, 5000],
+});
+
+const botCommandLatency = new promClient.Histogram({
+	name: 'bot_command_latency_ms',
+	help: 'Bot command execution latency in milliseconds',
+	labelNames: ['command'] as const,
+	buckets: [50, 100, 250, 500, 1000, 2000, 5000, 10000],
+});
+
+const moderationActionDuration = new promClient.Histogram({
+	name: 'moderation_action_duration_ms',
+	help: 'Moderation action processing duration in milliseconds',
+	labelNames: ['action'] as const,
+	buckets: [50, 100, 250, 500, 1000, 2000, 5000, 10000],
+});
 
 export interface MonitoringContext {
 	startTime: number;
@@ -75,6 +104,28 @@ export const monitoringMiddleware = (
 		if (isModerationAction(req)) {
 			healthService.trackModerationAction(success, duration);
 		}
+
+		// Track API to bot command latency
+		if (success !== undefined) {
+			apiRequestsTotal.inc({
+				method: req.method,
+				endpoint: req.path,
+				status: res.statusCode.toString(),
+			});
+			apiRequestDuration.observe(
+				{ method: req.method, endpoint: req.path },
+				duration
+			);
+
+			healthService.trackApiToBotCommand(success, duration);
+		}
+
+		// Track moderation action latency
+		if (req.path.startsWith('/api/moderation') && req.method === 'POST') {
+			moderationActionDuration.observe({ action: 'moderation' }, duration);
+
+			healthService.trackModerationAction(success, duration);
+		}
 	});
 
 	next();
@@ -108,6 +159,29 @@ export const logIntegrationEvent = (
 		case 'QUEUE_PROCESS':
 			// Track queue processing metrics
 			break;
+	}
+
+	// Track API to bot command latency
+	if (data.success !== undefined) {
+		const method = data.method || 'unknown';
+		const endpoint = data.guildId || 'unknown';
+		const duration = data.duration || 0;
+		apiRequestsTotal.inc({
+			method,
+			endpoint,
+			status: data.success ? '2xx' : '5xx',
+		});
+		apiRequestDuration.observe({ method, endpoint }, duration);
+
+		healthService.trackApiToBotCommand(data.success, duration);
+	}
+
+	// Track moderation action latency
+	if (data.method && data.method.includes('moderation')) {
+		const duration = data.duration || 0;
+		moderationActionDuration.observe({ action: 'moderation' }, duration);
+
+		healthService.trackModerationAction(data.success, duration);
 	}
 };
 

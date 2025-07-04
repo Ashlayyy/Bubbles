@@ -35,7 +35,7 @@ class LogTailer {
     console.log("🔍 Bubbles Bot Log Tailer");
     console.log("========================\n");
 
-    const logFile = this.options.logFile || this.findLogFile();
+    const logFile = this.options.logFile ?? this.findLogFile();
 
     if (!logFile || !existsSync(logFile)) {
       console.error(`❌ Log file not found: ${logFile || "auto-detect failed"}`);
@@ -58,9 +58,9 @@ class LogTailer {
     console.log(""); // Empty line before logs
 
     if (this.options.pretty) {
-      await this.tailWithPretty(logFile);
+      this.tailWithPretty(logFile);
     } else {
-      await this.tailRaw(logFile);
+      this.tailRaw(logFile);
     }
   }
 
@@ -82,7 +82,7 @@ class LogTailer {
     return null;
   }
 
-  private async tailWithPretty(logFile: string): Promise<void> {
+  private tailWithPretty(logFile: string): void {
     const tailArgs = this.options.follow
       ? ["-f", "-n", this.options.lines.toString(), logFile]
       : ["-n", this.options.lines.toString(), logFile];
@@ -93,7 +93,9 @@ class LogTailer {
     });
 
     // Pipe tail output through pino-pretty
-    tail.stdout.pipe(pinoPretty.stdin);
+    if (tail.stdout) {
+      tail.stdout.pipe(pinoPretty.stdin);
+    }
 
     // Handle filtering if specified
     if (this.options.filter) {
@@ -101,8 +103,12 @@ class LogTailer {
         stdio: ["pipe", "pipe", "inherit"],
       });
 
-      tail.stdout.pipe(grep.stdin);
-      grep.stdout.pipe(pinoPretty.stdin);
+      if (tail.stdout) {
+        tail.stdout.pipe(grep.stdin);
+      }
+      if (grep.stdout) {
+        grep.stdout.pipe(pinoPretty.stdin);
+      }
     }
 
     // Handle process termination
@@ -139,7 +145,9 @@ class LogTailer {
         stdio: ["pipe", "inherit", "inherit"],
       });
 
-      tail.stdout.pipe(grep.stdin);
+      if (tail.stdout) {
+        tail.stdout.pipe(grep.stdin);
+      }
     }
 
     // Handle process termination
@@ -174,7 +182,7 @@ function parseArgs(): Partial<TailOptions> {
         break;
       case "--lines":
       case "-n":
-        options.lines = parseInt(args[++i], 10) || 50;
+        options.lines = parseInt(args[++i], 10) ?? 50;
         break;
       case "--no-pretty":
         options.pretty = false;

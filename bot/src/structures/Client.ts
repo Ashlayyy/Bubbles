@@ -198,7 +198,7 @@ export default class Client extends DiscordClient {
 
       // Start queue processing
       logger.info("Starting queue processors...");
-      await this.startQueueProcessors();
+      void this.startQueueProcessors();
 
       // Initialize WebSocket service for API communication
       try {

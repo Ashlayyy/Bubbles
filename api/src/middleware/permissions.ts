@@ -3,6 +3,7 @@ import type { ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from './auth.js';
 import { discordApi } from '../services/discordApiService.js';
 import { createLogger } from '../types/shared.js';
+import { permissionService } from '../services/permissionService.js';
 
 // Discord permission flags
 export const DiscordPermissions = {
@@ -225,11 +226,46 @@ export const requirePermissions = (permissions: string[]) => {
 				} as ApiResponse);
 			}
 
-			// Fetch user's permissions in the guild
-			const userGuildPermissions = await getUserGuildPermissions(
+			// Fetch base permissions from Discord
+			let userGuildPermissions = await getUserGuildPermissions(
 				guildId,
 				user.id
 			);
+
+			// Merge DB overrides (RolePermission / UserPermission)
+			try {
+				const override = await permissionService.getUserPermission(
+					guildId,
+					user.id
+				);
+				if (override?.permissions) {
+					// merge bitfields via OR
+					const merged =
+						BigInt(userGuildPermissions) | BigInt(override.permissions);
+					userGuildPermissions = merged.toString();
+				}
+			} catch (error) {
+				permLogger.warn('PermissionService lookup failed', error);
+			}
+
+			// Merge role-based overrides
+			try {
+				const roleOverrides = await permissionService.getRolePermissions(
+					guildId
+				);
+				const member = await discordApi.getGuildMember(guildId, user.id);
+
+				for (const roleId of member.roles || []) {
+					const roleOverride = roleOverrides.find((r) => r.roleId === roleId);
+					if (roleOverride?.permissions) {
+						const merged =
+							BigInt(userGuildPermissions) | BigInt(roleOverride.permissions);
+						userGuildPermissions = merged.toString();
+					}
+				}
+			} catch (error) {
+				permLogger.warn('RolePermissionService lookup failed', error);
+			}
 
 			permLogger.debug('[PERM-CHECK]', {
 				route: req.originalUrl,
@@ -392,7 +428,8 @@ export async function checkUniversalPermissions(
 		}
 		if (perm.startsWith('discord:')) {
 			const discordPerm = perm.replace('discord:', '').toUpperCase();
-			const flag = DiscordPermissions[discordPerm as keyof typeof DiscordPermissions];
+			const flag =
+				DiscordPermissions[discordPerm as keyof typeof DiscordPermissions];
 			if (!flag || !userGuildPerms) {
 				missing.push(perm);
 				continue;

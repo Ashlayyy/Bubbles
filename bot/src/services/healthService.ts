@@ -192,12 +192,15 @@ class BotHealthService {
 
   private checkQueueHealth() {
     try {
+      // Check if queue service is ready and has workers
       const queueService = this.client.queueService;
+      const isReady = queueService?.isReady() ?? false;
+      const workerCount = 0; // TODO: implement actual worker count
 
       return {
-        status: queueService?.isReady() ? ("healthy" as const) : ("degraded" as const),
-        ready: queueService?.isReady() ?? false,
-        processingJobs: 0, // Would be implemented with actual queue metrics
+        status: isReady ? ("healthy" as const) : ("degraded" as const),
+        ready: isReady,
+        processingJobs: workerCount,
       };
     } catch (error) {
       logger.error("Queue health check failed:", error);

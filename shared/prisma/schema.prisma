@@ -882,3 +882,78 @@ model UserReport {
 
   @@index([guildId, status])
 }
+
+/// -------------------------
+/// Phase 1 Additions (Queue, Events, Permissions)
+/// -------------------------
+
+model QueueJob {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  queueName   String
+  jobType     String
+  payload     Json
+  status      String // waiting, active, completed, failed
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+  failedAt    DateTime?
+  errorMsg    String?
+
+  @@index([queueName, status])
+  @@index([createdAt])
+}
+
+model EventDiscord {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  type      String
+  guildId   String?
+  userId    String?
+  channelId String?
+  messageId String?
+  payload   Json
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  ttl       DateTime?
+
+  @@index([type, guildId, createdAt])
+  @@index([userId, createdAt])
+  @@index([ttl])
+}
+
+model EventGithub {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  type       String
+  repository String?
+  payload    Json
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+  ttl        DateTime?
+
+  @@index([type, repository, createdAt])
+  @@index([ttl])
+}
+
+model RolePermission {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  roleId      String
+  permissions String // Bitfield string
+  customNodes Json?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, roleId])
+  @@index([guildId])
+}
+
+model UserPermission {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  userId      String
+  permissions String // Bitfield string
+  customNodes Json?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([guildId])
+}

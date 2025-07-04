@@ -26,7 +26,7 @@ export async function logTicketEvent(
     if (!config.ticketLogChannelId) {
       return;
     }
-    const channelId = config.ticketLogChannelId as string;
+    const channelId = config.ticketLogChannelId;
     const logChannel = guild.channels.cache.get(channelId);
     if (!logChannel?.isTextBased()) {
       logger.warn(`Ticket log channel ${config.ticketLogChannelId ?? "undefined"} not found or not text-based`);

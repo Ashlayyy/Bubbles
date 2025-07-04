@@ -202,7 +202,7 @@ export class UnifiedProcessor {
       case "bot-websocket":
         return await this.executeViaWebSocket(request);
       case "queue":
-        return await this.executeViaQueue(request);
+        return this.executeViaQueue(request);
       case "direct":
         return await this.executeDirect(request);
       default:
@@ -246,38 +246,15 @@ export class UnifiedProcessor {
     }
   }
 
-  private async executeViaQueue(request: NormalizedRequest): Promise<UnifiedResponse> {
+  private executeViaQueue(request: NormalizedRequest): UnifiedResponse {
+    const startTime = performance.now();
+
     try {
-      const { QueueManager } = await import("@shared/queue");
-      const queueManager = new QueueManager();
-
-      if (!queueManager.isConnectionHealthy()) {
-        throw new Error("Queue connection not healthy");
-      }
-
-      const startTime = performance.now();
-
-      // Add job to queue
-      const queue = queueManager.getQueue("bot-commands");
-      const job = await queue.add(request.type, request.data, {
-        priority: this.getPriorityValue(request.priority),
-        attempts: 3,
-        backoff: {
-          type: "exponential",
-          delay: 2000,
-        },
-        removeOnComplete: 10,
-        removeOnFail: 5,
-        timeout: request.timeout,
-      });
-
-      // Wait for job completion
-      const result: unknown = await job.finished();
-
+      // Queue functionality moved to BullMQ
       return {
-        success: true,
+        success: false,
         requestId: request.id,
-        data: result,
+        error: "Queue functionality moved to BullMQ",
         executionTime: performance.now() - startTime,
         method: "queue",
         timestamp: Date.now(),

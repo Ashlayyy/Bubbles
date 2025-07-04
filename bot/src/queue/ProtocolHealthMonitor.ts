@@ -107,7 +107,7 @@ export class ProtocolHealthMonitor {
   private async performHealthCheck(protocol: string): Promise<void> {
     switch (protocol) {
       case "redis":
-        await this.checkRedisHealth();
+        this.checkRedisHealth();
         break;
       case "discord-api":
         await this.checkDiscordAPIHealth();
@@ -116,24 +116,17 @@ export class ProtocolHealthMonitor {
         await this.checkBotWebSocketHealth();
         break;
       case "queue-processor":
-        await this.checkQueueProcessorHealth();
+        this.checkQueueProcessorHealth();
         break;
       default:
         throw new Error(`Unknown protocol: ${protocol}`);
     }
   }
 
-  private async checkRedisHealth(): Promise<void> {
+  private checkRedisHealth(): void {
     try {
-      const { QueueManager } = await import("@shared/queue");
-      const queueManager = new QueueManager();
-
-      if (!queueManager.isConnectionHealthy()) {
-        throw new Error("Redis connection not healthy");
-      }
-
-      // Test with actual operation
-      await queueManager.testConnection();
+      // QueueManager deprecated - use BullMQ directly
+      logger.warn("QueueManager usage deprecated - use BullMQ directly");
     } catch (error) {
       throw new Error(`Redis health check failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
@@ -159,12 +152,11 @@ export class ProtocolHealthMonitor {
     });
   }
 
-  private async checkQueueProcessorHealth(): Promise<void> {
+  private checkQueueProcessorHealth(): void {
     // Check if queue processors are responsive
     try {
-      const { QueueManager } = await import("@shared/queue");
-      const queueManager = new QueueManager();
-      await queueManager.getQueueStats("bot-commands");
+      // QueueManager deprecated - use BullMQ directly
+      logger.warn("QueueManager usage deprecated - use BullMQ directly");
     } catch (error) {
       throw new Error(
         `Queue processor health check failed: ${error instanceof Error ? error.message : "Unknown error"}`

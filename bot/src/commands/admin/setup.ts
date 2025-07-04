@@ -41,12 +41,10 @@ class SetupCommand extends AdminCommand {
         matched = MODULE_CHOICES.slice(0, 25);
       }
 
-      // eslint-disable-next-line no-console
       console.debug("/setup autocomplete", { value, matched });
 
       await interaction.respond(matched.map((m) => ({ name: m, value: m })));
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error("Autocomplete error:", err);
     }
   }

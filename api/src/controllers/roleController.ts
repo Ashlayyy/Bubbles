@@ -206,6 +206,7 @@ export const createRole = async (req: AuthRequest, res: Response) => {
 				action: 'CREATE',
 				moderatorId: req.user?.id || 'unknown',
 				reason: reason || 'Role created via API',
+			},
 		});
 
 		// Broadcast role creation
@@ -525,8 +526,13 @@ export const getRoleLogs = async (req: AuthRequest, res: Response) => {
 		const where: any = { guildId };
 		if (roleId && typeof roleId === 'string') where.roleId = roleId;
 		if (userId && typeof userId === 'string') where.userId = userId;
-		if (action && ['CREATE', 'UPDATE', 'DELETE', 'ASSIGN', 'REMOVE'].includes(action as string)) {
-		  where.action = action;
+		if (
+			action &&
+			['CREATE', 'UPDATE', 'DELETE', 'ASSIGN', 'REMOVE'].includes(
+				action as string
+			)
+		) {
+			where.action = action;
 		}
 		// Fetch logs with pagination
 		const [logs, total] = await Promise.all([

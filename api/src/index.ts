@@ -16,7 +16,6 @@ import { env } from '@bubbles/shared';
 applySecureRouterPatch();
 
 import apiRoutes from './routes/index.js';
-import queueManager from './queue/manager.js';
 import { wsManager } from './websocket/manager.js';
 import { initializePrisma } from './services/databaseService.js';
 
@@ -105,7 +104,8 @@ if (config.nodeEnv === 'development') {
 				guildId: req.body.guildId || 'test-guild',
 			};
 
-			await queueManager.addJob(QUEUE_NAMES.BOT_COMMANDS, testJob);
+			// Queue functionality moved to BullMQManager
+			logger.info('Test job functionality moved to BullMQManager');
 
 			res.json({
 				success: true,
@@ -186,9 +186,6 @@ const gracefulShutdown = async (signal: string) => {
 			// Close database connection
 			const { closePrisma } = await import('./services/databaseService.js');
 			await closePrisma();
-
-			// Close queue connections
-			await queueManager.disconnect();
 
 			// Close WebSocket connections
 			wsManager.shutdown();

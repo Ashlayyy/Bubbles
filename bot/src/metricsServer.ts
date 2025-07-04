@@ -41,13 +41,12 @@ export function startMetricsServer(client: Client, queueService: UnifiedQueueSer
         const metrics = queueService.getMetrics();
         const workers = metrics.workers;
         queueActive.set(workers.activeWorkers || 0);
-        const completed = (workers.completedJobs as number | undefined) ?? 0;
+        const completed = (workers as any).completedJobs ?? 0;
         if (completed > lastCompleted) {
           jobsProcessed.inc(completed - lastCompleted);
           lastCompleted = completed;
         }
       } catch (err) {
-        // eslint-disable-next-line no-console -- non-critical metrics error
         console.error("[Metrics] Update error", err);
       }
     }
@@ -86,7 +85,6 @@ export function startMetricsServer(client: Client, queueService: UnifiedQueueSer
   });
 
   server.listen(port, () => {
-    // eslint-disable-next-line no-console
     console.log(`[Metrics] Bot metrics server listening on ${port}`);
   });
 }

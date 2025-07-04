@@ -31,11 +31,11 @@ export function loadEnvironment(): void {
         path: process.cwd(),
         pattern: ".env[.node_env][.local]",
         node_env: process.env.NODE_ENV ?? "development",
-      });
+      }) as { parsed?: Record<string, string>; error?: Error };
 
-      if (result && !result.error && result.parsed) {
+      if (result?.parsed && !result.error) {
         // Enable variable expansion
-        dotenvExpand.expand(result);
+        dotenvExpand.expand({ parsed: result.parsed });
         console.log(`✅ Loaded environment files from ${process.cwd()}`);
       }
     } else {
@@ -50,11 +50,11 @@ export function loadEnvironment(): void {
         path: projectRoot,
         pattern: ".env[.node_env][.local]",
         node_env: process.env.NODE_ENV ?? "development",
-      });
+      }) as { parsed?: Record<string, string>; error?: Error };
 
-      if (result && !result.error && result.parsed) {
+      if (result?.parsed && !result.error) {
         // Enable variable expansion
-        dotenvExpand.expand(result);
+        dotenvExpand.expand({ parsed: result.parsed });
         console.log(`✅ Loaded environment files from ${projectRoot}`);
       }
 
@@ -64,10 +64,10 @@ export function loadEnvironment(): void {
         path: botDir,
         pattern: ".env[.node_env][.local]",
         node_env: process.env.NODE_ENV ?? "development",
-      });
+      }) as { parsed?: Record<string, string>; error?: Error };
 
-      if (botResult && !botResult.error && botResult.parsed) {
-        dotenvExpand.expand(botResult);
+      if (botResult?.parsed && !botResult.error) {
+        dotenvExpand.expand({ parsed: botResult.parsed });
         console.log(`✅ Loaded bot-specific environment files from ${botDir}`);
       }
     }

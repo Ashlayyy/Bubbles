@@ -913,7 +913,7 @@ export class ReactionRolesCommand extends AdminCommand {
       const customClient = this.client as any as Client;
       if (customClient.queueService) {
         try {
-          await customClient.queueService.processRequest({
+          customClient.queueService.processRequest({
             type: "CONFIG_UPDATE",
             data: {
               guildId: this.guild.id,

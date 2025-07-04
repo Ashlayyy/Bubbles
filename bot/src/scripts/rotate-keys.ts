@@ -1,6 +1,6 @@
 import { jwtKeyManager } from "../../../shared/src/utils/JwtKeyManager.js";
 
-(async () => {
+void (async () => {
   try {
     await jwtKeyManager.rotateKeys("bot");
     console.log("[RotateKeys] Bot keys rotated successfully");

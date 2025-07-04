@@ -4,7 +4,7 @@ import { addRoute } from '../utils/secureRoute.js';
 import { createLogger, type ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import hybridCommunicationService from '../services/hybridCommunicationService.js';
-import enhancedQueueManager from '../queue/manager.js';
+import { bullMQManager } from '../queue/bullmqManager.js';
 import type { Response } from 'express';
 
 const router = Router();
@@ -39,7 +39,25 @@ addRoute(
 	authenticateToken,
 	async (req: AuthRequest, res: Response) => {
 		try {
-			const stats = await enhancedQueueManager.getQueueStats();
+			// Get stats from BullMQManager for each queue
+			const criticalStats = await bullMQManager.getQueueMetrics(
+				'critical-operations'
+			);
+			const botCommandsStats = await bullMQManager.getQueueMetrics(
+				'bot-commands'
+			);
+			const stats = {
+				queues: {
+					'critical-operations': criticalStats,
+					'bot-commands': botCommandsStats,
+				},
+				total: {
+					waiting: criticalStats.waiting + botCommandsStats.waiting,
+					active: criticalStats.active + botCommandsStats.active,
+					completed: criticalStats.completed + botCommandsStats.completed,
+					failed: criticalStats.failed + botCommandsStats.failed,
+				},
+			};
 
 			res.json({
 				success: true,
@@ -62,10 +80,7 @@ router.get(
 		try {
 			const { queueName, jobId } = req.params;
 
-			const jobStatus = await enhancedQueueManager.getJobStatus(
-				queueName,
-				jobId
-			);
+			const jobStatus = await bullMQManager.getJobStatus(queueName, jobId);
 
 			res.json({
 				success: true,
