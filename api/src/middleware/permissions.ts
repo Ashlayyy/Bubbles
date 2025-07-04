@@ -391,10 +391,7 @@ export async function checkUniversalPermissions(
 		}
 		if (perm.startsWith('discord:')) {
 			const discordPerm = perm.replace('discord:', '').toUpperCase();
-			const flag =
-				discordPerm in DiscordPermissions
-					? (DiscordPermissions as any)[discordPerm]
-					: undefined;
+			const flag = DiscordPermissions[discordPerm as keyof typeof DiscordPermissions];
 			if (!flag || !userGuildPerms) {
 				missing.push(perm);
 				continue;
