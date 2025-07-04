@@ -16,7 +16,9 @@ import {
 } from '../middleware/validation.js';
 import {
 	generalRateLimit,
-	guildAnalyticsRateLimit,
+ import {
+   generalRateLimit,
+ } from '../middleware/rateLimiting.js';
 } from '../middleware/rateLimiting.js';
 import { addRoute } from '../utils/secureRoute.js';
 
