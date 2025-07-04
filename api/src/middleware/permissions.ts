@@ -198,7 +198,8 @@ async function getUserGuildPermissions(
 			});
 
 			return bitfield;
-		} catch {
+		} catch (error) {
+			permLogger.error('Failed to fetch user permissions:', error);
 			return '0'; // fallback – no permissions
 		} finally {
 			// Clean up the in-flight entry regardless of outcome
