@@ -329,6 +329,10 @@ export const purgeExpiredInvites = async (req: AuthRequest, res: Response) => {
 					status: 'deleted',
 					data: deletedInvite,
 				});
+				// Add small delay to avoid rate limits
+				if (expiredInvites.length > 10) {
+					await new Promise(resolve => setTimeout(resolve, 100));
+				}
 			} catch (error) {
 				errors.push({
 					inviteCode: invite.code,
