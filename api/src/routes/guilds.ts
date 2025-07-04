@@ -37,14 +37,12 @@ guildRouter.get('/', authenticateToken, generalRateLimit, getGuildInfo);
 
 guildRouter.get(
 	'/channels',
-	authenticateToken,
 	generalRateLimit,
 	getGuildChannels
 );
-guildRouter.get('/roles', authenticateToken, generalRateLimit, getGuildRoles);
+guildRouter.get('/roles', generalRateLimit, getGuildRoles);
 guildRouter.get(
 	'/members',
-	authenticateToken,
 	validatePagination,
 	generalRateLimit,
 	getGuildMembers
