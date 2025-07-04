@@ -55,7 +55,6 @@ addRoute(
 	'get',
 	'/settings',
 	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
-	authenticateToken,
 	getServerSettings
 );
 
@@ -64,7 +63,6 @@ addRoute(
 	'put',
 	'/settings',
 	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
-	authenticateToken,
 	updateServerSettings
 );
 
