@@ -276,9 +276,12 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 		const settings = await prisma.starboardSettings.findFirst({
 			where: { guildId },
 		});
-
 		if (!settings?.isEnabled) {
 			return res.failure('Starboard is disabled', 400);
+		}
+
+		if (!settings.selfStar && userId === req.body.authorId) {
+			return res.failure('You cannot star your own messages', 400);
 		}
 
 		// Check if message exists in starboard
