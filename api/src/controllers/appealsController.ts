@@ -106,34 +106,54 @@ export const getAppeals = async (req: AuthRequest, res: Response) => {
 		if (type) where.type = type;
 		if (moderatorId) where.reviewedBy = moderatorId;
 
+		// Build where clause for CaseAppeal
+		const caseAppealWhere: any = {
+			case: { guildId },
+		};
+		if (status) caseAppealWhere.status = status;
+		if (userId) caseAppealWhere.userId = userId;
+		if (type)
+			caseAppealWhere.case = {
+				...caseAppealWhere.case,
+				type: (type as string).toUpperCase(),
+			};
+		if (moderatorId) caseAppealWhere.reviewedBy = moderatorId;
+
 		// Fetch appeals with pagination
 		const [appeals, total] = await Promise.all([
-			prisma.appeal.findMany({
-				where,
+			prisma.caseAppeal.findMany({
+				where: caseAppealWhere,
 				orderBy: { createdAt: 'desc' },
 				skip,
 				take,
 				include: {
-					responses: {
-						orderBy: { createdAt: 'desc' },
-						take: 5,
+					case: {
+						select: {
+							id: true,
+							type: true,
+							reason: true,
+							guildId: true,
+							caseNumber: true,
+						},
 					},
 				},
 			}),
-			prisma.appeal.count({ where }),
+			prisma.caseAppeal.count({ where: caseAppealWhere }),
 		]);
 
 		const formattedAppeals = appeals.map((appeal: any) => ({
 			id: appeal.id,
 			userId: appeal.userId,
-			type: appeal.type,
+			type: appeal.case.type,
 			reason: appeal.reason,
 			status: appeal.status,
 			reviewedBy: appeal.reviewedBy,
 			reviewNotes: appeal.reviewNotes,
+			evidence: appeal.evidence,
+			caseId: appeal.case.id,
+			caseNumber: appeal.case.caseNumber,
 			createdAt: appeal.createdAt,
 			updatedAt: appeal.updatedAt,
-			responses: appeal.responses,
 		}));
 
 		res.success({
@@ -157,14 +177,20 @@ export const getAppeal = async (req: AuthRequest, res: Response) => {
 		const { guildId, appealId } = req.params;
 		const prisma = getPrismaClient();
 
-		const appeal = await prisma.appeal.findFirst({
+		const appeal = await prisma.caseAppeal.findFirst({
 			where: {
 				id: appealId,
-				guildId,
+				case: { guildId },
 			},
 			include: {
-				responses: {
-					orderBy: { createdAt: 'asc' },
+				case: {
+					select: {
+						id: true,
+						type: true,
+						reason: true,
+						guildId: true,
+						caseNumber: true,
+					},
 				},
 			},
 		});
@@ -197,22 +223,29 @@ export const createAppeal = async (req: AuthRequest, res: Response) => {
 		}
 
 		// Check user limits
-		const userAppeals = await prisma.appeal.count({ guildId, userId });
+		const userAppeals = await prisma.caseAppeal.count({
+			where: {
+				userId,
+				case: { guildId },
+			},
+		});
 
 		if (userAppeals >= settings.maxAppealsPerUser) {
 			return res.failure('Maximum appeals limit reached', 400);
 		}
 
 		// Check cooldown
-		const lastAppeal = await prisma.appeal.findFirst({
-			where: { guildId, userId },
+		const lastAppeal = await prisma.caseAppeal.findFirst({
+			where: {
+				userId,
+				case: { guildId },
+			},
 			orderBy: { createdAt: 'desc' },
 		});
 
 		if (lastAppeal) {
 			const cooldownEnd = new Date(
-				lastAppeal.createdAt.getTime() +
-					settings.cooldownDays * 24 * 60 * 60 * 1000
+				lastAppeal.createdAt.getTime() + settings.appealCooldown * 1000
 			);
 			if (new Date() < cooldownEnd) {
 				return res.failure(
@@ -222,15 +255,29 @@ export const createAppeal = async (req: AuthRequest, res: Response) => {
 			}
 		}
 
-		// Create appeal
-		const appeal = await prisma.appeal.create({
-			data: {
+		// Find the moderation case to appeal
+		const moderationCase = await prisma.moderationCase.findFirst({
+			where: {
 				guildId,
 				userId,
-				type,
+				type: type.toUpperCase(),
+				status: { in: ['ACTIVE', 'EXPIRED'] },
+			},
+			orderBy: { createdAt: 'desc' },
+		});
+
+		if (!moderationCase) {
+			return res.failure('No active moderation case found to appeal', 400);
+		}
+
+		// Create appeal
+		const appeal = await prisma.caseAppeal.create({
+			data: {
+				caseId: moderationCase.id,
+				userId,
+				appealMethod: 'DASHBOARD',
 				reason,
-				evidence: evidence || null,
-				contactInfo: contactInfo || null,
+				evidence: evidence || [],
 				status: 'PENDING',
 			},
 		});
@@ -287,8 +334,14 @@ export const updateAppealStatus = async (req: AuthRequest, res: Response) => {
 		const prisma = getPrismaClient();
 
 		// Get current appeal
-		const appeal = await prisma.appeal.findFirst({
-			where: { id: appealId, guildId },
+		const appeal = await prisma.caseAppeal.findFirst({
+			where: {
+				id: appealId,
+				case: { guildId },
+			},
+			include: {
+				case: true,
+			},
 		});
 
 		if (!appeal) {
@@ -296,7 +349,7 @@ export const updateAppealStatus = async (req: AuthRequest, res: Response) => {
 		}
 
 		// Update appeal
-		const updatedAppeal = await prisma.appeal.update({
+		const updatedAppeal = await prisma.caseAppeal.update({
 			where: { id: appealId },
 			data: {
 				status,
@@ -314,6 +367,15 @@ export const updateAppealStatus = async (req: AuthRequest, res: Response) => {
 		if (status === 'APPROVED' && settings?.autoUnbanOnApproval) {
 			try {
 				await discordApi.unbanUser(guildId, appeal.userId, 'Appeal approved');
+
+				// Update the original case status
+				await prisma.moderationCase.update({
+					where: { id: appeal.case.id },
+					data: {
+						status: 'APPEALED',
+						updatedAt: new Date(),
+					},
+				});
 			} catch (error) {
 				logger.warn('Failed to auto-unban user:', error);
 			}
@@ -367,8 +429,8 @@ export const deleteAppeal = async (req: AuthRequest, res: Response) => {
 		const { guildId, appealId } = req.params;
 		const prisma = getPrismaClient();
 
-		// Delete appeal and its responses
-		await prisma.appeal.delete({
+		// Delete appeal
+		await prisma.caseAppeal.delete({
 			where: { id: appealId },
 		});
 
@@ -400,32 +462,35 @@ export const getAppealStatistics = async (req: AuthRequest, res: Response) => {
 		// Get appeal statistics
 		const [totalAppeals, statusCounts, typeBreakdown, dailyActivity] =
 			await Promise.all([
-				prisma.appeal.count({
+				prisma.caseAppeal.count({
 					where: {
-						guildId,
+						case: { guildId },
 						createdAt: { gte: startDate },
 					},
 				}),
-				prisma.appeal.groupBy({
+				prisma.caseAppeal.groupBy({
 					by: ['status'],
 					where: {
-						guildId,
+						case: { guildId },
 						createdAt: { gte: startDate },
 					},
 					_count: { status: true },
 				}),
-				prisma.appeal.groupBy({
-					by: ['type'],
+				prisma.caseAppeal.findMany({
 					where: {
-						guildId,
+						case: { guildId },
 						createdAt: { gte: startDate },
 					},
-					_count: { type: true },
+					include: {
+						case: {
+							select: { type: true },
+						},
+					},
 				}),
-				prisma.appeal.groupBy({
+				prisma.caseAppeal.groupBy({
 					by: ['createdAt'],
 					where: {
-						guildId,
+						case: { guildId },
 						createdAt: { gte: startDate },
 					},
 					_count: { createdAt: true },
@@ -440,6 +505,13 @@ export const getAppealStatistics = async (req: AuthRequest, res: Response) => {
 				dateKey,
 				(dailyMap.get(dateKey) || 0) + day._count.createdAt
 			);
+		});
+
+		// Process type breakdown
+		const typeMap = new Map<string, number>();
+		typeBreakdown.forEach((appeal: any) => {
+			const type = appeal.case.type;
+			typeMap.set(type, (typeMap.get(type) || 0) + 1);
 		});
 
 		// Calculate approval rates
@@ -467,10 +539,7 @@ export const getAppealStatistics = async (req: AuthRequest, res: Response) => {
 						? Math.round((approvedCount / reviewedCount) * 100)
 						: 0,
 			},
-			typeBreakdown: typeBreakdown.reduce((acc: any, type: any) => {
-				acc[type.type] = type._count.type;
-				return acc;
-			}, {}),
+			typeBreakdown: Object.fromEntries(typeMap),
 			dailyActivity: Array.from(dailyMap.entries()).map(([date, count]) => ({
 				date,
 				count,

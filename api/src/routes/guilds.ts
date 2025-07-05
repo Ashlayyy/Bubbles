@@ -14,7 +14,7 @@ import {
 	validateGuildAccess,
 	validatePagination,
 } from '../middleware/validation.js';
-import { generalRateLimit } from '../middleware/rateLimit.js';
+import { generalRateLimit } from '../middleware/rateLimiting.js';
 import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router();

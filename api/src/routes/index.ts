@@ -10,6 +10,10 @@ import customCommandsRoutes from './customCommands.js';
 import levelingRoutes from './leveling.js';
 import reactionRolesRoutes from './reactionRoles.js';
 import ticketsRoutes from './tickets.js';
+import ticketCategoriesRoutes from './ticketCategories.js';
+import ticketAnalyticsRoutes from './ticketAnalytics.js';
+import ticketTemplatesRoutes from './ticketTemplates.js';
+import ticketUserManagementRoutes from './ticketUserManagement.js';
 import welcomeRoutes from './welcome.js';
 import appealsRoutes from './appeals.js';
 import remindersRoutes from './reminders.js';
@@ -20,6 +24,7 @@ import webhooksRoutes from './webhooks.js';
 import messagesRoutes from './messages.js';
 import channelsRoutes from './channels.js';
 import rolesRoutes from './roles.js';
+import serverStatsRoutes from './serverStats.js';
 import invitesRoutes from './invites.js';
 import auditRoutes from './audit.js';
 import hybridRoutes from './hybrid.js';
@@ -32,6 +37,12 @@ import eventsRoutes from './events.js';
 
 const router = Router();
 
+router.use(
+	'/guilds/:guildId',
+	authenticateToken,
+	requireUniversalPermissions(['token', 'discord:MANAGE_GUILD'])
+);
+
 router.use('/auth', authRoutes);
 router.use('/guilds', guildRoutes);
 router.use('/guilds/:guildId/moderation', moderationRoutes);
@@ -40,9 +51,14 @@ router.use('/guilds/:guildId/reaction-roles', reactionRolesRoutes);
 router.use('/guilds/:guildId/custom-commands', customCommandsRoutes);
 router.use('/guilds/:guildId/leveling', levelingRoutes);
 router.use('/guilds/:guildId/tickets', ticketsRoutes);
+router.use('/', ticketCategoriesRoutes);
+router.use('/', ticketAnalyticsRoutes);
+router.use('/', ticketTemplatesRoutes);
+router.use('/', ticketUserManagementRoutes);
 router.use('/guilds/:guildId/welcome', welcomeRoutes);
 router.use('/guilds/:guildId/channels', channelsRoutes);
 router.use('/guilds/:guildId/roles', rolesRoutes);
+router.use('/guilds/:guildId/server-stats', serverStatsRoutes);
 router.use('/guilds/:guildId/invites', invitesRoutes);
 router.use('/guilds/:guildId/music', musicRoutes);
 router.use('/guilds/:guildId/analytics', analyticsRoutes);
@@ -59,13 +75,6 @@ router.use('/hybrid', hybridRoutes);
 router.use('/health', healthRoutes);
 router.use('/metrics', metricsRoutes);
 router.use('/events', eventsRoutes);
-
-// Global security: every /guilds/:guildId/... request requires token & MANAGE_GUILD
-router.use(
-	'/guilds/:guildId',
-	authenticateToken,
-	requireUniversalPermissions(['token', 'discord:MANAGE_GUILD'])
-);
 
 if (process.env.NODE_ENV === 'development') {
 	router.use('/dev', devRoutes);

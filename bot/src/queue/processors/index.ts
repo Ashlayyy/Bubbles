@@ -3,6 +3,7 @@ export { BaseProcessor } from "./BaseProcessor.js";
 export type { ProcessorContext, ProcessorResult } from "./BaseProcessor.js";
 
 // Specific processors
+export { BulkModerationProcessor } from "./BulkModerationProcessor.js";
 export { ConfigProcessor } from "./ConfigProcessor.js";
 export { GiveawayProcessor } from "./GiveawayProcessor.js";
 export { MessageProcessor } from "./MessageProcessor.js";

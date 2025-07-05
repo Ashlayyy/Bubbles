@@ -31,6 +31,7 @@ export default new ClientEvent(Events.MessageCreate, async (message: Message) =>
           ticketId: ticket.id,
           messageId: message.id,
           userId: message.author.id,
+          userIcon: message.author.displayAvatarURL({ extension: "png" }),
           content: message.content || "",
           attachments: message.attachments.map((att) => att.url),
           embeds: message.embeds.map((embed) => embed.toJSON()) as Prisma.InputJsonValue[],
@@ -53,7 +54,7 @@ export default new ClientEvent(Events.MessageCreate, async (message: Message) =>
   await AutoModService.processMessage(client, message);
 
   // Log the message creation to general logging system
-  await client.logManager.log(message.guild.id, "MESSAGE_CREATE", {
+  await client.logManager.log(message.guild.id, "messageCreate", {
     userId: message.author.id,
     channelId: message.channel.id,
     content: message.content,

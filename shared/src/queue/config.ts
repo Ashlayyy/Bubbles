@@ -120,7 +120,7 @@ export const createQueue = (name: QueueName, redisConnection?: Redis): any => {
 	) => {
 		const handler = typeof processor === 'function' ? processor : callback;
 		const worker = new BullWorker(name, handler, {
-			connection: bullQueue.client,
+			connection: redis,
 		});
 		return worker;
 	};
