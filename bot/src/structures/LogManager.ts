@@ -1,9 +1,10 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@shared/database";
 import type { EmbedBuilder, TextChannel, User } from "discord.js";
 import { EmbedBuilder as DiscordEmbedBuilder } from "discord.js";
 
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
+import { cacheService } from "../services/cacheService.js";
 import type Client from "./Client.js";
 
 // Log types organized by category for easy management
@@ -166,6 +167,14 @@ export const LOG_CATEGORIES = {
     "MOD_ESCALATION_TRIGGERED",
     "MOD_SCHEDULED_ACTION",
     "MOD_MANUAL_ACTION",
+    "MOD_BAN",
+    "MOD_KICK",
+    "MOD_WARN",
+    "MOD_NOTE",
+    "MOD_TIMEOUT",
+    "MOD_UNBAN",
+    "MOD_UNTIMEOUT",
+    "USER_REPORT",
   ],
   INVITE: ["INVITE_CREATE", "INVITE_DELETE", "INVITE_USE", "INVITE_EXPIRE", "INVITE_VANITY_UPDATE", "INVITE_TRACKING"],
   EMOJI: [
@@ -193,10 +202,14 @@ export const LOG_CATEGORIES = {
     "INTEGRATION_DETAILS",
   ],
   REACTION_ROLE: [
-    "REACTION_ROLE_ADD",
-    "REACTION_ROLE_REMOVE",
-    "REACTION_ROLE_CONFIG_CHANGE",
-    "REACTION_ROLE_MESSAGE_UPDATE",
+    "REACTION_ROLE_ADDED", // User gained a role via reaction
+    "REACTION_ROLE_REMOVED", // User lost a role via reaction
+    "REACTION_ROLE_CONFIG_ADD", // Reaction role configuration added
+    "REACTION_ROLE_CONFIG_REMOVE", // Reaction role configuration removed
+    "REACTION_ROLE_MESSAGE_CREATE", // New reaction role message created
+    "REACTION_ROLE_MESSAGE_UPDATE", // Reaction role message edited
+    "REACTION_ROLE_MESSAGE_DELETE", // Reaction role message deleted
+    "REACTION_ROLE_ERROR", // Error in reaction role processing
   ],
   AUTOMOD: [
     "AUTOMOD_RULE_CREATE",
@@ -318,8 +331,8 @@ export default class LogManager {
    */
   async log(guildId: string, logType: string, data: Partial<LogEvent> = {}): Promise<void> {
     try {
-      // Validate log type
-      if (!ALL_LOG_TYPES.includes(logType as (typeof ALL_LOG_TYPES)[number])) {
+      const isModerationLog = /^MOD_[A-Z_]+$/.test(logType);
+      if (!ALL_LOG_TYPES.includes(logType as (typeof ALL_LOG_TYPES)[number]) && !isModerationLog) {
         logger.warn(`Invalid log type: ${logType}`);
         return;
       }
@@ -352,13 +365,19 @@ export default class LogManager {
   }
 
   /**
-   * Get log settings for a guild (with caching)
+   * Get log settings with caching
    */
   private async getLogSettings(guildId: string): Promise<LogSettings> {
-    const cached = this.settingsCache.get(guildId);
-    if (cached) return cached;
+    const cacheKey = `logs:settings:${guildId}`;
 
     try {
+      // Try cache first
+      const cached = await cacheService.get<LogSettings>(cacheKey, "default");
+      if (cached) {
+        return cached;
+      }
+
+      // Fetch from database
       const settings = await prisma.logSettings.findUnique({
         where: { guildId },
       });
@@ -373,13 +392,12 @@ export default class LogManager {
         customFormats: settings?.customFormats as Record<string, unknown> | undefined,
       };
 
-      // Cache for 5 minutes
-      this.settingsCache.set(guildId, logSettings);
-      setTimeout(() => this.settingsCache.delete(guildId), this.cacheTimeout);
+      // Cache result
+      await cacheService.set(cacheKey, logSettings, "default");
 
       return logSettings;
     } catch (error) {
-      logger.error("Error getting log settings:", error);
+      logger.error(`Error getting log settings for ${guildId}:`, error);
       return {
         channelRouting: {},
         ignoredUsers: [],
@@ -388,6 +406,13 @@ export default class LogManager {
         enabledLogTypes: [],
       };
     }
+  }
+
+  /**
+   * Invalidate log settings cache
+   */
+  static async invalidateLogSettingsCache(guildId: string): Promise<void> {
+    await cacheService.delete(`logs:settings:${guildId}`);
   }
 
   /**
@@ -525,7 +550,7 @@ export default class LogManager {
 
     // Set color based on category/severity
     const category = this.getLogCategory(logType);
-    const color = this.getCategoryColor(category);
+    const color = this.getCategoryColor(category, logType);
     embed.setColor(color);
 
     // Set title and description based on log type
@@ -573,9 +598,21 @@ export default class LogManager {
   /**
    * Get color for category - enhanced with more specific colors
    */
-  private getCategoryColor(category: string | null): number {
+  private getCategoryColor(category: string | null, logType?: string): number {
+    // Message-specific colors for enhanced visual distinction
+    if (category === "MESSAGE" && logType) {
+      const messageColors = {
+        MESSAGE_DELETE: 0xe74c3c, // Red - deleted messages
+        MESSAGE_EDIT: 0xe67e22, // Orange - edited messages
+        MESSAGE_BULK_DELETE: 0xc0392b, // Dark red - bulk deletions
+        MESSAGE_PIN: 0xf39c12, // Gold - pinned messages
+        MESSAGE_UNPIN: 0x95a5a6, // Gray - unpinned messages
+      };
+      return messageColors[logType as keyof typeof messageColors] || 0x3498db; // Default blue
+    }
+
     const colors = {
-      MESSAGE: 0x3498db, // Blue - information
+      MESSAGE: 0x3498db, // Blue - information (fallback)
       MEMBER: 0x2ecc71, // Green - positive/joins
       ROLE: 0x9b59b6, // Purple - permissions/roles
       CHANNEL: 0xe67e22, // Orange - structural changes
@@ -610,12 +647,28 @@ export default class LogManager {
     const channelMention = logEntry.channelId ? `<#${logEntry.channelId}>` : "Unknown Channel";
 
     switch (logType) {
-      case "MESSAGE_DELETE":
+      case "MESSAGE_DELETE": {
+        // Enhanced deletion attribution
+        const metadata = logEntry.metadata as { deletionMethod?: string } | undefined;
+        const deletionMethod = metadata?.deletionMethod ?? "unknown";
+        const executorMention = logEntry.executorId ? `<@${logEntry.executorId}>` : null;
+
+        let description = `A message by ${userMention} was deleted in ${channelMention}`;
+
+        if (executorMention && deletionMethod === "moderator") {
+          description += `\n**Deleted by:** ${executorMention}`;
+        } else if (deletionMethod === "author") {
+          description += `\n**Deleted by:** Message Author`;
+        } else if (deletionMethod === "system") {
+          description += `\n**Deleted by:** System/Bot`;
+        }
+
         return {
           title: "Message Deleted",
-          description: `A message by ${userMention} was deleted in ${channelMention}`,
+          description,
           emoji: "🗑️",
         };
+      }
 
       case "MESSAGE_EDIT":
         return {
@@ -627,9 +680,10 @@ export default class LogManager {
       case "MESSAGE_BULK_DELETE": {
         const metadata = logEntry.metadata as { deletedCount?: number } | undefined;
         const deletedCount = metadata?.deletedCount ?? "multiple";
+        const executorMention = logEntry.executorId ? `<@${logEntry.executorId}>` : "Unknown User";
         return {
           title: "Bulk Message Delete",
-          description: `${deletedCount} messages were bulk deleted in ${channelMention}`,
+          description: `${deletedCount} messages were bulk deleted in ${channelMention}\n**Deleted by:** ${executorMention}`,
           emoji: "🗑️",
         };
       }
@@ -755,6 +809,82 @@ export default class LogManager {
           description: `${userMention} removed a reaction in ${channelMention}`,
           emoji: "👎",
         };
+
+      // Reaction Role Events
+      case "REACTION_ROLE_ADDED": {
+        const metadata = logEntry.metadata as { roleName?: string; emoji?: string } | undefined;
+        const roleName = metadata?.roleName ?? "Unknown Role";
+        const emoji = metadata?.emoji ?? "❓";
+        return {
+          title: "Reaction Role Added",
+          description: `${userMention} gained the role **${roleName}** via reaction ${emoji}`,
+          emoji: "✅",
+        };
+      }
+
+      case "REACTION_ROLE_REMOVED": {
+        const metadata = logEntry.metadata as { roleName?: string; emoji?: string } | undefined;
+        const roleName = metadata?.roleName ?? "Unknown Role";
+        const emoji = metadata?.emoji ?? "❓";
+        return {
+          title: "Reaction Role Removed",
+          description: `${userMention} lost the role **${roleName}** via reaction ${emoji}`,
+          emoji: "❌",
+        };
+      }
+
+      case "REACTION_ROLE_CONFIG_ADD": {
+        const metadata = logEntry.metadata as { roleName?: string; emoji?: string } | undefined;
+        const roleName = metadata?.roleName ?? "Unknown Role";
+        const emoji = metadata?.emoji ?? "❓";
+        return {
+          title: "Reaction Role Configuration Added",
+          description: `New reaction role configuration: ${emoji} → **${roleName}**`,
+          emoji: "⚙️",
+        };
+      }
+
+      case "REACTION_ROLE_CONFIG_REMOVE": {
+        const metadata = logEntry.metadata as { roleName?: string; emoji?: string } | undefined;
+        const roleName = metadata?.roleName ?? "Unknown Role";
+        const emoji = metadata?.emoji ?? "❓";
+        return {
+          title: "Reaction Role Configuration Removed",
+          description: `Removed reaction role configuration: ${emoji} → **${roleName}**`,
+          emoji: "🗑️",
+        };
+      }
+
+      case "REACTION_ROLE_MESSAGE_CREATE":
+        return {
+          title: "Reaction Role Message Created",
+          description: `New reaction role message created in ${channelMention}`,
+          emoji: "📝",
+        };
+
+      case "REACTION_ROLE_MESSAGE_UPDATE":
+        return {
+          title: "Reaction Role Message Updated",
+          description: `Reaction role message updated in ${channelMention}`,
+          emoji: "✏️",
+        };
+
+      case "REACTION_ROLE_MESSAGE_DELETE":
+        return {
+          title: "Reaction Role Message Deleted",
+          description: `Reaction role message deleted from ${channelMention}`,
+          emoji: "🗑️",
+        };
+
+      case "REACTION_ROLE_ERROR": {
+        const metadata = logEntry.metadata as { error?: string } | undefined;
+        const error = metadata?.error ?? "Unknown error";
+        return {
+          title: "Reaction Role Error",
+          description: `Error processing reaction role: ${error}`,
+          emoji: "⚠️",
+        };
+      }
 
       default:
         return {
@@ -920,6 +1050,23 @@ export default class LogManager {
       }
       if (typeof metadata.deletedCount === "number") {
         metadataFields.push(`**Messages Deleted:** ${metadata.deletedCount}`);
+      }
+
+      // Enhanced deletion metadata
+      if (logType === "MESSAGE_DELETE") {
+        if (metadata.deletionMethod && typeof metadata.deletionMethod === "string") {
+          const methodEmoji = {
+            moderator: "👮",
+            author: "👤",
+            system: "🤖",
+          };
+          const emoji = methodEmoji[metadata.deletionMethod as keyof typeof methodEmoji] || "❓";
+          metadataFields.push(`**Deletion Method:** ${emoji} ${metadata.deletionMethod}`);
+        }
+        if (metadata.deletionTimestamp && typeof metadata.deletionTimestamp === "string") {
+          const deletionTime = Math.floor(new Date(metadata.deletionTimestamp).getTime() / 1000);
+          metadataFields.push(`**Deleted At:** <t:${deletionTime}:T>`);
+        }
       }
     }
 
@@ -1103,7 +1250,7 @@ export default class LogManager {
       const enabledTypes = settings?.enabledLogTypes ?? [];
 
       // Remove specified log types
-      const filteredTypes = enabledTypes.filter((type) => !logTypes.includes(type));
+      const filteredTypes = enabledTypes.filter((type: string) => !logTypes.includes(type));
 
       await prisma.logSettings.upsert({
         where: { guildId },

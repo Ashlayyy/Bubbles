@@ -1,75 +1,53 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  GuildMember,
+  SlashCommandBuilder,
+} from "discord.js";
 
 import logger from "../../logger.js";
-import Command from "../../structures/Command.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("avatar")
-    .setDescription("Display a user's avatar in high quality")
-    .addUserOption((opt) => opt.setName("user").setDescription("User to get avatar from (defaults to yourself)"))
-    .addStringOption((opt) =>
-      opt
-        .setName("format")
-        .setDescription("Image format")
-        .addChoices(
-          { name: "PNG", value: "png" },
-          { name: "JPG", value: "jpg" },
-          { name: "WebP", value: "webp" },
-          { name: "GIF (animated)", value: "gif" }
-        )
-    )
-    .addIntegerOption((opt) =>
-      opt
-        .setName("size")
-        .setDescription("Image size")
-        .addChoices(
-          { name: "64px", value: 64 },
-          { name: "128px", value: 128 },
-          { name: "256px", value: 256 },
-          { name: "512px", value: 512 },
-          { name: "1024px", value: 1024 },
-          { name: "2048px", value: 2048 },
-          { name: "4096px", value: 4096 }
-        )
-    ),
+class AvatarCommand extends GeneralCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "avatar",
+      description: "Display a user's avatar in high quality",
+      category: "general",
+      ephemeral: false,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    // Type guard to ensure this is a chat input command
-    if (!interaction.isChatInputCommand()) return;
-    if (!interaction.guild) return;
+    super(config);
+  }
 
-    const targetUser = interaction.options.getUser("user") ?? interaction.user;
-    const format = interaction.options.getString("format") as "png" | "jpg" | "webp" | "gif" | null;
-    const size = interaction.options.getInteger("size") ?? 1024;
+  protected async execute(): Promise<CommandResponse> {
+    const targetUser = this.getUserOption("user") ?? this.user;
+    const format = this.getStringOption("format") as "png" | "jpg" | "webp" | "gif" | undefined;
+    const size = this.getIntegerOption("size") ?? 1024;
 
     try {
-      // Get member to check for server-specific avatar
-      const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+      const member: GuildMember | null = await this.guild.members.fetch(targetUser.id).catch(() => null);
 
       const embed = new EmbedBuilder()
-        .setTitle(`🖼️ ${targetUser.displayName}'s Avatar`)
+        .setTitle(`🖼️ ${this.formatUserDisplay(targetUser)}'s Avatar`)
         .setColor(member?.displayHexColor ?? 0x3498db)
         .setTimestamp()
-        .setFooter({
-          text: `Requested by ${interaction.user.username}`,
-          iconURL: interaction.user.displayAvatarURL(),
-        });
+        .setFooter({ text: `Requested by ${this.user.username}`, iconURL: this.user.displayAvatarURL() });
 
-      // Determine which avatar to show
       let avatarURL: string;
       let avatarType: string;
 
       if (member?.avatar) {
-        // Server-specific avatar
         avatarURL = member.displayAvatarURL({
           size: size as 64 | 128 | 256 | 512 | 1024 | 2048 | 4096,
           extension: format ?? (member.avatar.startsWith("a_") ? "gif" : "png"),
         });
         avatarType = "Server Avatar";
       } else {
-        // Global avatar
         avatarURL = targetUser.displayAvatarURL({
           size: size as 64 | 128 | 256 | 512 | 1024 | 2048 | 4096,
           extension: format ?? (targetUser.avatar?.startsWith("a_") ? "gif" : "png"),
@@ -77,14 +55,10 @@ export default new Command(
         avatarType = "Global Avatar";
       }
 
-      embed.setImage(avatarURL);
-      embed.setDescription(`**${avatarType}** - ${size}px`);
+      embed.setImage(avatarURL).setDescription(`**${avatarType}** - ${size}px`);
 
-      // Add download links for different formats and sizes
       const formats = ["png", "jpg", "webp"];
-      if (targetUser.avatar?.startsWith("a_") || member?.avatar?.startsWith("a_")) {
-        formats.push("gif");
-      }
+      if (targetUser.avatar?.startsWith("a_") || member?.avatar?.startsWith("a_")) formats.push("gif");
 
       const links = formats
         .map((fmt) => {
@@ -95,15 +69,9 @@ export default new Command(
         })
         .join(" • ");
 
-      embed.addFields({
-        name: "📥 Download Links (4096px)",
-        value: links,
-        inline: false,
-      });
+      embed.addFields({ name: "📥 Download Links (4096px)", value: links, inline: false });
 
-      // Create buttons for different views
       const row = new ActionRowBuilder<ButtonBuilder>();
-
       if (member?.avatar && member.avatar !== targetUser.avatar) {
         row.addComponents(
           new ButtonBuilder()
@@ -112,7 +80,6 @@ export default new Command(
             .setCustomId(`avatar_global_${targetUser.id}`)
         );
       }
-
       if (targetUser.avatar?.startsWith("a_") || member?.avatar?.startsWith("a_")) {
         row.addComponents(
           new ButtonBuilder()
@@ -122,43 +89,45 @@ export default new Command(
         );
       }
 
-      const components = row.components.length > 0 ? [row] : [];
+      await this.logCommandUsage("avatar", { target: targetUser.id, size, format: format ?? "auto" });
 
-      await interaction.reply({
-        embeds: [embed],
-        components,
-      });
-
-      // Log command usage
-      await client.logManager.log(interaction.guild.id, "COMMAND_AVATAR", {
-        userId: interaction.user.id,
-        channelId: interaction.channel?.id,
-        metadata: {
-          targetUserId: targetUser.id,
-          targetUsername: targetUser.username,
-          format: format ?? "auto",
-          size,
-          hasServerAvatar: !!member?.avatar,
-        },
-      });
+      return { embeds: [embed], components: row.components.length ? [row] : [], ephemeral: false };
     } catch (error) {
       logger.error("Error in avatar command:", error);
-      await interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xe74c3c)
-            .setTitle("❌ Error")
-            .setDescription("Failed to fetch avatar. Please try again.")
-            .setTimestamp(),
-        ],
-        ephemeral: true,
-      });
+      return this.createGeneralError("Error", "Failed to fetch avatar. Please try again.");
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.PUBLIC,
-      isConfigurable: true,
-    },
   }
-);
+}
+
+export default new AvatarCommand();
+
+export const builder = new SlashCommandBuilder()
+  .setName("avatar")
+  .setDescription("Display a user's avatar in high quality")
+  .setDefaultMemberPermissions(0)
+  .addUserOption((opt) => opt.setName("user").setDescription("User to get avatar from (defaults to yourself)"))
+  .addStringOption((opt) =>
+    opt
+      .setName("format")
+      .setDescription("Image format")
+      .addChoices(
+        { name: "PNG", value: "png" },
+        { name: "JPG", value: "jpg" },
+        { name: "WebP", value: "webp" },
+        { name: "GIF (animated)", value: "gif" }
+      )
+  )
+  .addIntegerOption((opt) =>
+    opt
+      .setName("size")
+      .setDescription("Image size")
+      .addChoices(
+        { name: "64px", value: 64 },
+        { name: "128px", value: 128 },
+        { name: "256px", value: 256 },
+        { name: "512px", value: 512 },
+        { name: "1024px", value: 1024 },
+        { name: "2048px", value: 2048 },
+        { name: "4096px", value: 4096 }
+      )
+  );

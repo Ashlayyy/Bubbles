@@ -2,18 +2,30 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelSelectMenuBuilder,
+  ChannelType,
   ComponentType,
   EmbedBuilder,
   SlashCommandBuilder,
   type ButtonInteraction,
+  type ChannelSelectMenuInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
 
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
-import Command from "../../structures/Command.js";
 import { ALL_LOG_TYPES, LOG_CATEGORIES, STANDARD_LOG_TYPES } from "../../structures/LogManager.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
+
+// Helper type & accessor for optional queue service
+interface QueueService {
+  processRequest: (payload: unknown) => Promise<unknown>;
+}
+function getQueueService(client: Client): QueueService | undefined {
+  return (client as unknown as { queueService?: QueueService }).queueService;
+}
 
 interface LoggingPreset {
   name: string;
@@ -76,7 +88,7 @@ const LOGGING_PRESETS: LoggingPreset[] = [
     name: "Security Focused",
     description: "Enhanced security logging for servers requiring strict oversight",
     emoji: "🔒",
-    categories: ["MODERATION", "MEMBER", "ROLE", "SERVER", "BOT", "WEBHOOK", "AUTOMOD"],
+    categories: ["MODERATION", "MEMBER", "ROLE", "SERVER", "BOT", "WEBHOOK", "AUTOMOD", "REACTION_ROLE"],
     logTypes: [
       ...LOG_CATEGORIES.MODERATION,
       ...LOG_CATEGORIES.MEMBER,
@@ -85,6 +97,7 @@ const LOGGING_PRESETS: LoggingPreset[] = [
       ...LOG_CATEGORIES.BOT,
       ...LOG_CATEGORIES.WEBHOOK,
       ...LOG_CATEGORIES.AUTOMOD,
+      ...LOG_CATEGORIES.REACTION_ROLE,
       "MESSAGE_DELETE",
       "MESSAGE_EDIT",
       "INVITE_CREATE",
@@ -93,7 +106,7 @@ const LOGGING_PRESETS: LoggingPreset[] = [
     recommendedChannels: [
       {
         name: "Security Log",
-        categories: ["MODERATION", "AUTOMOD", "BOT", "WEBHOOK"],
+        categories: ["MODERATION", "AUTOMOD", "BOT", "WEBHOOK", "REACTION_ROLE"],
         description: "All security-related events and automated actions",
       },
       {
@@ -146,77 +159,136 @@ const LOGGING_PRESETS: LoggingPreset[] = [
   },
 ];
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("logging")
-    .setDescription("🗂️ Comprehensive server logging configuration")
-    .addSubcommand((sub) => sub.setName("setup").setDescription("🧙‍♂️ Launch the interactive logging setup wizard"))
-    .addSubcommand((sub) =>
-      sub
-        .setName("preset")
-        .setDescription("📦 Apply a logging preset configuration")
-        .addStringOption((opt) =>
-          opt
-            .setName("type")
-            .setDescription("Preset type")
-            .setRequired(true)
-            .addChoices(
-              { name: "📝 Essential Logging", value: "essential" },
-              { name: "📊 Comprehensive Logging", value: "comprehensive" },
-              { name: "🔒 Security Focused", value: "security" },
-              { name: "👥 Community Server", value: "community" }
-            )
-        )
-    )
-    .addSubcommand((sub) => sub.setName("status").setDescription("📊 View current logging configuration"))
-    .addSubcommand((sub) => sub.setName("channels").setDescription("📍 Configure log channels for specific categories"))
-    .addSubcommand((sub) =>
-      sub
-        .setName("toggle")
-        .setDescription("🔄 Enable/disable specific log categories")
-        .addStringOption((opt) => {
-          opt.setName("category").setDescription("Log category to toggle").setRequired(true);
-          Object.keys(LOG_CATEGORIES).forEach((category) => {
-            opt.addChoices({ name: category, value: category });
-          });
-          return opt;
-        })
-        .addBooleanOption((opt) => opt.setName("enabled").setDescription("Enable or disable").setRequired(true))
-    )
-    .addSubcommand((sub) => sub.setName("advanced").setDescription("⚙️ Advanced logging configuration and management")),
+export const builder = new SlashCommandBuilder()
+  .setName("logging")
+  .setDescription("🗂️ Comprehensive server logging configuration")
+  .addSubcommand((sub) => sub.setName("setup").setDescription("🧙‍♂️ Launch the interactive logging setup wizard"))
+  .addSubcommand((sub) =>
+    sub
+      .setName("preset")
+      .setDescription("📦 Apply a logging preset configuration")
+      .addStringOption((opt) =>
+        opt
+          .setName("type")
+          .setDescription("Preset type")
+          .setRequired(true)
+          .addChoices(
+            { name: "📝 Essential Logging", value: "essential" },
+            { name: "📊 Comprehensive Logging", value: "comprehensive" },
+            { name: "🔒 Security Focused", value: "security" },
+            { name: "👥 Community Server", value: "community" }
+          )
+      )
+  )
+  .addSubcommand((sub) => sub.setName("status").setDescription("📊 View current logging configuration"))
+  .addSubcommand((sub) => sub.setName("channels").setDescription("📍 Configure log channels for specific categories"))
+  .addSubcommand((sub) =>
+    sub
+      .setName("toggle")
+      .setDescription("🔄 Enable/disable specific log categories")
+      .addStringOption((opt) => {
+        opt.setName("category").setDescription("Log category to toggle").setRequired(true);
+        Object.keys(LOG_CATEGORIES).forEach((category) => {
+          opt.addChoices({ name: category, value: category });
+        });
+        return opt;
+      })
+      .addBooleanOption((opt) => opt.setName("enabled").setDescription("Enable or disable").setRequired(true))
+  )
+  .addSubcommand((sub) => sub.setName("advanced").setDescription("⚙️ Advanced logging configuration and management"))
+  .addSubcommand((sub) =>
+    sub
+      .setName("bind")
+      .setDescription("🔗 Bind a specific channel to log categories")
+      .addChannelOption((opt) =>
+        opt.setName("channel").setDescription("Channel to bind categories to").setRequired(true)
+      )
+      .addStringOption((opt) =>
+        opt
+          .setName("categories")
+          .setDescription("Comma-separated list of categories (e.g., MESSAGE,MEMBER)")
+          .setRequired(true)
+      )
+  );
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
+class LoggingCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "logging",
+      description: "🗂️ Comprehensive server logging configuration",
+      category: "admin",
+      permissions: {
+        level: PermissionLevel.ADMIN,
+      },
+      guildOnly: true,
+    };
 
-    const subcommand = interaction.options.getSubcommand();
-
-    switch (subcommand) {
-      case "setup":
-        await startLoggingWizard(client, interaction);
-        break;
-      case "preset":
-        await applyLoggingPreset(client, interaction);
-        break;
-      case "status":
-        await showLoggingStatus(client, interaction);
-        break;
-      case "channels":
-        await configureChannels(client, interaction);
-        break;
-      case "toggle":
-        await toggleCategory(client, interaction);
-        break;
-      case "advanced":
-        await showAdvancedOptions(client, interaction);
-        break;
-    }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.ADMIN,
-    },
+    super(config);
   }
-);
+
+  /**
+   * Disable the BaseCommand automatic defer behaviour so each sub-command
+   * inside this LoggingCommand can control deferral on its own. Most helper
+   * functions already call `interaction.deferReply()` where necessary, and
+   * the automatic deferral was leading to InteractionAlreadyReplied errors.
+   */
+  protected shouldAutoDefer(): boolean {
+    return false;
+  }
+
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.interaction.guild || !this.interaction.isChatInputCommand()) {
+      return {};
+    }
+
+    const subcommand = this.interaction.options.getSubcommand();
+
+    try {
+      switch (subcommand) {
+        case "setup":
+          await startLoggingWizard(this.client, this.interaction);
+          break;
+        case "preset":
+          await applyLoggingPreset(this.client, this.interaction);
+          break;
+        case "status":
+          await showLoggingStatus(this.client, this.interaction);
+          break;
+        case "channels":
+          await configureChannels(this.client, this.interaction);
+          break;
+        case "toggle":
+          await toggleCategory(this.client, this.interaction);
+          break;
+        case "advanced":
+          await showAdvancedOptions(this.client, this.interaction);
+          break;
+        case "bind":
+          await handleChannelBinding(this.client, this.interaction);
+          break;
+      }
+    } catch (error) {
+      logger.error("Error in logging command:", error);
+      await this.interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xe74c3c)
+            .setTitle("❌ Error")
+            .setDescription("Failed to execute logging command. Please try again.")
+            .setTimestamp(),
+        ],
+        ephemeral: true,
+      });
+    }
+
+    return {};
+  }
+}
+
+export default new LoggingCommand();
+
+// Re-export the wizard so other modules (e.g., /setup) can invoke it
+export { startLoggingWizard };
 
 async function startLoggingWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   const welcomeEmbed = new EmbedBuilder()
@@ -352,7 +424,7 @@ async function showPresetSelection(interaction: ButtonInteraction): Promise<void
       value:
         `${preset.description}\n\n` +
         `**Categories:** ${categories}\n` +
-        `**Log Types:** ${preset.logTypes.length} events\n` +
+        `**Log Types:** ${String(preset.logTypes.length)} events\n` +
         `**Recommended Channels:** ${channels}`,
       inline: false,
     });
@@ -516,12 +588,34 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
     // Apply the preset configuration
     await client.logManager.enableLogTypes(interaction.guild.id, preset.logTypes);
 
+    // Notify API of logging preset change
+    if (getQueueService(client)) {
+      try {
+        await getQueueService(client)?.processRequest({
+          type: "LOGGING_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            preset: presetType,
+            enabledLogTypes: preset.logTypes,
+            action: "APPLY_PRESET",
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of logging preset change:", error);
+      }
+    }
+
     const successEmbed = new EmbedBuilder()
       .setColor(0x2ecc71)
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied!`)
       .setDescription(
         `Successfully configured logging with the **${preset.name}** preset.\n\n` +
-          `**Enabled:** ${preset.logTypes.length} log types\n` +
+          `**Enabled:** ${String(preset.logTypes.length)} log types\n` +
           `**Categories:** ${preset.categories.join(", ")}`
       )
       .addFields({
@@ -669,12 +763,34 @@ async function applyLoggingPreset(client: Client, interaction: ChatInputCommandI
   try {
     await client.logManager.enableLogTypes(interaction.guild.id, preset.logTypes);
 
+    // Notify API of logging preset change
+    if (getQueueService(client)) {
+      try {
+        await getQueueService(client)?.processRequest({
+          type: "LOGGING_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            preset: presetType,
+            enabledLogTypes: preset.logTypes,
+            action: "APPLY_PRESET",
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of logging preset change:", error);
+      }
+    }
+
     const successEmbed = new EmbedBuilder()
       .setColor(0x2ecc71)
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied!`)
       .setDescription(
         `Successfully applied the **${preset.name}** logging preset.\n\n` +
-          `**${preset.logTypes.length} log types** have been enabled.`
+          `**${String(preset.logTypes.length)} log types** have been enabled.`
       )
       .addFields(
         {
@@ -731,10 +847,10 @@ async function showLoggingStatus(client: Client, interaction: ChatInputCommandIn
         {
           name: "📈 Overview",
           value:
-            `**Total Available:** ${totalLogTypes} log types\n` +
-            `**Currently Enabled:** ${enabledCount}\n` +
-            `**Disabled:** ${disabledCount}\n` +
-            `**Coverage:** ${Math.round((enabledCount / totalLogTypes) * 100)}%`,
+            `**Total Available:** ${String(totalLogTypes)} log types\n` +
+            `**Currently Enabled:** ${String(enabledCount)}\n` +
+            `**Disabled:** ${String(disabledCount)}\n` +
+            `**Coverage:** ${String(Math.round((enabledCount / totalLogTypes) * 100))}%`,
           inline: true,
         },
         {
@@ -746,7 +862,7 @@ async function showLoggingStatus(client: Client, interaction: ChatInputCommandIn
                   .map(([type, channelId]) => `**${type}:** <#${channelId}>`)
                   .join("\n") +
                 (Object.keys(settings.channelRouting).length > 5
-                  ? `\n... and ${Object.keys(settings.channelRouting).length - 5} more`
+                  ? `\n... and ${String(Object.keys(settings.channelRouting).length - 5)} more`
                   : "")
               : "No channels configured yet",
           inline: true,
@@ -760,7 +876,7 @@ async function showLoggingStatus(client: Client, interaction: ChatInputCommandIn
         const percentage = Math.round((categoryEnabled.length / types.length) * 100);
         const statusIcon = percentage === 100 ? "🟢" : percentage > 0 ? "🟡" : "🔴";
 
-        return `${statusIcon} **${category}**: ${categoryEnabled.length}/${types.length} (${percentage}%)`;
+        return `${statusIcon} **${category}**: ${String(categoryEnabled.length)}/${String(types.length)} (${String(percentage)}%)`;
       })
       .join("\n");
 
@@ -877,6 +993,472 @@ async function configureChannels(client: Client, interaction: ChatInputCommandIn
   });
 }
 
+/**
+ * Handle button interactions for logging configuration
+ */
+export async function handleLoggingButtonInteraction(
+  interaction: ButtonInteraction | ChannelSelectMenuInteraction
+): Promise<void> {
+  const client = interaction.client as Client;
+
+  try {
+    // Handle channel select menu interactions
+    if (interaction.isChannelSelectMenu() && interaction.customId.startsWith("logging_channel_select_")) {
+      await handleChannelSelection(interaction, client);
+      return;
+    }
+
+    if (!interaction.isButton()) return;
+
+    // Handle preset selection buttons
+    if (interaction.customId.startsWith("preset_")) {
+      await handlePresetSelection(interaction, client);
+      return;
+    }
+
+    // Handle wizard navigation buttons
+    if (interaction.customId === "logging_wizard_back") {
+      await interaction.reply({
+        content: "⬅️ To restart the setup wizard, please use `/logging setup` again.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (interaction.customId === "logging_quick_setup") {
+      await performQuickSetup(interaction, client);
+      return;
+    }
+
+    if (interaction.customId === "logging_custom_setup") {
+      await startCustomSetup(interaction);
+      return;
+    }
+
+    // Handle category selection
+    if (interaction.customId === "logging_step1_categories") {
+      await showCategorySelection(interaction);
+      return;
+    }
+
+    // Handle channel configuration buttons
+    if (interaction.customId.startsWith("channel_config_")) {
+      await handleChannelConfiguration(interaction, client);
+      return;
+    }
+
+    // Handle status management buttons
+    if (interaction.customId === "logging_manage_channels") {
+      await interaction.reply({
+        content: "📍 To configure channels, please use `/logging channels` command.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (interaction.customId === "logging_manage_categories") {
+      await showCategoryToggle(interaction);
+      return;
+    }
+
+    if (interaction.customId === "logging_advanced_settings") {
+      await interaction.reply({
+        content: "⚙️ To access advanced options, please use `/logging advanced` command.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Default fallback
+    await interaction.reply({
+      content: "❌ This button interaction is not implemented yet.",
+      ephemeral: true,
+    });
+  } catch (error) {
+    logger.error("Error handling logging button interaction:", error);
+
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({
+        content: "❌ An error occurred while processing your request.",
+        ephemeral: true,
+      });
+    } else {
+      await interaction.reply({
+        content: "❌ An error occurred while processing your request.",
+        ephemeral: true,
+      });
+    }
+  }
+}
+
+/**
+ * Handle channel selection for logging configuration
+ */
+async function handleChannelSelection(interaction: ChannelSelectMenuInteraction, client: Client): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    return;
+  }
+
+  const category = interaction.customId.replace("logging_channel_select_", "");
+
+  // Add debugging information
+  logger.info(`Channel selection for category: "${category}" from customId: "${interaction.customId}"`);
+
+  // Handle special case for "ALL" category
+  if (category === "ALL") {
+    await handleAllChannelSelection(interaction, client);
+    return;
+  }
+
+  // Validate that the category exists in LOG_CATEGORIES
+  if (!(category in LOG_CATEGORIES)) {
+    logger.error(
+      `Invalid category "${category}" in channel selection. Available categories:`,
+      Object.keys(LOG_CATEGORIES)
+    );
+    await interaction.reply({
+      content: `❌ Invalid log category "${category}". Please use the \`/logging channels\` command to configure channels properly.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const selectedChannel = interaction.channels.first();
+
+  if (!selectedChannel) {
+    await interaction.reply({ content: "❌ No channel selected.", ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    // Check bot permissions in the selected channel
+    const botMember = interaction.guild.members.me;
+    if (!botMember) {
+      await interaction.editReply({ content: "❌ Unable to check bot permissions." });
+      return;
+    }
+
+    // Type guard to ensure we have a proper guild channel
+    const guildChannel = interaction.guild.channels.cache.get(selectedChannel.id);
+    if (!guildChannel?.isTextBased()) {
+      await interaction.editReply({ content: "❌ Selected channel is not a valid text channel." });
+      return;
+    }
+
+    const channelPerms = guildChannel.permissionsFor(botMember);
+    if (!channelPerms.has(["ViewChannel", "SendMessages", "EmbedLinks"])) {
+      await interaction.editReply({
+        content: `❌ I need the following permissions in <#${selectedChannel.id}>:\n• View Channel\n• Send Messages\n• Embed Links`,
+      });
+      return;
+    }
+
+    // Save the channel configuration
+    const channelMapping = { [category]: selectedChannel.id };
+    await client.logManager.setupCategoryLogging(interaction.guild.id, channelMapping);
+
+    // Get category types safely
+    const categoryTypes = LOG_CATEGORIES[category as keyof typeof LOG_CATEGORIES];
+
+    // Create success embed
+    const successEmbed = new EmbedBuilder()
+      .setColor(0x2ecc71)
+      .setTitle("✅ Log Channel Configured!")
+      .setDescription(`**${category}** logs will now be sent to <#${selectedChannel.id}>`)
+      .addFields(
+        {
+          name: "📋 Log Types Included",
+          value:
+            categoryTypes
+              .slice(0, 8)
+              .map((type: string) => `• ${type.replace(/_/g, " ").toLowerCase()}`)
+              .join("\n") + (categoryTypes.length > 8 ? `\n• ...and ${String(categoryTypes.length - 8)} more` : ""),
+          inline: false,
+        },
+        {
+          name: "🔄 Next Steps",
+          value:
+            "• Configure more categories with `/logging channels`\n" +
+            "• Check your settings with `/logging status`\n" +
+            "• Enable/disable specific categories with `/logging toggle`",
+          inline: false,
+        }
+      )
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [successEmbed] });
+
+    // Log the configuration change
+    await client.logManager.log(interaction.guild.id, "LOGGING_CONFIG_CHANGE", {
+      userId: interaction.user.id,
+      metadata: {
+        configType: "channel-routing",
+        category,
+        channelId: selectedChannel.id,
+        channelName: guildChannel.name,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error("Error configuring log channel:", error);
+    await interaction.editReply({
+      content: "❌ Failed to configure log channel. Please try again.",
+    });
+  }
+}
+
+async function handleAllChannelSelection(interaction: ChannelSelectMenuInteraction, client: Client): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    return;
+  }
+
+  const selectedChannel = interaction.channels.first();
+
+  if (!selectedChannel) {
+    await interaction.reply({ content: "❌ No channel selected.", ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    // Check bot permissions in the selected channel
+    const botMember = interaction.guild.members.me;
+    if (!botMember) {
+      await interaction.editReply({ content: "❌ Unable to check bot permissions." });
+      return;
+    }
+
+    // Type guard to ensure we have a proper guild channel
+    const guildChannel = interaction.guild.channels.cache.get(selectedChannel.id);
+    if (!guildChannel?.isTextBased()) {
+      await interaction.editReply({ content: "❌ Selected channel is not a valid text channel." });
+      return;
+    }
+
+    const channelPerms = guildChannel.permissionsFor(botMember);
+    if (!channelPerms.has(["ViewChannel", "SendMessages", "EmbedLinks"])) {
+      await interaction.editReply({
+        content: `❌ I need the following permissions in <#${selectedChannel.id}>:\n• View Channel\n• Send Messages\n• Embed Links`,
+      });
+      return;
+    }
+
+    // Create channel mapping for all categories
+    const allCategoryMappings: Record<string, string> = {};
+    Object.keys(LOG_CATEGORIES).forEach((category) => {
+      allCategoryMappings[category] = selectedChannel.id;
+    });
+
+    // Save the channel configuration for all categories
+    await client.logManager.setupCategoryLogging(interaction.guild.id, allCategoryMappings);
+
+    // Create success embed
+    const successEmbed = new EmbedBuilder()
+      .setColor(0x2ecc71)
+      .setTitle("✅ All-in-One Log Channel Configured!")
+      .setDescription(`**All log categories** will now be sent to <#${selectedChannel.id}>`)
+      .addFields(
+        {
+          name: "📋 Categories Configured",
+          value:
+            Object.keys(LOG_CATEGORIES)
+              .slice(0, 8)
+              .map((cat) => `• ${cat.toLowerCase().replace(/_/g, " ")}`)
+              .join("\n") +
+            (Object.keys(LOG_CATEGORIES).length > 8 ? `\n• ...and ${Object.keys(LOG_CATEGORIES).length - 8} more` : ""),
+          inline: false,
+        },
+        {
+          name: "📊 Total Log Types",
+          value: `**${ALL_LOG_TYPES.length}** different log types will be sent to this channel`,
+          inline: false,
+        },
+        {
+          name: "🔄 Next Steps",
+          value:
+            "• Monitor the channel volume and adjust as needed\n" +
+            "• Use `/logging toggle` to disable specific categories if too busy\n" +
+            "• Consider setting up separate channels later with `/logging channels`",
+          inline: false,
+        }
+      )
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [successEmbed] });
+
+    // Log the configuration change
+    await client.logManager.log(interaction.guild.id, "LOGGING_CONFIG_CHANGE", {
+      userId: interaction.user.id,
+      metadata: {
+        configType: "all-in-one-channel",
+        channelId: selectedChannel.id,
+        channelName: guildChannel.name,
+        categoriesConfigured: Object.keys(LOG_CATEGORIES),
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error("Error configuring all-in-one log channel:", error);
+    await interaction.editReply({
+      content: "❌ Failed to configure log channel. Please try again.",
+    });
+  }
+}
+
+async function handleChannelConfiguration(interaction: ButtonInteraction, client: Client): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    return;
+  }
+
+  const category = interaction.customId.replace("channel_config_", "");
+
+  // Add debugging information
+  logger.info(`Channel configuration requested for category: "${category}" from customId: "${interaction.customId}"`);
+
+  // Handle special case for "ALL" category
+  if (category === "ALL") {
+    await handleAllCategoryConfiguration(interaction, client);
+    return;
+  }
+
+  // Validate that the category exists in LOG_CATEGORIES
+  if (!(category in LOG_CATEGORIES)) {
+    logger.error(
+      `Invalid category "${category}" requested for channel configuration. Available categories:`,
+      Object.keys(LOG_CATEGORIES)
+    );
+    await interaction.reply({
+      content: `❌ Invalid log category "${category}". Please use the \`/logging channels\` command to configure channels properly.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const categoryTypes = LOG_CATEGORIES[category as keyof typeof LOG_CATEGORIES];
+
+  // Additional safety check
+  if (!Array.isArray(categoryTypes)) {
+    logger.error(`Category "${category}" does not contain an array of log types:`, categoryTypes);
+    await interaction.reply({
+      content: `❌ Invalid configuration for category "${category}". Please contact an administrator.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const channelSelect = new ChannelSelectMenuBuilder()
+    .setCustomId(`logging_channel_select_${category}`)
+    .setPlaceholder(`Select a channel for ${category} logs`)
+    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+    .setMaxValues(1);
+
+  const selectRow = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(channelSelect);
+
+  const embed = new EmbedBuilder()
+    .setColor(0x3498db)
+    .setTitle(`📍 Configure ${category} Log Channel`)
+    .setDescription(
+      `Select the channel where **${category}** logs should be sent.\n\n` +
+        `**This category includes:**\n` +
+        categoryTypes
+          .slice(0, 5)
+          .map((type: string) => `• ${type.replace(/_/g, " ").toLowerCase()}`)
+          .join("\n") +
+        (categoryTypes.length > 5 ? `\n• ...and ${categoryTypes.length - 5} more` : "")
+    )
+    .addFields({
+      name: "💡 Tips",
+      value:
+        "• Choose a channel that only moderators can see\n" +
+        "• Make sure the bot has permission to send messages\n" +
+        "• You can change this later if needed",
+      inline: false,
+    });
+
+  await interaction.reply({
+    embeds: [embed],
+    components: [selectRow],
+    ephemeral: true,
+  });
+}
+
+async function handleAllCategoryConfiguration(interaction: ButtonInteraction, client: Client): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    return;
+  }
+
+  const channelSelect = new ChannelSelectMenuBuilder()
+    .setCustomId("logging_channel_select_ALL")
+    .setPlaceholder("Select a channel for all log categories")
+    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+    .setMaxValues(1);
+
+  const selectRow = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(channelSelect);
+
+  const embed = new EmbedBuilder()
+    .setColor(0x3498db)
+    .setTitle("📊 Configure All-in-One Log Channel")
+    .setDescription(
+      "Select a single channel where **all** log categories will be sent.\n\n" +
+        "**This will route all log types to one channel including:**\n" +
+        `• Message logs (${LOG_CATEGORIES.MESSAGE.length} types)\n` +
+        `• Member logs (${LOG_CATEGORIES.MEMBER.length} types)\n` +
+        `• Moderation logs (${LOG_CATEGORIES.MODERATION.length} types)\n` +
+        `• Server logs (${LOG_CATEGORIES.SERVER.length} types)\n` +
+        `• Voice logs (${LOG_CATEGORIES.VOICE.length} types)\n` +
+        `• And ${Object.keys(LOG_CATEGORIES).length - 5} more categories`
+    )
+    .addFields(
+      {
+        name: "⚠️ Important Notes",
+        value:
+          "• This will create a **very busy** channel with many logs\n" +
+          "• Consider using separate channels for different categories\n" +
+          "• You can always reconfigure individual categories later",
+        inline: false,
+      },
+      {
+        name: "💡 Tips",
+        value:
+          "• Choose a channel that only moderators can see\n" + "• Make sure the bot has permission to send messages",
+        inline: false,
+      }
+    );
+
+  await interaction.reply({
+    embeds: [embed],
+    components: [selectRow],
+    ephemeral: true,
+  });
+}
+
+async function showCategoryToggle(interaction: ButtonInteraction): Promise<void> {
+  const toggleEmbed = new EmbedBuilder()
+    .setColor(0xf39c12)
+    .setTitle("🔄 Toggle Log Categories")
+    .setDescription(
+      "Use the `/logging toggle` command to enable or disable specific log categories.\n\n" +
+        "**Available categories:**\n" +
+        Object.keys(LOG_CATEGORIES)
+          .map((cat) => `• \`${cat}\``)
+          .join("\n")
+    )
+    .addFields({
+      name: "📝 Example Usage",
+      value: "• `/logging toggle category:MESSAGE enabled:true`\n• `/logging toggle category:MEMBER enabled:false`",
+      inline: false,
+    });
+
+  await interaction.reply({ embeds: [toggleEmbed], ephemeral: true });
+}
+
 async function toggleCategory(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) {
     await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
@@ -897,13 +1479,36 @@ async function toggleCategory(client: Client, interaction: ChatInputCommandInter
       await client.logManager.disableLogTypes(interaction.guild.id, [...categoryTypes]);
     }
 
+    // Notify API of category toggle change
+    if (getQueueService(client)) {
+      try {
+        await getQueueService(client)?.processRequest({
+          type: "LOGGING_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            category: category,
+            enabled: enabled,
+            logTypes: categoryTypes,
+            action: "TOGGLE_CATEGORY",
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of logging category toggle:", error);
+      }
+    }
+
     const statusEmoji = enabled ? "✅" : "❌";
     const statusText = enabled ? "enabled" : "disabled";
 
     await interaction.followUp({
       content:
         `${statusEmoji} **${category}** category ${statusText}!\n\n` +
-        `**Affected log types:** ${categoryTypes.length}\n` +
+        `**Affected log types:** ${String(categoryTypes.length)}\n` +
         `Use \`/logging status\` to view your complete configuration.`,
     });
   } catch (error) {
@@ -963,4 +1568,112 @@ async function showAdvancedOptions(client: Client, interaction: ChatInputCommand
     embeds: [advancedEmbed],
     components: advancedButtons,
   });
+}
+
+async function handleChannelBinding(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    return;
+  }
+
+  const category = interaction.options.getString("category", true);
+  const channel = interaction.options.getChannel("channel", true);
+  const channelId = channel.id;
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    // Validate that the category exists in LOG_CATEGORIES
+    if (!(category in LOG_CATEGORIES)) {
+      logger.error(
+        `Invalid category "${category}" requested for channel binding. Available categories:`,
+        Object.keys(LOG_CATEGORIES)
+      );
+      await interaction.followUp({
+        content: `❌ Invalid log category "${category}". Please use the \`/logging channels\` command to configure channels properly.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Channel already validated by option type, but double-check cache for permissions
+    const guildChannel = interaction.guild.channels.cache.get(channelId);
+    if (!guildChannel) {
+      await interaction.followUp({ content: "❌ Channel not found in this guild.", ephemeral: true });
+      return;
+    }
+
+    // Check bot permissions in the selected channel
+    const botMember = interaction.guild.members.me;
+    if (!botMember) {
+      await interaction.followUp({ content: "❌ Unable to check bot permissions." });
+      return;
+    }
+
+    // Type guard to ensure we have a proper guild channel
+    if (!guildChannel.isTextBased()) {
+      await interaction.followUp({ content: "❌ Selected channel is not a valid text channel." });
+      return;
+    }
+
+    const channelPerms = guildChannel.permissionsFor(botMember);
+    if (!channelPerms.has(["ViewChannel", "SendMessages", "EmbedLinks"])) {
+      await interaction.followUp({
+        content: `❌ I need the following permissions in <#${channel.id}>:\n• View Channel\n• Send Messages\n• Embed Links`,
+      });
+      return;
+    }
+
+    // Save the channel configuration
+    const channelMapping = { [category]: channel.id };
+    await client.logManager.setupCategoryLogging(interaction.guild.id, channelMapping);
+
+    // Get category types safely
+    const categoryTypes = LOG_CATEGORIES[category as keyof typeof LOG_CATEGORIES];
+
+    // Create success embed
+    const successEmbed = new EmbedBuilder()
+      .setColor(0x2ecc71)
+      .setTitle("✅ Log Channel Configured!")
+      .setDescription(`**${category}** logs will now be sent to <#${channel.id}>`)
+      .addFields(
+        {
+          name: "📋 Log Types Included",
+          value:
+            categoryTypes
+              .slice(0, 8)
+              .map((type: string) => `• ${type.replace(/_/g, " ").toLowerCase()}`)
+              .join("\n") + (categoryTypes.length > 8 ? `\n• ...and ${String(categoryTypes.length - 8)} more` : ""),
+          inline: false,
+        },
+        {
+          name: "🔄 Next Steps",
+          value:
+            "• Configure more categories with `/logging channels`\n" +
+            "• Check your settings with `/logging status`\n" +
+            "• Enable/disable specific categories with `/logging toggle`",
+          inline: false,
+        }
+      )
+      .setTimestamp();
+
+    await interaction.followUp({ embeds: [successEmbed] });
+
+    // Log the configuration change
+    await client.logManager.log(interaction.guild.id, "LOGGING_CONFIG_CHANGE", {
+      userId: interaction.user.id,
+      metadata: {
+        configType: "channel-routing",
+        category,
+        channelId: channel.id,
+        channelName: guildChannel.name,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error("Error configuring log channel:", error);
+    await interaction.followUp({
+      content: "❌ Failed to configure log channel. Please try again.",
+    });
+  }
 }

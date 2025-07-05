@@ -3,6 +3,7 @@ import { PermissionsBitField } from "discord.js";
 
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
+import { cacheService } from "../services/cacheService.js";
 import Client from "./Client.js";
 import type { CommandPermissionConfig, PermissionCheckResult } from "./PermissionTypes.js";
 import { AuditAction, PermissionLevel } from "./PermissionTypes.js";
@@ -99,7 +100,7 @@ export default class PermissionManager {
       const assignments = await prisma.customRoleAssignment.findMany({
         where: { userId: member.user.id, guildId },
       });
-      const roleIds = assignments.map((a) => a.roleId);
+      const roleIds = assignments.map((a: { roleId: string }) => a.roleId);
       const roles = await prisma.customRole.findMany({
         where: { id: { in: roleIds } },
       });
@@ -485,5 +486,101 @@ export default class PermissionManager {
       logger.error("Error getting audit log", error);
       return [];
     }
+  }
+
+  /**
+   * Check command permission with caching
+   */
+  static async checkCommandPermission(guildId: string, command: string): Promise<any> {
+    const cacheKey = `permissions:command:${guildId}:${command}`;
+
+    try {
+      // Try cache first
+      const cached = await cacheService.get(cacheKey, "permissions");
+      if (cached !== null) {
+        return cached;
+      }
+
+      // Fetch from database
+      const permission = await prisma.commandPermission.findUnique({
+        where: {
+          guildId_commandName: {
+            guildId,
+            commandName: command,
+          },
+        },
+      });
+
+      // Cache result
+      await cacheService.set(cacheKey, permission, "permissions");
+      return permission;
+    } catch (error) {
+      logger.error(`Error checking command permission for ${guildId}:${command}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get custom roles with caching
+   */
+  static async getCustomRoles(guildId: string): Promise<any[]> {
+    const cacheKey = `permissions:customroles:${guildId}`;
+
+    try {
+      // Try cache first
+      const cached = await cacheService.get<any[]>(cacheKey, "permissions");
+      if (cached) {
+        return cached;
+      }
+
+      // Fetch from database
+      const roles = await prisma.customRole.findMany({
+        where: { guildId },
+        include: { assignments: true },
+      });
+
+      // Cache result
+      await cacheService.set(cacheKey, roles, "permissions");
+      return roles;
+    } catch (error) {
+      logger.error(`Error getting custom roles for ${guildId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Check maintenance mode with caching
+   */
+  static async isMaintenanceMode(): Promise<boolean> {
+    const cacheKey = "permissions:maintenance:global";
+
+    try {
+      // Try cache first
+      const cached = await cacheService.get<boolean>(cacheKey, "permissions");
+      if (cached !== null) {
+        return cached;
+      }
+
+      // Fetch from database
+      const maintenance = await prisma.maintenanceMode.findUnique({
+        where: { id: "global" },
+      });
+
+      const isEnabled = maintenance?.isEnabled ?? false;
+
+      // Cache result with shorter TTL since this is critical
+      await cacheService.set(cacheKey, isEnabled, "permissions");
+      return isEnabled;
+    } catch (error) {
+      logger.error("Error checking maintenance mode:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Invalidate permission caches for a guild
+   */
+  static async invalidatePermissionCache(guildId: string): Promise<void> {
+    await cacheService.deletePattern(`permissions:*:${guildId}*`);
   }
 }

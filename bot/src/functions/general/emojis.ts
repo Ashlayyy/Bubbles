@@ -15,14 +15,32 @@ export function parseEmoji(
   if (!emojiString) return null;
   const emojiTrimmed = emojiString.trim();
 
-  // Case 1: Custom emoji string, e.g., <:name:id> or <a:name:id>
-  const customEmojiRegex = /<(a?):(.+?):(\d+)>/;
+  // Case 1: Custom emoji string in Discord format, e.g., <:name:id> or <a:name:id>
+  const customEmojiRegex = /<(a?):([^:]+?):(\d+)>/;
   const customMatch = customEmojiRegex.exec(emojiTrimmed);
   if (customMatch) {
     const animated = customMatch[1] === "a";
     const name = customMatch[2];
     const id = customMatch[3];
-    return { name: `<${animated ? "a" : ""}:${name}:${id}>`, identifier: id, animated };
+    // Store as id:name to match database convention
+    return {
+      name: `<${animated ? "a" : ""}:${name}:${id}>`,
+      identifier: `${id}:${name}`,
+      animated,
+    };
+  }
+
+  // Case 1b: Plain identifier format "id:name" (e.g., 123456789012345678:MyEmoji)
+  const plainIdNameRegex = /^(\d+):([^:]+)$/;
+  const plainMatch = plainIdNameRegex.exec(emojiTrimmed);
+  if (plainMatch) {
+    const id = plainMatch[1];
+    const name = plainMatch[2];
+    return {
+      name: `<:${name}:${id}>`,
+      identifier: `${id}:${name}`,
+      animated: false,
+    };
   }
 
   // Case 2: Standard emoji shortcode, e.g., :books:
@@ -34,17 +52,17 @@ export function parseEmoji(
     // Not a valid standard shortcode, ignore and proceed.
   }
 
-  // Case 3: Custom emoji by name, e.g., mycoolemoji
+  // Case 4 (after checking literal id:name): Custom emoji by name, e.g., mycoolemoji
   const customEmojiByName = client.emojis.cache.find((e) => e.name?.toLowerCase() === emojiTrimmed.toLowerCase());
   if (customEmojiByName) {
     return {
       name: customEmojiByName.toString(),
-      identifier: customEmojiByName.id,
+      identifier: `${customEmojiByName.id}:${customEmojiByName.name}`,
       animated: customEmojiByName.animated ?? false,
     };
   }
 
-  // Case 4: Literal unicode emoji, e.g., 📚
+  // Case 5: Literal unicode emoji, e.g., 📚
   // For unicode, the emoji character itself is the name and identifier.
   // This also serves as a fallback for any string that isn't a valid emoji.
   return { name: emojiTrimmed, identifier: emojiTrimmed, animated: false };

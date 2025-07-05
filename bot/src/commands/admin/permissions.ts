@@ -1,720 +1,635 @@
-import type { PermissionResolvable } from "discord.js";
-import { GuildMember, MessageFlags, PermissionsBitField, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
+import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
-import Command from "../../structures/Command.js";
-import PermissionManager from "../../structures/PermissionManager.js";
-import type { CommandPermissionConfig } from "../../structures/PermissionTypes.js";
+import type Client from "../../structures/Client.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse, SlashCommandInteraction } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-// Helper interfaces for type safety
-interface MaintenanceData {
-  reason?: string;
-  enabledBy: string;
-  isEnabled: boolean;
-  allowedUsers: string[];
-}
+/**
+ * Permissions Command - Manage bot permissions and roles
+ */
+export class PermissionsCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "permissions",
+      description: "ADMIN ONLY: Manage bot permissions and roles",
+      category: "admin",
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        discordPermissions: [PermissionsBitField.Flags.Administrator],
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-interface CommandPermissionData {
-  permissionLevel: string;
-  isConfigurable: boolean;
-  requiredRoles: string[];
-  allowedUsers: string[];
-  deniedUsers: string[];
-}
+    super(config);
+  }
 
-interface AuditLogEntry {
-  action: string;
-  timestamp: Date;
-  userId: string;
-  commandName?: string;
-  reason?: string;
-}
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("permissions")
-    .setDescription("ADMIN ONLY: Manage command permissions")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
-    .addSubcommand((sub) =>
-      sub
-        .setName("check")
-        .setDescription("Check your permissions or another user's permissions")
-        .addUserOption((opt) => opt.setName("user").setDescription("User to check permissions for (optional)"))
-    )
-
-    .addSubcommand((sub) =>
-      sub
-        .setName("list")
-        .setDescription("List command permissions")
-        .addStringOption((opt) => opt.setName("command").setDescription("Specific command to check"))
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("reset")
-        .setDescription("Reset command to default permissions")
-        .addStringOption((opt) => opt.setName("command").setDescription("Command name").setRequired(true))
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("set")
-        .setDescription("Set permissions for a command")
-        .addStringOption((opt) =>
-          opt.setName("command").setDescription("Command name").setRequired(true).setAutocomplete(true)
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName("type")
-            .setDescription("Permission type")
-            .setRequired(true)
-            .addChoices(
-              { name: "Public Access", value: "public" },
-              { name: "Effective Level", value: "effective-level" },
-              { name: "Discord Permission", value: "discord-permission" },
-              { name: "Custom Role", value: "custom-role" },
-              { name: "Specific Users", value: "users" }
-            )
-        )
-        .addStringOption((opt) =>
-          opt.setName("value").setDescription("Permission value (depends on type)").setAutocomplete(true)
-        )
-        .addStringOption((opt) =>
-          opt.setName("roles").setDescription("Required role IDs (comma separated)").setAutocomplete(true)
-        )
-        .addStringOption((opt) =>
-          opt.setName("allowed-users").setDescription("Allowed user IDs (comma separated)").setAutocomplete(true)
-        )
-        .addStringOption((opt) =>
-          opt.setName("denied-users").setDescription("Denied user IDs (comma separated)").setAutocomplete(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("bulk-set")
-        .setDescription("Set permissions for multiple commands at once")
-        .addStringOption((opt) =>
-          opt
-            .setName("target")
-            .setDescription("Target scope")
-            .setRequired(true)
-            .addChoices({ name: "Command List", value: "commands" }, { name: "Category", value: "category" })
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName("value")
-            .setDescription("Comma-separated command names or single category")
-            .setRequired(true)
-            .setAutocomplete(true)
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName("type")
-            .setDescription("Permission type")
-            .setRequired(true)
-            .addChoices(
-              { name: "Public Access", value: "public" },
-              { name: "Effective Level", value: "effective-level" },
-              { name: "Discord Permission", value: "discord-permission" },
-              { name: "Custom Role", value: "custom-role" }
-            )
-        )
-        .addStringOption((opt) =>
-          opt.setName("permission").setDescription("Permission value").setRequired(true).setAutocomplete(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("audit")
-        .setDescription("View permission audit log")
-        .addStringOption((opt) => opt.setName("command").setDescription("Filter by command"))
-        .addIntegerOption((opt) =>
-          opt.setName("limit").setDescription("Number of entries to show").setMinValue(1).setMaxValue(50)
-        )
-    )
-    .addSubcommandGroup((group) =>
-      group
-        .setName("maintenance")
-        .setDescription("Manage maintenance mode")
-        .addSubcommand((sub) =>
-          sub
-            .setName("enable")
-            .setDescription("Enable maintenance mode")
-            .addStringOption((opt) => opt.setName("reason").setDescription("Reason for maintenance"))
-        )
-        .addSubcommand((sub) => sub.setName("disable").setDescription("Disable maintenance mode"))
-        .addSubcommand((sub) => sub.setName("status").setDescription("Check maintenance mode status"))
-    ),
-
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    await interaction.deferReply({ flags: 64 /* MessageFlags.Ephemeral */ });
-    const permissionManager = new PermissionManager();
-    const subcommand = interaction.options.getSubcommand();
-    const subcommandGroup = interaction.options.getSubcommandGroup();
+    const subcommand = (this.interaction as SlashCommandInteraction).options.getSubcommand();
 
     try {
-      // Handle maintenance subcommand group
-      if (subcommandGroup === "maintenance") {
-        switch (subcommand) {
-          case "enable": {
-            const reason = interaction.options.getString("reason") ?? "No reason provided";
-
-            await permissionManager.enableMaintenanceMode(interaction.guildId, reason, interaction.user.id);
-
-            await interaction.followUp({
-              content: `✅ Maintenance mode enabled. Reason: ${reason}`,
-              flags: MessageFlags.Ephemeral,
-            });
-            break;
-          }
-
-          case "disable": {
-            await permissionManager.disableMaintenanceMode(interaction.guildId, interaction.user.id);
-
-            await interaction.followUp({
-              content: `✅ Maintenance mode disabled.`,
-              flags: MessageFlags.Ephemeral,
-            });
-            break;
-          }
-
-          case "status": {
-            const isEnabled = await permissionManager.isMaintenanceMode(interaction.guildId);
-
-            try {
-              const maintenanceData = await permissionManager.getMaintenanceMode(interaction.guildId);
-
-              if (isEnabled && maintenanceData) {
-                const data = maintenanceData as MaintenanceData;
-                await interaction.followUp({
-                  content: `🚧 Maintenance mode is **enabled**\nReason: ${data.reason ?? "No reason"}\nEnabled by: <@${data.enabledBy}>`,
-                  flags: MessageFlags.Ephemeral,
-                });
-              } else {
-                await interaction.followUp({
-                  content: `✅ Maintenance mode is **disabled**`,
-                  flags: MessageFlags.Ephemeral,
-                });
-              }
-            } catch (error) {
-              logger.error("Error getting maintenance mode data", error);
-              await interaction.followUp({
-                content: `✅ Maintenance mode is **${isEnabled ? "enabled" : "disabled"}**`,
-                flags: MessageFlags.Ephemeral,
-              });
-            }
-            break;
-          }
-        }
-        return;
-      }
-
-      // Handle permission subcommands
       switch (subcommand) {
-        case "check": {
-          const targetUser = interaction.options.getUser("user");
-          let targetMember: GuildMember;
-
-          if (targetUser) {
-            if (!interaction.guild) {
-              await interaction.followUp({
-                content: "❌ This command can only be used in a server.",
-                flags: MessageFlags.Ephemeral,
-              });
-              return;
-            }
-            try {
-              targetMember = await interaction.guild.members.fetch(targetUser.id);
-            } catch {
-              await interaction.followUp({
-                content: "❌ Could not find the specified user in this server.",
-                flags: MessageFlags.Ephemeral,
-              });
-              return;
-            }
-          } else {
-            targetMember = interaction.member as GuildMember;
-          }
-
-          // Determine user's effective permission level
-          let effectiveLevel = PermissionLevel.PUBLIC;
-          const userRoles = targetMember.roles.cache.map((role) => role.name).join(", ");
-          const isDeveloper = process.env.DEVELOPER_USER_IDS?.split(",").includes(targetMember.user.id) ?? false;
-          const isOwner = targetMember.guild.ownerId === targetMember.user.id;
-          const isAdmin = targetMember.permissions.has("Administrator");
-
-          if (isDeveloper) {
-            effectiveLevel = PermissionLevel.DEVELOPER;
-          } else if (isOwner) {
-            effectiveLevel = PermissionLevel.OWNER;
-          } else if (isAdmin) {
-            effectiveLevel = PermissionLevel.ADMIN;
-          } else if (
-            targetMember.permissions.has(["ModerateMembers", "ManageMessages", "KickMembers", "BanMembers"], false)
-          ) {
-            effectiveLevel = PermissionLevel.MODERATOR;
-          }
-
-          // Check access to different command categories
-          const testCommands = ["ping", "help", "clear", "embed", "reaction-roles"];
-          const accessResults = [];
-
-          for (const commandName of testCommands) {
-            const command = client.commands.get(commandName);
-            if (command) {
-              const result = await permissionManager.checkPermission(targetMember, commandName, interaction.guildId);
-              accessResults.push({
-                command: commandName,
-                category: command.category,
-                access: result.allowed,
-                reason: result.reason,
-              });
-            }
-          }
-
-          const embed = client.genEmbed({
-            title: `Permission Check${targetUser ? ` - ${targetUser.displayName}` : ""}`,
-            description: targetUser ? `Checking permissions for <@${targetUser.id}>` : "Checking your permissions",
-            fields: [
-              {
-                name: "📊 Basic Information",
-                value: [
-                  `**User:** <@${targetMember.user.id}>`,
-                  `**Effective Level:** \`${effectiveLevel}\``,
-                  `**Is Owner:** ${isOwner ? "✅" : "❌"}`,
-                  `**Is Admin:** ${isAdmin ? "✅" : "❌"}`,
-                  `**Is Developer:** ${isDeveloper ? "✅" : "❌"}`,
-                ].join("\n"),
-                inline: false,
-              },
-              {
-                name: "🎭 Roles",
-                value: userRoles || "No roles",
-                inline: false,
-              },
-              {
-                name: "🔐 Command Access Examples",
-                value:
-                  accessResults
-                    .map(
-                      (result) =>
-                        `**${result.command}** (\`${result.category}\`): ${result.access ? "✅" : "❌"}${result.reason && !result.access ? ` - ${result.reason}` : ""}`
-                    )
-                    .join("\n") || "No commands tested",
-                inline: false,
-              },
-              {
-                name: "ℹ️ Note",
-                value:
-                  "This shows your effective permission level and access to sample commands. Individual commands may have custom permissions that override these defaults.",
-                inline: false,
-              },
-            ],
-            color: isDeveloper ? 0xff0000 : isOwner ? 0xffd700 : isAdmin ? 0xff6b35 : 0x00ff00,
-          });
-
-          await interaction.followUp({
-            embeds: [embed],
-            flags: MessageFlags.Ephemeral,
-          });
-          break;
-        }
-
-        case "list": {
-          const commandName = interaction.options.getString("command");
-
-          if (commandName) {
-            // Show specific command permissions
-            try {
-              const permission = await permissionManager.getCommandPermission(interaction.guildId, commandName);
-              const command = client.commands.get(commandName);
-
-              if (!command) {
-                await interaction.followUp({
-                  content: `❌ Command \`${commandName}\` not found.`,
-                  flags: MessageFlags.Ephemeral,
-                });
-                return;
-              }
-
-              if (permission) {
-                const permData = permission as CommandPermissionData;
-                let details = `**${commandName}** (Custom)\n`;
-                details += `Level: \`${permData.permissionLevel}\`\n`;
-                details += `Configurable: ${permData.isConfigurable ? "✅" : "❌"}\n`;
-
-                if (permData.requiredRoles.length > 0) {
-                  details += `Required roles: ${permData.requiredRoles.map((id) => `<@&${id}>`).join(", ")}\n`;
-                }
-                if (permData.allowedUsers.length > 0) {
-                  details += `Allowed users: ${permData.allowedUsers.map((id) => `<@${id}>`).join(", ")}\n`;
-                }
-                if (permData.deniedUsers.length > 0) {
-                  details += `Denied users: ${permData.deniedUsers.map((id) => `<@${id}>`).join(", ")}\n`;
-                }
-
-                await interaction.followUp({
-                  content: details,
-                  flags: MessageFlags.Ephemeral,
-                });
-              } else {
-                // Show default permissions
-                const defaultLevel = command.defaultPermissions.level;
-                await interaction.followUp({
-                  content: `**${commandName}** (Default)\nLevel: \`${defaultLevel}\`\nCategory: \`${command.category}\``,
-                  flags: MessageFlags.Ephemeral,
-                });
-              }
-            } catch (error) {
-              logger.error("Error getting command permissions", error);
-              await interaction.followUp({
-                content: `❌ Error retrieving permissions for command \`${commandName}\`.`,
-                flags: MessageFlags.Ephemeral,
-              });
-            }
-          } else {
-            // Show all commands with custom permissions
-            const embed = client.genEmbed({
-              title: "Custom Command Permissions",
-              description: "Commands with custom permission settings",
-              fields: [],
-            });
-
-            // This would need pagination for large lists, keeping simple for now
-            await interaction.followUp({
-              content: "Use `/permissions list <command>` to view specific command permissions.",
-              embeds: [embed],
-              flags: MessageFlags.Ephemeral,
-            });
-          }
-          break;
-        }
-
-        case "reset": {
-          const commandName = interaction.options.getString("command", true);
-
-          // Check if command exists
-          const command = client.commands.get(commandName);
-          if (!command) {
-            await interaction.followUp({
-              content: `❌ Command \`${commandName}\` not found.`,
-              flags: MessageFlags.Ephemeral,
-            });
-            return;
-          }
-
-          await permissionManager.resetCommandPermission(interaction.guildId, commandName, interaction.user.id);
-
-          await interaction.followUp({
-            content: `✅ Command \`${commandName}\` reset to default permissions.`,
-            flags: MessageFlags.Ephemeral,
-          });
-          break;
-        }
-
-        case "set": {
-          const commandName = interaction.options.getString("command", true);
-          const type = interaction.options.getString("type", true);
-          const value = interaction.options.getString("value");
-          const rolesStr = interaction.options.getString("roles");
-          const allowedUsersStr = interaction.options.getString("allowed-users");
-          const deniedUsersStr = interaction.options.getString("denied-users");
-
-          // Check if command exists
-          const command = client.commands.get(commandName);
-          if (!command) {
-            await interaction.followUp({
-              content: `❌ Command \`${commandName}\` not found.`,
-              flags: MessageFlags.Ephemeral,
-            });
-            return;
-          }
-
-          // Check if command is configurable
-          try {
-            const existingPermission = await permissionManager.getCommandPermission(interaction.guildId, commandName);
-            if (existingPermission && !(existingPermission as CommandPermissionData).isConfigurable) {
-              await interaction.followUp({
-                content: `❌ Command \`${commandName}\` permissions cannot be modified.`,
-                flags: MessageFlags.Ephemeral,
-              });
-              return;
-            }
-          } catch (error) {
-            logger.error("Error checking command permissions", error);
-            // Continue with setting permissions if we can't check existing ones
-          }
-
-          let permissionConfig: CommandPermissionConfig;
-
-          // Handle different permission types with optional additional fields
-          if (!value) {
-            await interaction.followUp({
-              content: `❌ Value is required for permission type: ${type}`,
-              flags: MessageFlags.Ephemeral,
-            });
-            return;
-          }
-
-          // Start with the base permission configuration based on type
-          switch (type) {
-            case "public": {
-              permissionConfig = {
-                level: PermissionLevel.PUBLIC,
-                isConfigurable: true,
-              };
-              break;
-            }
-            case "effective-level": {
-              const permLevel = value.toUpperCase() as PermissionLevel;
-              if (!Object.values(PermissionLevel).includes(permLevel)) {
-                await interaction.followUp({
-                  content: `❌ Invalid permission level: ${value}. Valid levels: ${Object.values(PermissionLevel).join(", ")}`,
-                  flags: MessageFlags.Ephemeral,
-                });
-                return;
-              }
-              permissionConfig = {
-                level: permLevel,
-                isConfigurable: true,
-              };
-              break;
-            }
-            case "discord-permission": {
-              permissionConfig = {
-                level: PermissionLevel.CUSTOM,
-                discordPermissions: [value as PermissionResolvable],
-                isConfigurable: true,
-              };
-              break;
-            }
-            case "custom-role": {
-              permissionConfig = {
-                level: PermissionLevel.CUSTOM,
-                requiredRoles: [value],
-                isConfigurable: true,
-              };
-              break;
-            }
-            case "users": {
-              const userIds = value.split(",").map((s) => s.trim());
-              permissionConfig = {
-                level: PermissionLevel.CUSTOM,
-                allowedUsers: userIds,
-                isConfigurable: true,
-              };
-              break;
-            }
-            default: {
-              await interaction.followUp({
-                content: "❌ Unknown permission type",
-                flags: MessageFlags.Ephemeral,
-              });
-              return;
-            }
-          }
-
-          // Add optional additional fields if provided
-          if (rolesStr) {
-            const additionalRoles = rolesStr
-              .split(",")
-              .map((s: string) => s.trim())
-              .filter((s: string) => s.length > 0);
-
-            if (permissionConfig.requiredRoles) {
-              permissionConfig.requiredRoles.push(...additionalRoles);
-            } else {
-              permissionConfig.requiredRoles = additionalRoles;
-            }
-          }
-
-          if (allowedUsersStr) {
-            const additionalAllowedUsers = allowedUsersStr
-              .split(",")
-              .map((s: string) => s.trim())
-              .filter((s: string) => s.length > 0);
-
-            if (permissionConfig.allowedUsers) {
-              permissionConfig.allowedUsers.push(...additionalAllowedUsers);
-            } else {
-              permissionConfig.allowedUsers = additionalAllowedUsers;
-            }
-          }
-
-          if (deniedUsersStr) {
-            const additionalDeniedUsers = deniedUsersStr
-              .split(",")
-              .map((s: string) => s.trim())
-              .filter((s: string) => s.length > 0);
-
-            if (permissionConfig.deniedUsers) {
-              permissionConfig.deniedUsers.push(...additionalDeniedUsers);
-            } else {
-              permissionConfig.deniedUsers = additionalDeniedUsers;
-            }
-          }
-
-          await permissionManager.setCommandPermission(
-            interaction.guildId,
-            commandName,
-            permissionConfig,
-            interaction.user.id
-          );
-
-          // Build response message
-          let details = `Level: \`${permissionConfig.level}\``;
-          if (permissionConfig.requiredRoles && permissionConfig.requiredRoles.length > 0) {
-            details += `\nRequired roles: ${permissionConfig.requiredRoles.map((id) => `<@&${id}>`).join(", ")}`;
-          }
-          if (permissionConfig.allowedUsers && permissionConfig.allowedUsers.length > 0) {
-            details += `\nAllowed users: ${permissionConfig.allowedUsers.map((id) => `<@${id}>`).join(", ")}`;
-          }
-          if (permissionConfig.deniedUsers && permissionConfig.deniedUsers.length > 0) {
-            details += `\nDenied users: ${permissionConfig.deniedUsers.map((id) => `<@${id}>`).join(", ")}`;
-          }
-
-          await interaction.followUp({
-            content: `✅ Updated permissions for \`${commandName}\`\n${details}`,
-            flags: MessageFlags.Ephemeral,
-          });
-          break;
-        }
-
-        case "bulk-set": {
-          const target = interaction.options.getString("target", true);
-          const value = interaction.options.getString("value", true);
-          const type = interaction.options.getString("type", true);
-          const permission = interaction.options.getString("permission", true);
-
-          let targetCommands: string[] = [];
-
-          if (target === "commands") {
-            targetCommands = value.split(",").map((s) => s.trim());
-          } else if (target === "category") {
-            const category = value;
-            targetCommands = Array.from(client.commands.values())
-              .filter((c) => c.category === category)
-              .map((c) => c.builder.name);
-          }
-
-          if (targetCommands.length === 0) {
-            await interaction.followUp({
-              content: "❌ No commands found for the specified target.",
-              flags: MessageFlags.Ephemeral,
-            });
-            return;
-          }
-
-          let successCount = 0;
-          for (const commandName of targetCommands) {
-            try {
-              // Apply the same logic as set command
-              switch (type) {
-                case "public": {
-                  await permissionManager.setCommandPermission(
-                    interaction.guildId,
-                    commandName,
-                    { level: PermissionLevel.PUBLIC, isConfigurable: true },
-                    interaction.user.id
-                  );
-                  break;
-                }
-                case "effective-level": {
-                  const level = permission.toUpperCase() as PermissionLevel;
-                  if (Object.values(PermissionLevel).includes(level)) {
-                    await permissionManager.setCommandPermission(
-                      interaction.guildId,
-                      commandName,
-                      { level: level, isConfigurable: true },
-                      interaction.user.id
-                    );
-                  }
-                  break;
-                }
-                case "custom-role": {
-                  await permissionManager.setCommandPermission(
-                    interaction.guildId,
-                    commandName,
-                    { level: PermissionLevel.CUSTOM, requiredRoles: [permission], isConfigurable: true },
-                    interaction.user.id
-                  );
-                  break;
-                }
-              }
-              successCount++;
-            } catch (error) {
-              logger.error(`Error setting permissions for command ${commandName}:`, error);
-            }
-          }
-
-          await interaction.followUp({
-            content: `✅ Updated permissions for ${successCount.toString()}/${targetCommands.length.toString()} commands.`,
-            flags: MessageFlags.Ephemeral,
-          });
-          break;
-        }
-
-        case "audit": {
-          const commandName = interaction.options.getString("command");
-          const limit = interaction.options.getInteger("limit") ?? 10;
-
-          try {
-            const auditLog = await permissionManager.getAuditLog(interaction.guildId, limit, commandName ?? undefined);
-
-            if (!Array.isArray(auditLog) || auditLog.length === 0) {
-              await interaction.followUp({
-                content: "No audit log entries found.",
-                flags: MessageFlags.Ephemeral,
-              });
-              return;
-            }
-
-            const embed = client.genEmbed({
-              title: `Permission Audit Log${commandName ? ` - ${commandName}` : ""}`,
-              description: `Showing last ${auditLog.length.toString()} entries`,
-              fields: auditLog.map((entry) => {
-                const auditEntry = entry as AuditLogEntry;
-                return {
-                  name: `${auditEntry.action} - ${auditEntry.timestamp.toLocaleString()}`,
-                  value: `User: <@${auditEntry.userId}>${auditEntry.commandName ? `\nCommand: \`${auditEntry.commandName}\`` : ""}${auditEntry.reason ? `\nReason: ${auditEntry.reason}` : ""}`,
-                  inline: false,
-                };
-              }),
-            });
-
-            await interaction.followUp({
-              embeds: [embed],
-              flags: MessageFlags.Ephemeral,
-            });
-          } catch (error) {
-            logger.error("Error getting audit log", error);
-            await interaction.followUp({
-              content: "❌ Error retrieving audit log.",
-              flags: MessageFlags.Ephemeral,
-            });
-          }
-          break;
-        }
-
-        default: {
-          await interaction.followUp({
+        case "setrole":
+          return await this.handleSetRole();
+        case "removerole":
+          return await this.handleRemoveRole();
+        case "list":
+          return await this.handleList();
+        case "reset":
+          return await this.handleReset();
+        case "setcommand":
+          return await this.handleSetCommand();
+        case "removecommand":
+          return await this.handleRemoveCommand();
+        case "listcommands":
+          return await this.handleListCommands();
+        default:
+          return {
             content: "❌ Unknown subcommand",
-            flags: MessageFlags.Ephemeral,
-          });
-        }
+            ephemeral: true,
+          };
       }
     } catch (error) {
-      logger.error("Error in permissions command", error);
-      await interaction.followUp({
-        content: "❌ An error occurred while processing the command.",
-        flags: MessageFlags.Ephemeral,
-      });
+      logger.error("Error in permissions command:", error);
+      return {
+        content: `❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
     }
-  },
-  {
-    ephemeral: true,
-    permissions: {
-      level: PermissionLevel.DEVELOPER,
-      isConfigurable: false, // This command itself cannot be reconfigured
-    },
   }
-);
+
+  private async handleSetRole(): Promise<CommandResponse> {
+    const level = this.getStringOption("level", true);
+    const role = this.getRoleOption("role", true);
+
+    try {
+      // Get or create guild config
+      const guildConfig = await prisma.guildConfig.upsert({
+        where: { guildId: this.guild.id },
+        update: {},
+        create: { guildId: this.guild.id },
+      });
+
+      // Update the moderator roles array
+      const updatedRoles = [...guildConfig.moderatorRoleIds];
+
+      switch (level) {
+        case "moderator":
+          if (!updatedRoles.includes(role.id)) {
+            updatedRoles.push(role.id);
+          }
+          break;
+        default:
+          return {
+            content: "❌ Invalid permission level. Only 'moderator' is supported for role-based permissions.",
+            ephemeral: true,
+          };
+      }
+
+      await prisma.guildConfig.update({
+        where: { id: guildConfig.id },
+        data: { moderatorRoleIds: updatedRoles },
+      });
+
+      // Notify API of permission configuration change
+      const customClient = this.client as any as Client;
+      if (customClient.queueService) {
+        try {
+          customClient.queueService.processRequest({
+            type: "CONFIG_UPDATE",
+            data: {
+              guildId: this.guild.id,
+              section: "PERMISSIONS",
+              changes: { moderatorRoleIds: updatedRoles },
+              action: "SET_PERMISSION_ROLE",
+              updatedBy: this.user.id,
+            },
+            source: "rest",
+            userId: this.user.id,
+            guildId: this.guild.id,
+            requiresReliability: true,
+          });
+        } catch (error) {
+          console.warn("Failed to notify API of permission change:", error);
+        }
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0x2ecc71)
+        .setTitle("✅ Permission Role Set")
+        .setDescription(`**Moderator** role has been added: ${role}.`)
+        .addFields({
+          name: "📋 Details",
+          value: [`**Level:** Moderator`, `**Role:** ${role}`, `**Role ID:** \`${role.id}\``].join("\n"),
+          inline: false,
+        })
+        .setTimestamp();
+
+      // Log permission change
+      await this.client.logManager.log(this.guild.id, "PERMISSION_CONFIG", {
+        userId: this.user.id,
+        metadata: {
+          action: "SET_ROLE",
+          level,
+          roleId: role.id,
+          roleName: role.name,
+        },
+      });
+
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
+      logger.error("Error setting permission role:", error);
+      return {
+        content: `❌ Failed to set permission role: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleRemoveRole(): Promise<CommandResponse> {
+    const level = this.getStringOption("level", true);
+    const role = this.getRoleOption("role");
+
+    try {
+      // Get guild config
+      const guildConfig = await prisma.guildConfig.findUnique({
+        where: { guildId: this.guild.id },
+      });
+
+      if (!guildConfig) {
+        return {
+          content: "❌ No permission configuration found for this server.",
+          ephemeral: true,
+        };
+      }
+
+      let updatedRoles = [...guildConfig.moderatorRoleIds];
+      let removedRoleId: string | null = null;
+
+      switch (level) {
+        case "moderator":
+          if (role) {
+            // Remove specific role
+            const index = updatedRoles.indexOf(role.id);
+            if (index > -1) {
+              updatedRoles.splice(index, 1);
+              removedRoleId = role.id;
+            } else {
+              return {
+                content: `❌ Role ${role} is not currently set as a moderator role.`,
+                ephemeral: true,
+              };
+            }
+          } else {
+            // Remove all moderator roles
+            if (updatedRoles.length === 0) {
+              return {
+                content: "❌ No moderator roles are currently set.",
+                ephemeral: true,
+              };
+            }
+            updatedRoles = [];
+            removedRoleId = "all";
+          }
+          break;
+        default:
+          return {
+            content: "❌ Invalid permission level",
+            ephemeral: true,
+          };
+      }
+
+      await prisma.guildConfig.update({
+        where: { id: guildConfig.id },
+        data: { moderatorRoleIds: updatedRoles },
+      });
+
+      // Notify API of permission configuration change
+      const customClient = this.client as any as Client;
+      if (customClient.queueService) {
+        try {
+          customClient.queueService.processRequest({
+            type: "CONFIG_UPDATE",
+            data: {
+              guildId: this.guild.id,
+              section: "PERMISSIONS",
+              changes: { moderatorRoleIds: updatedRoles },
+              action: "REMOVE_PERMISSION_ROLE",
+              updatedBy: this.user.id,
+            },
+            source: "rest",
+            userId: this.user.id,
+            guildId: this.guild.id,
+            requiresReliability: true,
+          });
+        } catch (error) {
+          console.warn("Failed to notify API of permission change:", error);
+        }
+      }
+
+      const removedRoleDisplay = role ? role.toString() : "All moderator roles";
+
+      const embed = new EmbedBuilder()
+        .setColor(0xe74c3c)
+        .setTitle("❌ Permission Role Removed")
+        .setDescription(`**Moderator** role(s) have been removed.`)
+        .addFields({
+          name: "📋 Details",
+          value: [`**Level:** Moderator`, `**Removed:** ${removedRoleDisplay}`].join("\n"),
+          inline: false,
+        })
+        .setTimestamp();
+
+      // Log permission change
+      await this.client.logManager.log(this.guild.id, "PERMISSION_CONFIG", {
+        userId: this.user.id,
+        metadata: {
+          action: "REMOVE_ROLE",
+          level,
+          roleId: removedRoleId,
+          roleName: role?.name ?? "All",
+        },
+      });
+
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
+      logger.error("Error removing permission role:", error);
+      return {
+        content: `❌ Failed to remove permission role: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleList(): Promise<CommandResponse> {
+    try {
+      const guildConfig = await prisma.guildConfig.findUnique({
+        where: { guildId: this.guild.id },
+      });
+
+      const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle("🔐 Permission Roles Configuration")
+        .setTimestamp()
+        .setFooter({ text: `Server: ${this.guild.name}` });
+
+      if (!guildConfig || guildConfig.moderatorRoleIds.length === 0) {
+        embed.setDescription("❌ No permission roles configured for this server.");
+        embed.addFields({
+          name: "💡 Getting Started",
+          value: "Use `/permissions setrole` to configure permission roles.",
+          inline: false,
+        });
+
+        return { embeds: [embed], ephemeral: true };
+      }
+
+      // Moderator roles
+      const moderatorRoles = guildConfig.moderatorRoleIds
+        .map((roleId) => this.guild.roles.cache.get(roleId))
+        .filter((role) => role !== undefined)
+        .map((role) => role.toString());
+
+      embed.addFields({
+        name: "🛡️ Moderator Roles",
+        value: moderatorRoles.length > 0 ? moderatorRoles.join("\n") : "None configured",
+        inline: false,
+      });
+
+      embed.setDescription(
+        `**${moderatorRoles.length}** moderator role${moderatorRoles.length === 1 ? "" : "s"} configured.\n\n` +
+          "**Note:** Server owners always have full access regardless of role configuration."
+      );
+
+      // Add hierarchy information
+      embed.addFields({
+        name: "📊 Permission Hierarchy",
+        value: [
+          "**Owner** - Full access (automatic)",
+          "**Administrator** - All commands (Discord permission)",
+          "**Moderator** - Moderation commands (configured roles)",
+          "**Members** - General commands only",
+        ].join("\n"),
+        inline: false,
+      });
+
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
+      logger.error("Error listing permission roles:", error);
+      return {
+        content: `❌ Failed to list permission roles: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleReset(): Promise<CommandResponse> {
+    try {
+      const guildConfig = await prisma.guildConfig.findUnique({
+        where: { guildId: this.guild.id },
+      });
+
+      if (!guildConfig || guildConfig.moderatorRoleIds.length === 0) {
+        return {
+          content: "❌ No permission configuration found to reset.",
+          ephemeral: true,
+        };
+      }
+
+      // Reset all permission role configurations
+      await prisma.guildConfig.update({
+        where: { id: guildConfig.id },
+        data: {
+          moderatorRoleIds: [],
+        },
+      });
+
+      // Also clear all command permissions
+      await prisma.commandPermission.deleteMany({
+        where: { guildId: this.guild.id },
+      });
+
+      // Notify API of permission reset
+      const customClient = this.client as any as Client;
+      if (customClient.queueService) {
+        try {
+          customClient.queueService.processRequest({
+            type: "CONFIG_UPDATE",
+            data: {
+              guildId: this.guild.id,
+              section: "PERMISSIONS",
+              changes: {
+                moderatorRoleIds: [],
+                commandPermissions: "cleared",
+              },
+              action: "RESET_PERMISSION_ROLES",
+              updatedBy: this.user.id,
+            },
+            source: "rest",
+            userId: this.user.id,
+            guildId: this.guild.id,
+            requiresReliability: true,
+          });
+        } catch (error) {
+          console.warn("Failed to notify API of permission reset:", error);
+        }
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0x95a5a6)
+        .setTitle("🔄 Permission Configuration Reset")
+        .setDescription("All permission configurations have been reset.")
+        .addFields({
+          name: "📋 Changes",
+          value: ["**Moderator Roles:** Cleared", "**Command Permissions:** Cleared"].join("\n"),
+          inline: false,
+        })
+        .addFields({
+          name: "⚠️ Important",
+          value:
+            "Only server owners and users with Administrator permission will have access to admin commands until new roles are configured.",
+          inline: false,
+        })
+        .setTimestamp();
+
+      // Log permission reset
+      await this.client.logManager.log(this.guild.id, "PERMISSION_CONFIG", {
+        userId: this.user.id,
+        metadata: {
+          action: "RESET_ALL",
+        },
+      });
+
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
+      logger.error("Error resetting permission roles:", error);
+      return {
+        content: `❌ Failed to reset permission roles: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleSetCommand(): Promise<CommandResponse> {
+    const commandName = this.getStringOption("command", true);
+    const level = this.getStringOption("permission_level", true);
+    const roles = this.getStringOption("roles");
+
+    try {
+      const requiredRoles = roles ? roles.split(",").map((r) => r.trim()) : [];
+
+      // Validate permission level
+      const validLevels = ["OWNER", "ADMIN", "MODERATOR", "HELPER", "MEMBER"];
+      if (!validLevels.includes(level)) {
+        return {
+          content: `❌ Invalid permission level. Valid levels: ${validLevels.join(", ")}`,
+          ephemeral: true,
+        };
+      }
+
+      // Create or update command permission
+      const commandPermission = await prisma.commandPermission.upsert({
+        where: {
+          guildId_commandName: {
+            guildId: this.guild.id,
+            commandName: commandName,
+          },
+        },
+        update: {
+          permissionLevel: level,
+          requiredRoles: requiredRoles,
+          updatedAt: new Date(),
+        },
+        create: {
+          guildId: this.guild.id,
+          commandName: commandName,
+          permissionLevel: level,
+          requiredRoles: requiredRoles,
+          createdBy: this.user.id,
+        },
+      });
+
+      const embed = new EmbedBuilder()
+        .setColor(0x2ecc71)
+        .setTitle("✅ Command Permission Set")
+        .setDescription(`Permission for command \`${commandName}\` has been configured.`)
+        .addFields({
+          name: "📋 Configuration",
+          value: [
+            `**Command:** \`${commandName}\``,
+            `**Permission Level:** ${level}`,
+            `**Required Roles:** ${requiredRoles.length > 0 ? requiredRoles.map((r) => `<@&${r}>`).join(", ") : "None"}`,
+          ].join("\n"),
+          inline: false,
+        })
+        .setTimestamp();
+
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
+      logger.error("Error setting command permission:", error);
+      return {
+        content: `❌ Failed to set command permission: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleRemoveCommand(): Promise<CommandResponse> {
+    const commandName = this.getStringOption("command", true);
+
+    try {
+      const deleted = await prisma.commandPermission.deleteMany({
+        where: {
+          guildId: this.guild.id,
+          commandName: commandName,
+        },
+      });
+
+      if (deleted.count === 0) {
+        return {
+          content: `❌ No custom permission found for command \`${commandName}\`.`,
+          ephemeral: true,
+        };
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0xe74c3c)
+        .setTitle("❌ Command Permission Removed")
+        .setDescription(`Custom permission for command \`${commandName}\` has been removed.`)
+        .addFields({
+          name: "ℹ️ Info",
+          value: "The command will now use its default permission requirements.",
+          inline: false,
+        })
+        .setTimestamp();
+
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
+      logger.error("Error removing command permission:", error);
+      return {
+        content: `❌ Failed to remove command permission: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleListCommands(): Promise<CommandResponse> {
+    try {
+      const commandPermissions = await prisma.commandPermission.findMany({
+        where: { guildId: this.guild.id },
+        orderBy: { commandName: "asc" },
+      });
+
+      const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle("🔐 Command Permissions")
+        .setTimestamp()
+        .setFooter({ text: `Server: ${this.guild.name}` });
+
+      if (commandPermissions.length === 0) {
+        embed.setDescription("❌ No custom command permissions configured.");
+        embed.addFields({
+          name: "💡 Getting Started",
+          value: "Use `/permissions setcommand` to configure command permissions.",
+          inline: false,
+        });
+
+        return { embeds: [embed], ephemeral: true };
+      }
+
+      const permissionList = commandPermissions
+        .map((cp) => {
+          const roles = cp.requiredRoles
+            .map((roleId) => this.guild.roles.cache.get(roleId)?.toString() ?? `<@&${roleId}>`)
+            .join(", ");
+
+          return `**\`${cp.commandName}\`**\n└ Level: ${cp.permissionLevel}${roles ? `\n└ Roles: ${roles}` : ""}`;
+        })
+        .join("\n\n");
+
+      embed.setDescription(
+        `**${commandPermissions.length}** command${commandPermissions.length === 1 ? "" : "s"} with custom permissions:\n\n${permissionList}`
+      );
+
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
+      logger.error("Error listing command permissions:", error);
+      return {
+        content: `❌ Failed to list command permissions: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+}
+
+// Export the command instance
+export default new PermissionsCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("permissions")
+  .setDescription("ADMIN ONLY: Manage bot permissions and roles")
+  .addSubcommand((sub) =>
+    sub
+      .setName("setrole")
+      .setDescription("Add a role to a permission level")
+      .addStringOption((opt) =>
+        opt
+          .setName("level")
+          .setDescription("Permission level")
+          .setRequired(true)
+          .addChoices({ name: "Moderator", value: "moderator" })
+      )
+      .addRoleOption((opt) => opt.setName("role").setDescription("Role to assign to this level").setRequired(true))
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("removerole")
+      .setDescription("Remove a role from a permission level")
+      .addStringOption((opt) =>
+        opt
+          .setName("level")
+          .setDescription("Permission level")
+          .setRequired(true)
+          .addChoices({ name: "Moderator", value: "moderator" })
+      )
+      .addRoleOption((opt) => opt.setName("role").setDescription("Specific role to remove (leave empty to remove all)"))
+  )
+  .addSubcommand((sub) => sub.setName("list").setDescription("List current permission role configuration"))
+  .addSubcommand((sub) => sub.setName("reset").setDescription("Reset all permission configurations"))
+  .addSubcommand((sub) =>
+    sub
+      .setName("setcommand")
+      .setDescription("Set custom permission for a specific command")
+      .addStringOption((opt) => opt.setName("command").setDescription("Command name").setRequired(true))
+      .addStringOption((opt) =>
+        opt
+          .setName("permission_level")
+          .setDescription("Required permission level")
+          .setRequired(true)
+          .addChoices(
+            { name: "Owner", value: "OWNER" },
+            { name: "Admin", value: "ADMIN" },
+            { name: "Moderator", value: "MODERATOR" },
+            { name: "Helper", value: "HELPER" },
+            { name: "Member", value: "MEMBER" }
+          )
+      )
+      .addStringOption((opt) =>
+        opt.setName("roles").setDescription("Comma-separated list of required role IDs (optional)")
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("removecommand")
+      .setDescription("Remove custom permission for a specific command")
+      .addStringOption((opt) => opt.setName("command").setDescription("Command name").setRequired(true))
+  )
+  .addSubcommand((sub) => sub.setName("listcommands").setDescription("List all custom command permissions"));

@@ -6,15 +6,15 @@ import {
   type ChatInputCommandInteraction,
   ComponentType,
   EmbedBuilder,
-  PermissionsBitField,
   SlashCommandBuilder,
 } from "discord.js";
 
+import { AutoModRule } from "shared/src/database.js";
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
-import Command from "../../structures/Command.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
 interface AutoModPreset {
   name: string;
@@ -162,55 +162,130 @@ const AUTOMOD_PRESETS: AutoModPreset[] = [
   },
 ];
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("automod-setup")
-    .setDescription("🧙‍♂️ Setup auto-moderation with guided wizard")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
-    .addSubcommand((sub) => sub.setName("wizard").setDescription("Launch the interactive setup wizard"))
-    .addSubcommand((sub) =>
-      sub
-        .setName("preset")
-        .setDescription("Apply a preset configuration")
-        .addStringOption((opt) =>
-          opt
-            .setName("type")
-            .setDescription("Preset type")
-            .setRequired(true)
-            .addChoices(
-              { name: "🛡️ Basic Protection", value: "basic" },
-              { name: "🔰 Comprehensive Shield", value: "comprehensive" },
-              { name: "👨‍👩‍👧‍👦 Family Friendly", value: "family" },
-              { name: "🎮 Gaming Community", value: "gaming" }
-            )
-        )
-    )
-    .addSubcommand((sub) => sub.setName("status").setDescription("View current auto-moderation status")),
+/**
+ * AutoMod Setup Command - Setup and configure automod features
+ */
+export class AutoModSetupCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "automod-setup",
+      description: "Setup and configure automod features",
+      category: "admin",
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
-
-    const subcommand = interaction.options.getSubcommand();
-
-    switch (subcommand) {
-      case "wizard":
-        await startSetupWizard(client, interaction);
-        break;
-      case "preset":
-        await applyPreset(client, interaction);
-        break;
-      case "status":
-        await showStatus(client, interaction);
-        break;
-    }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.ADMIN,
-      isConfigurable: true,
-    },
+    super(config);
   }
-);
+
+  protected async execute(): Promise<CommandResponse> {
+    // Validate admin permissions for server management
+    this.validateAdminPerms(["ManageGuild"]);
+
+    const action = this.getStringOption("action", true);
+
+    switch (action) {
+      case "quick-setup":
+        return await this.handleQuickSetup();
+      case "advanced-setup":
+        return await this.handleAdvancedSetup();
+      case "reset":
+        return await this.handleReset();
+      default:
+        throw new Error("Invalid action");
+    }
+  }
+
+  private async handleQuickSetup(): Promise<CommandResponse> {
+    try {
+      // Import AutoModService and use it statically
+      const { AutoModService } = await import("../../services/autoModService.js");
+      const result = await AutoModService.quickSetup(this.guild.id);
+
+      return this.createAdminSuccess(
+        "AutoMod Quick Setup Complete",
+        `AutoMod has been configured with default settings:\n${result.configuredRules.map((rule) => `• ${rule}`).join("\n")}`
+      );
+    } catch (error) {
+      throw new Error(`Failed to setup automod: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  private async handleAdvancedSetup(): Promise<CommandResponse> {
+    try {
+      // Get advanced configuration options
+      const antiSpam = this.getBooleanOption("anti-spam") ?? true;
+      const antiRaid = this.getBooleanOption("anti-raid") ?? true;
+      const wordFilter = this.getBooleanOption("word-filter") ?? true;
+      const linkFilter = this.getBooleanOption("link-filter") ?? false;
+
+      // Import AutoModService and use it statically
+      const { AutoModService } = await import("../../services/autoModService.js");
+      const result = await AutoModService.advancedSetup(this.guild.id, {
+        antiSpam,
+        antiRaid,
+        wordFilter,
+        linkFilter,
+      });
+
+      return this.createAdminSuccess(
+        "AutoMod Advanced Setup Complete",
+        `AutoMod has been configured with custom settings:\n${result.configuredRules.map((rule) => `• ${rule}`).join("\n")}`
+      );
+    } catch (error) {
+      throw new Error(`Failed to setup advanced automod: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  private async handleReset(): Promise<CommandResponse> {
+    try {
+      // Import AutoModService and use it statically
+      const { AutoModService } = await import("../../services/autoModService.js");
+      await AutoModService.resetConfig(this.guild.id);
+
+      return this.createAdminSuccess(
+        "AutoMod Configuration Reset",
+        "All automod settings have been reset to defaults."
+      );
+    } catch (error) {
+      throw new Error(`Failed to reset automod: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+}
+
+// Export the command instance
+export default new AutoModSetupCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("automod-setup")
+  .setDescription("Setup and configure automod features")
+  .setDefaultMemberPermissions(0)
+  .addStringOption((option) =>
+    option
+      .setName("action")
+      .setDescription("What action to perform")
+      .setRequired(true)
+      .addChoices(
+        { name: "Quick Setup (Recommended)", value: "quick-setup" },
+        { name: "Advanced Setup", value: "advanced-setup" },
+        { name: "Reset Configuration", value: "reset" }
+      )
+  )
+  .addBooleanOption((option) =>
+    option.setName("anti-spam").setDescription("Enable anti-spam protection (advanced setup only)").setRequired(false)
+  )
+  .addBooleanOption((option) =>
+    option.setName("anti-raid").setDescription("Enable anti-raid protection (advanced setup only)").setRequired(false)
+  )
+  .addBooleanOption((option) =>
+    option.setName("word-filter").setDescription("Enable word filtering (advanced setup only)").setRequired(false)
+  )
+  .addBooleanOption((option) =>
+    option.setName("link-filter").setDescription("Enable link filtering (advanced setup only)").setRequired(false)
+  );
+
+export { startSetupWizard };
 
 async function startSetupWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   const welcomeEmbed = new EmbedBuilder()
@@ -341,7 +416,7 @@ async function showPresetSelection(interaction: ButtonInteraction): Promise<void
   AUTOMOD_PRESETS.forEach((preset) => {
     presetEmbed.addFields({
       name: `${preset.emoji} ${preset.name}`,
-      value: `${preset.description}\n\n**Includes:** ${preset.rules.length} protection rules`,
+      value: `${preset.description}\n\n**Includes:** ${String(preset.rules.length)} protection rules`,
       inline: false,
     });
   });
@@ -514,6 +589,34 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
       }
     }
 
+    // Notify API of automod preset application
+    const customClient = client as any as Client;
+    if (customClient.queueService) {
+      try {
+        await customClient.queueService.processRequest({
+          type: "AUTOMOD_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            action: "APPLY_PRESET",
+            presetName: preset.name,
+            rulesCreated: createdRules,
+            rules: preset.rules.map((rule) => ({
+              name: rule.name,
+              type: rule.type,
+              sensitivity: rule.sensitivity,
+            })),
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of automod preset application:", error);
+      }
+    }
+
     const successEmbed = new EmbedBuilder()
       .setColor(0x2ecc71)
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied`)
@@ -622,6 +725,34 @@ async function applyPreset(client: Client, interaction: ChatInputCommandInteract
       }
     }
 
+    // Notify API of automod preset application
+    const customClient = client as any as Client;
+    if (customClient.queueService) {
+      try {
+        await customClient.queueService.processRequest({
+          type: "AUTOMOD_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            action: "APPLY_PRESET",
+            presetName: preset.name,
+            rulesCreated: createdRules,
+            rules: preset.rules.map((rule: AutoModPreset["rules"][0]) => ({
+              name: rule.name,
+              type: rule.type,
+              sensitivity: rule.sensitivity,
+            })),
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of automod preset application:", error);
+      }
+    }
+
     const successEmbed = new EmbedBuilder()
       .setColor(0x2ecc71)
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied`)
@@ -633,7 +764,9 @@ async function applyPreset(client: Client, interaction: ChatInputCommandInteract
       )
       .addFields({
         name: "📋 Applied Rules",
-        value: preset.rules.map((rule, index) => `${index + 1}. **${rule.name}** (${rule.type})`).join("\n"),
+        value: preset.rules
+          .map((rule: AutoModPreset["rules"][0], index: number) => `${index + 1}. **${rule.name}** (${rule.type})`)
+          .join("\n"),
         inline: false,
       })
       .addFields({
@@ -725,7 +858,7 @@ async function showStatus(client: Client, interaction: ChatInputCommandInteracti
           value:
             enabledRules.length > 0
               ? enabledRules
-                  .map((rule) => `• **${rule.type}** (${rule.sensitivity.toLowerCase()})`)
+                  .map((rule: AutoModRule) => `• **${rule.type}** (${rule.sensitivity.toLowerCase()})`)
                   .slice(0, 6)
                   .join("\n") + (enabledRules.length > 6 ? `\n... and ${enabledRules.length - 6} more` : "")
               : "No protection currently active",

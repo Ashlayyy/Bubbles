@@ -14,3 +14,18 @@ frontend/dist
 .env.test
 .env.test.development
 .env.test.production
+
+# Ignore stray TypeScript build artefacts that accidentally end up in source trees
+shared/src/**/*.js
+shared/src/**/*.js.map
+shared/src/**/*.d.ts
+
+api/src/**/*.js
+api/src/**/*.js.map
+api/src/**/*.d.ts
+
+bot/src/**/*.js
+bot/src/**/*.js.map
+bot/src/**/*.d.ts
+
+backup/

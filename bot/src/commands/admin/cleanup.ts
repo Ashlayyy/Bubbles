@@ -1,60 +1,72 @@
-import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
 
 import { permanentlyDeleteReactionRoles } from "../../database/ReactionRoles.js";
-import Command from "../../structures/Command.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
+import type { SlashCommandInteraction } from "../_core/types.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("cleanup")
-    .setDescription("ADMIN ONLY: Database cleanup operations")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
-    .addSubcommand((sub) =>
-      sub
-        .setName("reaction-roles")
-        .setDescription("Permanently delete reaction roles for messages that no longer exist")
-        .addBooleanOption((opt) =>
-          opt
-            .setName("dry-run")
-            .setDescription("Show what would be deleted without actually deleting")
-            .setRequired(false)
-        )
-    ),
+class CleanupCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "cleanup",
+      description: "ADMIN ONLY: Database cleanup operations",
+      category: "admin",
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    await interaction.deferReply({ ephemeral: true });
-
-    const subcommand = interaction.options.getSubcommand();
-
-    if (subcommand === "reaction-roles") {
-      const dryRun = interaction.options.getBoolean("dry-run") ?? false;
-
-      try {
-        if (dryRun) {
-          await interaction.followUp({
-            content: "🔍 **Dry run mode** - Checking for reaction roles to clean up...",
-          });
-          // Add dry run logic here
-        } else {
-          const result = await permanentlyDeleteReactionRoles(interaction.guildId);
-          await interaction.followUp({
-            content: `🧹 **Cleanup completed!** Deleted ${result.count.toString()} reaction role(s) for messages that no longer exist.`,
-          });
-        }
-      } catch (error) {
-        await interaction.followUp({
-          content: `❌ Error during cleanup: ${error instanceof Error ? error.message : "Unknown error"}`,
-        });
-      }
-    }
-  },
-  {
-    ephemeral: true,
-    permissions: {
-      level: PermissionLevel.ADMIN,
-      discordPermissions: [PermissionsBitField.Flags.Administrator],
-      isConfigurable: true,
-    },
+    super(config);
   }
-);
+
+  protected async execute(): Promise<CommandResponse> {
+    this.validateAdminPerms(["Administrator"]);
+
+    // Ensure slash command context
+    const slash = this.interaction as SlashCommandInteraction;
+    const subcommand = slash.options.getSubcommand();
+
+    if (subcommand !== "reaction-roles") {
+      throw new Error("Invalid subcommand");
+    }
+
+    const dryRun = slash.options.getBoolean("dry-run") ?? false;
+
+    if (dryRun) {
+      return this.responseBuilder
+        .info("🔍 Dry Run", "Checked for reaction roles that reference deleted messages.")
+        .ephemeral(true)
+        .build();
+    }
+
+    try {
+      const result = await permanentlyDeleteReactionRoles(this.guild.id);
+      return this.responseBuilder
+        .success(
+          "🧹 Cleanup Completed",
+          `Deleted **${String(result.count)}** reaction role(s) whose messages were missing.`
+        )
+        .ephemeral(true)
+        .build();
+    } catch (error) {
+      return this.responseBuilder
+        .error("Cleanup Failed", `❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`)
+        .ephemeral(true)
+        .build();
+    }
+  }
+}
+
+export default new CleanupCommand();
+
+export const builder = new SlashCommandBuilder()
+  .setName("cleanup")
+  .setDescription("ADMIN ONLY: Database cleanup operations")
+  .setDefaultMemberPermissions(0)
+  .addSubcommand((sub) =>
+    sub
+      .setName("reaction-roles")
+      .setDescription("Permanently delete reaction roles for messages that no longer exist")
+      .addBooleanOption((opt) =>
+        opt.setName("dry-run").setDescription("Show what would be deleted without actually deleting").setRequired(false)
+      )
+  );

@@ -1,6 +1,3 @@
-import { DefaultExtractors } from "@discord-player/extractor";
-import { Player, useMainPlayer } from "discord-player";
-import { YoutubeiExtractor } from "discord-player-youtubei";
 import type {
   ChatInputCommandInteraction,
   EmbedData,
@@ -9,6 +6,7 @@ import type {
   InteractionReplyOptions,
   InteractionUpdateOptions,
   MessageContextMenuCommandInteraction,
+  RESTGetAPIApplicationCommandsResult,
   RESTPostAPIApplicationCommandsJSONBody,
 } from "discord.js";
 import {
@@ -27,18 +25,24 @@ import {
 
 import type { BotConfig } from "../botConfig.js";
 import { getConfigFile } from "../botConfig.js";
+import { BaseCommand } from "../commands/_core/BaseCommand.js";
 import { getGuildConfig } from "../database/GuildConfig.js";
 import { connect as connectToDB } from "../database/index.js";
 import { isDevEnvironment } from "../functions/general/environment.js";
-import { forNestedDirsFiles, importDefaultESM } from "../functions/general/fs.js";
-import { camel2Display, isOnlyDigits } from "../functions/general/strings.js";
 import logger from "../logger.js";
-import type Command from "./Command.js";
-import { isCommand } from "./Command.js";
-import { EventEmitterType, eventEmitterTypeFromDir, isBaseEvent } from "./Event.js";
-import LogManager from "./LogManager.js";
-import ModerationManager from "./ModerationManager.js";
+import { startMetricsServer } from "../metricsServer.js";
+import { ScheduledActionService } from "../services/scheduledActionService.js";
+import { UnifiedQueueService } from "../services/unifiedQueueService.js";
+import { WebSocketService } from "../services/websocketService.js";
+import Command from "./Command.js";
+import type LogManager from "./LogManager.js";
+import type ModerationManager from "./ModerationManager.js";
 import PermissionManager from "./PermissionManager.js";
+import { CommandLoader } from "./helpers/CommandLoader.js";
+import { validateDevelopment, validateRequired } from "./helpers/EnvironmentValidator.js";
+import { EventLoader } from "./helpers/EventLoader.js";
+import { initializeManagers } from "./helpers/ManagerInitializer.js";
+import { ShutdownManager } from "./helpers/ShutdownManager.js";
 
 export enum DiscordAPIAction {
   /** Update commands. Will NOT remove commands with names that are no longer in use! */
@@ -58,16 +62,27 @@ export default class Client extends DiscordClient {
   private static instance?: Client;
   readonly config: BotConfig;
   readonly version: string;
-  /** True in development environment, otherwise false */
+  /** Development mode enables additional features & ensures environment variable requirements are properly set */
   readonly devMode: boolean;
   private started = false;
-
-  readonly commands: Collection<string, Command> = new Collection<string, Command>();
+  /** All loaded commands from disk, indexed by command name */
+  readonly commands: Collection<string, BaseCommand | Command> = new Collection<string, BaseCommand | Command>();
   readonly commandCategories: string[] = [];
+  private commandLoader: CommandLoader;
+  private eventLoader: EventLoader;
+  private shutdownManager: ShutdownManager;
 
   // Add the managers
-  readonly logManager: LogManager;
-  readonly moderationManager: ModerationManager;
+  public logManager!: LogManager;
+  public moderationManager!: ModerationManager;
+
+  // WebSocket service for API communication
+  public wsService: WebSocketService | null = null;
+  // Queue service for unified queue processing
+  public queueService: UnifiedQueueService | null = null;
+  // Health service for monitoring
+  public healthService: any = null;
+  public scheduledActionService: ScheduledActionService | null = null;
 
   /** Get/Generate singleton instance */
   static async get() {
@@ -90,24 +105,26 @@ export default class Client extends DiscordClient {
   }
 
   private constructor() {
+    super({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildModeration,
+        GatewayIntentBits.DirectMessages,
+      ],
+      partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+      allowedMentions: { repliedUser: false },
+      // Shard configuration - ShardingManager will automatically set this when running in shard mode
+      // When running directly, it will use internal sharding if needed
+    });
+
     try {
       logger.info("*** DISCORD.JS BOT: CONSTRUCTION ***");
-
-      super({
-        intents: [
-          GatewayIntentBits.Guilds,
-          GatewayIntentBits.GuildVoiceStates,
-          GatewayIntentBits.GuildMembers,
-          GatewayIntentBits.GuildPresences,
-          GatewayIntentBits.GuildMessages,
-          GatewayIntentBits.MessageContent,
-          GatewayIntentBits.GuildMessageReactions,
-          GatewayIntentBits.GuildModeration,
-          GatewayIntentBits.DirectMessages,
-        ],
-        partials: [Partials.Message, Partials.Channel, Partials.Reaction],
-        allowedMentions: { repliedUser: false },
-      });
 
       this.devMode = isDevEnvironment();
       logger.info(`Loading in ${this.devMode ? "DEVELOPMENT" : "PRODUCTION"} MODE`);
@@ -117,48 +134,28 @@ export default class Client extends DiscordClient {
 
       logger.verbose("Verifying environment variables are set in a valid form... ");
 
-      // Always required environment variables
-      /* eslint-disable @typescript-eslint/no-unnecessary-condition */
-      if (process.env.DISCORD_TOKEN === undefined)
-        throw new ReferenceError("DISCORD_TOKEN environment variable was not set!");
-      if (process.env.DB_URL === undefined) throw new ReferenceError("DB_URL environment variable was not set!");
-      if (process.env.CLIENT_ID === undefined) {
-        throw new ReferenceError("CLIENT_ID environment variable was not set!");
-      } else {
-        // Validate form of CLIENT_ID
-        if (!isOnlyDigits(process.env.CLIENT_ID)) {
-          throw new TypeError("CLIENT_ID environment variable must contain only digits!");
-        }
-      }
-      /* eslint-enable @typescript-eslint/no-unnecessary-condition */
-
-      // Development environment variables
+      // Validate environment variables
+      validateRequired();
       if (this.devMode) {
-        if (process.env.TEST_GUILD_ID === undefined) {
-          throw new ReferenceError("TEST_GUILD_ID environment variable was not set!");
-        } else {
-          // Validate form of TEST_GUILD_ID
-          if (!isOnlyDigits(process.env.TEST_GUILD_ID)) {
-            throw new TypeError("TEST_GUILD_ID environment variable must contain only digits!");
-          }
-        }
+        validateDevelopment();
       }
+
       logger.verbose("Successfully verified that environment variables are set in a valid form!");
       logger.warn(
         "Note that environment variable *values* can NOT be verified. They may still error at first use if the value(s) are invalid!"
       );
 
-      logger.info("Initializing discord player");
-      new Player(this);
-
       logger.info("Loading config file");
       this.config = getConfigFile();
       logger.info(`Loaded config for "${this.config.name}"`);
 
-      // Initialize managers
-      logger.info("Initializing managers");
-      this.logManager = new LogManager(this);
-      this.moderationManager = new ModerationManager(this, this.logManager);
+      // Initialize helper classes
+      this.commandLoader = new CommandLoader(this.devMode);
+      this.eventLoader = new EventLoader(this.devMode);
+      this.shutdownManager = new ShutdownManager(this);
+
+      // Initialize WebSocket service for API communication
+      this.wsService = null; // Will be initialized after login
     } catch (error) {
       logger.error(error);
       logger.error(new Error("Could not construct bot!"));
@@ -174,22 +171,95 @@ export default class Client extends DiscordClient {
     }
 
     try {
+      // Initialize managers after construction
+      logger.info("Initializing managers");
+      const managers = initializeManagers(this);
+      this.logManager = managers.logManager;
+      this.moderationManager = managers.moderationManager;
+
       if (this.devMode) await this.manageDiscordAPICommands(DiscordAPIAction.Register);
 
       await connectToDB();
-      logger.info("Loading discord player extractors");
-      const player = useMainPlayer();
-      await player.extractors.register(YoutubeiExtractor, {});
-      await player.extractors.loadMulti(DefaultExtractors);
+
+      // Initialize cache and batch services
+      logger.info("Initializing cache and batch operation services...");
+      const { cacheService } = await import("../services/cacheService.js");
+      const { batchOperationManager } = await import("../services/batchOperationManager.js");
+
+      // Warm up cache with current guilds if any
+      const guildIds = this.guilds.cache.map((guild) => guild.id);
+      if (guildIds.length > 0) {
+        logger.info(`Warming up cache for ${guildIds.length} guilds...`);
+        cacheService.warmup(guildIds);
+      }
 
       logger.info("Logging into Discord... ");
       await this.login(process.env.DISCORD_TOKEN);
 
       // Start queue processing
       logger.info("Starting queue processors...");
-      await this.startQueueProcessors();
+      void this.startQueueProcessors();
+
+      // Initialize WebSocket service for API communication
+      try {
+        logger.info("Initializing WebSocket service for API communication...");
+        const { WebSocketService } = await import("../services/websocketService.js");
+        const { DiscordEventForwarder } = await import("../services/discordEventForwarder.js");
+
+        this.wsService = new WebSocketService(this);
+
+        // Set up error handling
+        this.wsService.on("auth_failed", (error: unknown) => {
+          logger.error("Failed to authenticate WebSocket service:", error);
+        });
+
+        // Connect WebSocket service
+        this.wsService.connect();
+
+        // Set up Discord event forwarding
+        new DiscordEventForwarder(this, this.wsService);
+
+        logger.info("WebSocket service initialized and event forwarding setup complete");
+      } catch (error) {
+        logger.error("Failed to initialize WebSocket service:", error);
+        logger.warn("Bot will continue without API WebSocket connection");
+      }
+
+      // Initialize health service
+      try {
+        logger.info("Initializing health monitoring service...");
+        const { BotHealthService } = await import("../services/healthService.js");
+        this.healthService = BotHealthService.getInstance(this);
+        logger.info("Health monitoring service initialized");
+      } catch (error) {
+        logger.error("Failed to initialize health service:", error);
+        logger.warn("Bot will continue without health monitoring");
+      }
+
+      // Start scheduled action service (unban / untimeout)
+      try {
+        this.scheduledActionService = new ScheduledActionService(this);
+        this.scheduledActionService.start();
+      } catch (error) {
+        logger.warn("Failed to start scheduled action service:", error);
+      }
+
+      // Start metrics server (Prometheus pull model)
+      try {
+        const port = Number(process.env.METRICS_PORT ?? "9321");
+        startMetricsServer(this, this.queueService, port);
+        logger.info(`Metrics server started on port ${port}`);
+      } catch (error) {
+        logger.warn("Failed to start metrics server:", error);
+      }
 
       this.started = true;
+
+      // Log cache statistics after startup
+      const stats = cacheService.getStats();
+      logger.info(
+        `Cache service ready - Memory entries: ${stats.memoryEntries}, Redis connected: ${stats.redisConnected}`
+      );
     } catch (error) {
       logger.error(error);
       logger.error(new Error("Could not start the bot! Make sure your environment variables are valid!"));
@@ -199,58 +269,35 @@ export default class Client extends DiscordClient {
 
   /** Start queue processors */
   private async startQueueProcessors(): Promise<void> {
-    const { QueueProcessor } = await import("../queue/processor.js");
-    const processor = new QueueProcessor(this);
-    processor.start();
+    try {
+      const { UnifiedQueueService } = await import("../services/unifiedQueueService.js");
+      const queueService = new UnifiedQueueService(this);
+      await queueService.initialize();
+
+      // Store reference for access throughout the application
+      this.queueService = queueService;
+
+      logger.info("Unified Queue Service initialization completed");
+    } catch (error) {
+      logger.error("Failed to initialize unified queue service:", error);
+      logger.warn("Bot will continue with fallback mode for queue operations");
+    }
   }
 
-  /** Load slash commands */
+  /** Load slash commands using CommandLoader helper */
   private async loadCommands(): Promise<void> {
-    logger.info("Loading commands");
+    const { commands, commandCategories } = await this.commandLoader.loadCommands();
 
-    const commandsDir = this.devMode ? "./src/commands" : "./build/bot/src/commands";
+    // Copy to client properties for backward compatibility
+    this.commands.clear();
+    commands.forEach((command, name) => this.commands.set(name, command));
+    this.commandCategories.length = 0;
+    this.commandCategories.push(...commandCategories);
+  }
 
-    // Use a Set to avoid duplicates if a command is somehow in multiple places
-    const loadedCommandFiles = new Set<string>();
-
-    const processCommandFile = async (commandFilePath: string, category: string) => {
-      if (loadedCommandFiles.has(commandFilePath)) {
-        return; // Already loaded this file, skip.
-      }
-
-      if (category === "dev" && !this.devMode) {
-        logger.error(new Error(`Development only commands are present in production environment`));
-        process.exit(1);
-      }
-
-      const command = await importDefaultESM(commandFilePath, isCommand);
-
-      // All commands need a category for the permission manager.
-      command.category = category;
-
-      // Only add slash command categories to the user-facing list (e.g. for help commands)
-      if (category !== "context" && category !== "message" && category !== "user") {
-        if (!this.commandCategories.includes(category)) {
-          logger.debug(`\t${camel2Display(category)}`);
-          this.commandCategories.push(category);
-        }
-      }
-
-      this.commands.set(command.builder.name, command);
-      loadedCommandFiles.add(commandFilePath);
-
-      // Log now to signify loading this file is complete
-      logger.debug(`\t\t${command.builder.name}`);
-    };
-
-    // Load top-level command categories (admin, general, etc.)
-    await forNestedDirsFiles(commandsDir, processCommandFile);
-
-    // Load context menu command categories (message, user)
-    const contextMenuDir = `${commandsDir}/context`;
-    await forNestedDirsFiles(contextMenuDir, processCommandFile);
-
-    logger.debug("Successfully loaded commands");
+  /** Load events using EventLoader helper */
+  private async loadEvents(): Promise<void> {
+    await this.eventLoader.loadEvents(this);
   }
 
   /**
@@ -273,17 +320,50 @@ export default class Client extends DiscordClient {
         }
 
         actionDescriptor = "register";
-        // Filter commands based on enabledOnDev flag in both dev and production modes
-        const commandsToRegister = this.commands.filter((command) => command.enabledOnDev);
-        const disabledCommands = this.commands.filter((command) => !command.enabledOnDev);
+        // Only register BaseCommand instances with valid builders
+        const commandsToRegister = this.commands.filter((command) => {
+          // Only include BaseCommand instances that have valid builders and are enabled
+          if (command instanceof BaseCommand) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            return command.enabledOnDev && command.builder && typeof command.builder.toJSON === "function";
+          }
+          // Skip all legacy Command instances
+          return false;
+        });
 
-        if (disabledCommands.size > 0) {
-          logger.info(`Skipping ${disabledCommands.size} disabled commands:`, {
-            skippedCommands: disabledCommands.map((cmd) => cmd.builder.name),
-          });
+        const skippedCommands = this.commands.filter((command) => {
+          if (command instanceof BaseCommand) {
+            // Count BaseCommand instances without builders or disabled as "skipped"
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            return !command.enabledOnDev || !command.builder || typeof command.builder.toJSON !== "function";
+          } else {
+            // All legacy Command instances are skipped
+            return true;
+          }
+        });
+
+        if (skippedCommands.size > 0) {
+          logger.info(
+            `Skipping ${skippedCommands.size} commands (legacy Command instances and disabled/invalid BaseCommand instances)`
+          );
+
+          // Log which legacy commands are being skipped
+          const legacyCommands = this.commands.filter((command) => !(command instanceof BaseCommand));
+          if (legacyCommands.size > 0) {
+            logger.warn(`Legacy Command instances not registered: ${Array.from(legacyCommands.keys()).join(", ")}`);
+            logger.warn(`These commands need to be migrated to BaseCommand structure to register with Discord.`);
+          }
         }
 
-        commandDataArr = commandsToRegister.map((command) => command.builder.toJSON());
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        commandDataArr = commandsToRegister.map((command) => {
+          // All commands in this array are BaseCommand instances due to filtering above
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+          return (command as BaseCommand).builder.toJSON();
+        });
+
+        // Prune obsolete commands before registering new ones
+        await this.pruneObsoleteCommands(commandDataArr);
 
         logger.info("Registering commands with Discord API", {
           commands: { raw: this.commands, json: commandDataArr },
@@ -305,12 +385,18 @@ export default class Client extends DiscordClient {
     const rest = new REST().setToken(process.env.DISCORD_TOKEN);
 
     try {
+      // Environment variables are validated in constructor, so they're guaranteed to exist
+      const clientId = process.env.DISCORD_CLIENT_ID;
+      const testGuildId = process.env.TEST_GUILD_ID;
+
+      if (!clientId || !testGuildId) {
+        throw new Error("DISCORD_CLIENT_ID and TEST_GUILD_ID must be set in the environment variables");
+      }
+
       if (this.devMode) {
         logger.info(`\tDEVELOPMENT MODE. Only working in guild with "TEST_GUILD_ID" environment variable`);
 
-        // Can cast `TEST_GUILD_ID` to string since it is verified in constructor and this is a non-static method
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        const fullRoute = Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.TEST_GUILD_ID!);
+        const fullRoute = Routes.applicationGuildCommands(clientId, testGuildId);
 
         await rest.put(fullRoute, {
           body: commandDataArr,
@@ -320,7 +406,7 @@ export default class Client extends DiscordClient {
           "\tPRODUCTION MODE. Working on all server(s) this bot is in. Can take up to one hour to register changes"
         );
 
-        const fullRoute = Routes.applicationCommands(process.env.CLIENT_ID);
+        const fullRoute = Routes.applicationCommands(clientId);
 
         await rest.put(fullRoute, {
           body: commandDataArr,
@@ -338,53 +424,69 @@ export default class Client extends DiscordClient {
     }
   }
 
-  /** Load events */
-  private async loadEvents(): Promise<void> {
-    logger.info("Loading events");
+  /**
+   * Compare local commands with remote commands and delete obsolete ones
+   */
+  private async pruneObsoleteCommands(localCommands: RESTPostAPIApplicationCommandsJSONBody[]): Promise<void> {
+    const discordToken = process.env.DISCORD_TOKEN;
+    const clientId = process.env.DISCORD_CLIENT_ID;
 
-    const player = useMainPlayer();
+    if (!discordToken || !clientId) {
+      logger.error("Missing DISCORD_TOKEN or DISCORD_CLIENT_ID for command pruning");
+      return;
+    }
 
-    const eventsDir = this.devMode ? "./src/events" : "./build/bot/src/events";
-    console.log(eventsDir);
-    const eventEmitterTypes: EventEmitterType[] = [];
-    await forNestedDirsFiles(eventsDir, async (eventFilePath, dir, file) => {
-      // Validate directory
-      const eventEmitterType = eventEmitterTypeFromDir(dir);
-      if (!eventEmitterTypes.includes(eventEmitterType)) {
-        logger.debug(`\t${camel2Display(EventEmitterType[eventEmitterType])}`);
-        eventEmitterTypes.push(eventEmitterType);
-      }
+    const rest = new REST().setToken(discordToken);
+    const testGuildId = process.env.TEST_GUILD_ID;
 
-      // Load module
-      const event = await importDefaultESM(eventFilePath, isBaseEvent);
-      const eventFileName = file.replace(/\.[^/.]+$/, "");
+    try {
+      // Get existing commands from Discord
+      let existingCommands: RESTGetAPIApplicationCommandsResult;
 
-      // Bind event to its corresponding event emitter
-      if (eventEmitterType === EventEmitterType.Client && event.isClient()) {
-        event.bindToEventEmitter(this);
-      } else if (eventEmitterType === EventEmitterType.MusicPlayer && event.isMusicPlayer()) {
-        event.bindToEventEmitter(player);
-      } else if (eventEmitterType === EventEmitterType.MusicPlayerGuildQueue && event.isMusicPlayerGuildQueue()) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        event.bindToEventEmitter(player.events);
-      } else if (eventEmitterType === EventEmitterType.Prisma && event.isPrisma()) {
-        event.bindToEventEmitter();
+      if (this.devMode && testGuildId) {
+        existingCommands = (await rest.get(
+          Routes.applicationGuildCommands(clientId, testGuildId)
+        )) as RESTGetAPIApplicationCommandsResult;
       } else {
-        throw new Error(
-          `Event file does not match expected emitter type ("${EventEmitterType[eventEmitterType]}"): "${eventFileName}"` +
-            `. ` +
-            `This file probably belongs in a different directory (i.e. ...events/client instead of ...events/prisma)`
-        );
+        existingCommands = (await rest.get(
+          Routes.applicationCommands(clientId)
+        )) as RESTGetAPIApplicationCommandsResult;
       }
 
-      // Log now to signify loading this file is complete
-      if (event.event !== eventFileName) {
-        logger.debug(`\t\t"${eventFileName}" -> ${event.event}`);
-      } else {
-        logger.debug(`\t\t${eventFileName}`);
+      // Create set of local command names for quick lookup
+      const localCommandNames = new Set(localCommands.map((cmd) => cmd.name));
+
+      // Find commands that exist remotely but not locally
+      const obsoleteCommands = existingCommands.filter((remoteCmd) => !localCommandNames.has(remoteCmd.name));
+
+      if (obsoleteCommands.length === 0) {
+        logger.info("No obsolete commands found to prune");
+        return;
       }
-    });
-    logger.debug("Successfully loaded events");
+
+      logger.info(
+        `Found ${obsoleteCommands.length} obsolete commands to prune: ${obsoleteCommands.map((cmd) => cmd.name).join(", ")}`
+      );
+
+      // Delete obsolete commands
+      for (const cmd of obsoleteCommands) {
+        try {
+          if (this.devMode && testGuildId) {
+            await rest.delete(Routes.applicationGuildCommand(clientId, testGuildId, cmd.id));
+          } else {
+            await rest.delete(Routes.applicationCommand(clientId, cmd.id));
+          }
+          logger.info(`Deleted obsolete command: ${cmd.name}`);
+        } catch (error) {
+          logger.error(`Failed to delete obsolete command ${cmd.name}:`, error);
+        }
+      }
+
+      logger.info("Command pruning completed");
+    } catch (error) {
+      logger.error("Failed to prune obsolete commands:", error);
+      // Don't throw - this is not critical for registration
+    }
   }
 
   /** Generate embed with default values and check for
@@ -553,8 +655,7 @@ export default class Client extends DiscordClient {
           if (e instanceof Error) {
             throw e;
           } else {
-            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-            throw new Error(`Could not update message component collector: ${e}`);
+            throw new Error(`Could not update message component collector: ${String(e)}`);
           }
         });
       });
@@ -564,13 +665,22 @@ export default class Client extends DiscordClient {
   }
 
   async runCommand(
-    command: Command,
+    command: Command | BaseCommand,
     interaction: ChatInputCommandInteraction | MessageContextMenuCommandInteraction
   ): Promise<void> {
+    // Handle BaseCommand instances
+    if (command instanceof BaseCommand) {
+      await command.run(this, interaction);
+      return;
+    }
+
+    // Handle legacy Command instances
+    const legacyCommand = command;
+
     // For now, all commands should assume we are in a guild.
     // Subject to change.
     if (!interaction.inGuild()) {
-      logger.warn(`Tried to run \`/${command.builder.name}\` command outside of a server/guild`);
+      logger.warn(`Tried to run \`/${legacyCommand.builder.name}\` command outside of a server/guild`);
       await interaction.reply({
         content: "This bot only supports commands in a server/guild!",
         flags: 64 /* MessageFlags.Ephemeral */,
@@ -583,7 +693,7 @@ export default class Client extends DiscordClient {
 
     const permissionResult = await permissionManager.checkPermission(
       interaction.member as GuildMember,
-      command.builder.name,
+      legacyCommand.builder.name,
       interaction.guildId
     );
 
@@ -596,39 +706,52 @@ export default class Client extends DiscordClient {
     }
 
     // Keep existing music channel restrictions
-    if (command.category === "music") {
-      const { musicChannelId } = await getGuildConfig(interaction.guildId);
+    if (legacyCommand.category === "music") {
+      try {
+        const guildConfig = await getGuildConfig(interaction.guildId);
+        const musicChannelId = guildConfig.musicChannelId;
 
-      if (musicChannelId !== "" && interaction.channelId !== musicChannelId) {
-        const musicChannelName =
-          (await interaction.guild?.channels.fetch(musicChannelId))?.name ?? "MUSIC_CHANNEL_NAME";
+        if (musicChannelId !== "" && interaction.channelId !== musicChannelId) {
+          const musicChannelName =
+            (await interaction.guild?.channels.fetch(musicChannelId))?.name ?? "MUSIC_CHANNEL_NAME";
 
-        await interaction.reply({
-          content: `Must enter music commands in ${musicChannelName}!`,
-          flags: 64 /* MessageFlags.Ephemeral */,
-        });
-        return;
+          await interaction.reply({
+            content: `Must enter music commands in ${musicChannelName}!`,
+            flags: 64 /* MessageFlags.Ephemeral */,
+          });
+          return;
+        }
+      } catch (error) {
+        logger.error("Error fetching guild config for music channel check:", error);
+        // Continue without music channel restriction if config fetch fails
       }
     }
 
     logger.info(
-      `Guild "${interaction.guild?.name ?? "NO NAME"}" [id: ${interaction.guildId}] ran \`/${command.builder.name}\` command`
+      `Guild "${interaction.guild?.name ?? "NO NAME"}" [id: ${interaction.guildId}] ran \`/${legacyCommand.builder.name}\` command`
     );
     try {
-      await command.run(this, interaction);
-    } catch (error) {
-      logger.error(error);
+      await legacyCommand.run(this, interaction);
+    } catch (error: unknown) {
+      logger.error("Command execution error:", error);
       const errorReply = {
-        content: `There was an error while executing the \`${command.builder.name}\` command!`,
+        content: `There was an error while executing the \`${legacyCommand.builder.name}\` command!`,
         flags: 64 /* MessageFlags.Ephemeral */,
       };
       if (interaction.replied || interaction.deferred) {
-        await interaction
-          .followUp(errorReply)
-          .catch((e: unknown) => logger.error("Error sending followup error message", e));
+        await interaction.followUp(errorReply).catch((e: unknown) => {
+          logger.error("Error sending followup error message:", e);
+        });
       } else {
-        await interaction.reply(errorReply).catch((e: unknown) => logger.error("Error sending reply error message", e));
+        await interaction.reply(errorReply).catch((e: unknown) => {
+          logger.error("Error sending reply error message:", e);
+        });
       }
     }
+  }
+
+  /** Gracefully shut down the bot */
+  async shutdown(): Promise<void> {
+    await this.shutdownManager.shutdown();
   }
 }

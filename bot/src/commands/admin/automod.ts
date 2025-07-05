@@ -11,8 +11,9 @@ import {
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
 interface AutoModTriggerConfig {
   // Spam detection
@@ -71,165 +72,179 @@ interface AutoModActionConfig {
   replyInChannel?: boolean;
 }
 
-interface EscalationConfig {
-  enableEscalation?: boolean;
-  maxWarnings?: number;
-  escalationActions?: AutoModActionConfig[];
-}
+// interface EscalationConfig {
+//   enableEscalation?: boolean;
+//   maxWarnings?: number;
+//   escalationActions?: AutoModActionConfig[];
+// }
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("automod")
-    .setDescription("ADMIN ONLY: Configure auto-moderation for your server")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("create")
-        .setDescription("Create a new auto-moderation rule")
-        .addStringOption((opt) =>
-          opt.setName("name").setDescription("Name for this rule").setRequired(true).setMaxLength(50)
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName("type")
-            .setDescription("Type of auto-moderation")
-            .setRequired(true)
-            .addChoices(
-              { name: "Spam Detection", value: "spam" },
-              { name: "Caps Lock", value: "caps" },
-              { name: "Link Filtering", value: "links" },
-              { name: "Word Filter", value: "words" },
-              { name: "Invite Filtering", value: "invites" }
-            )
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName("sensitivity")
-            .setDescription("Detection sensitivity")
-            .setRequired(true)
-            .addChoices(
-              { name: "Low", value: "LOW" },
-              { name: "Medium", value: "MEDIUM" },
-              { name: "High", value: "HIGH" }
-            )
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName("action")
-            .setDescription("Action to take when triggered")
-            .setRequired(true)
-            .addChoices(
-              { name: "Delete Message", value: "DELETE" },
-              { name: "Warn User", value: "WARN" },
-              { name: "Timeout User", value: "TIMEOUT" },
-              { name: "Kick User", value: "KICK" }
-            )
-        )
-        .addStringOption((opt) =>
-          opt.setName("custom_words").setDescription("Custom words/phrases to filter (comma-separated)")
-        )
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("list")
-        .setDescription("List all auto-moderation rules")
-        .addBooleanOption((opt) => opt.setName("detailed").setDescription("Show detailed rule configuration"))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("configure")
-        .setDescription("Configure an existing rule")
-        .addStringOption((opt) =>
-          opt.setName("rule").setDescription("Rule to configure").setRequired(true).setAutocomplete(true)
-        )
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("toggle")
-        .setDescription("Enable or disable a rule")
-        .addStringOption((opt) =>
-          opt.setName("rule").setDescription("Rule to toggle").setRequired(true).setAutocomplete(true)
-        )
-        .addBooleanOption((opt) =>
-          opt.setName("enabled").setDescription("Enable or disable the rule").setRequired(true)
-        )
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("delete")
-        .setDescription("Delete an auto-moderation rule")
-        .addStringOption((opt) =>
-          opt.setName("rule").setDescription("Rule to delete").setRequired(true).setAutocomplete(true)
-        )
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("test")
-        .setDescription("Test a rule against sample text")
-        .addStringOption((opt) =>
-          opt.setName("rule").setDescription("Rule to test").setRequired(true).setAutocomplete(true)
-        )
-        .addStringOption((opt) =>
-          opt.setName("text").setDescription("Sample text to test").setRequired(true).setMaxLength(500)
-        )
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("stats")
-        .setDescription("View auto-moderation statistics")
-        .addStringOption((opt) => opt.setName("rule").setDescription("Specific rule statistics").setAutocomplete(true))
-        .addStringOption((opt) =>
-          opt
-            .setName("timeframe")
-            .setDescription("Time period for statistics")
-            .addChoices(
-              { name: "Last 24 hours", value: "24h" },
-              { name: "Last 7 days", value: "7d" },
-              { name: "Last 30 days", value: "30d" }
-            )
-        )
-    ),
+export const builder = new SlashCommandBuilder()
+  .setName("automod")
+  .setDescription("ADMIN ONLY: Configure auto-moderation for your server")
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("create")
+      .setDescription("Create a new auto-moderation rule")
+      .addStringOption((opt) =>
+        opt.setName("name").setDescription("Name for this rule").setRequired(true).setMaxLength(50)
+      )
+      .addStringOption((opt) =>
+        opt
+          .setName("type")
+          .setDescription("Type of auto-moderation")
+          .setRequired(true)
+          .addChoices(
+            { name: "Spam Detection", value: "spam" },
+            { name: "Caps Lock", value: "caps" },
+            { name: "Link Filtering", value: "links" },
+            { name: "Word Filter", value: "words" },
+            { name: "Invite Filtering", value: "invites" }
+          )
+      )
+      .addStringOption((opt) =>
+        opt
+          .setName("sensitivity")
+          .setDescription("Detection sensitivity")
+          .setRequired(true)
+          .addChoices(
+            { name: "Low", value: "LOW" },
+            { name: "Medium", value: "MEDIUM" },
+            { name: "High", value: "HIGH" }
+          )
+      )
+      .addStringOption((opt) =>
+        opt
+          .setName("action")
+          .setDescription("Action to take when triggered")
+          .setRequired(true)
+          .addChoices(
+            { name: "Delete Message", value: "DELETE" },
+            { name: "Warn User", value: "WARN" },
+            { name: "Timeout User", value: "TIMEOUT" },
+            { name: "Kick User", value: "KICK" }
+          )
+      )
+      .addStringOption((opt) =>
+        opt.setName("custom_words").setDescription("Custom words/phrases to filter (comma-separated)")
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("list")
+      .setDescription("List all auto-moderation rules")
+      .addBooleanOption((opt) => opt.setName("detailed").setDescription("Show detailed rule configuration"))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("configure")
+      .setDescription("Configure an existing rule")
+      .addStringOption((opt) =>
+        opt.setName("rule").setDescription("Rule to configure").setRequired(true).setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("toggle")
+      .setDescription("Enable or disable a rule")
+      .addStringOption((opt) =>
+        opt.setName("rule").setDescription("Rule to toggle").setRequired(true).setAutocomplete(true)
+      )
+      .addBooleanOption((opt) => opt.setName("enabled").setDescription("Enable or disable the rule").setRequired(true))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("delete")
+      .setDescription("Delete an auto-moderation rule")
+      .addStringOption((opt) =>
+        opt.setName("rule").setDescription("Rule to delete").setRequired(true).setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("test")
+      .setDescription("Test a rule against sample text")
+      .addStringOption((opt) =>
+        opt.setName("rule").setDescription("Rule to test").setRequired(true).setAutocomplete(true)
+      )
+      .addStringOption((opt) =>
+        opt.setName("text").setDescription("Sample text to test").setRequired(true).setMaxLength(500)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("stats")
+      .setDescription("View auto-moderation statistics")
+      .addStringOption((opt) => opt.setName("rule").setDescription("Specific rule statistics").setAutocomplete(true))
+      .addStringOption((opt) =>
+        opt
+          .setName("timeframe")
+          .setDescription("Time period for statistics")
+          .addChoices(
+            { name: "Last 24 hours", value: "24h" },
+            { name: "Last 7 days", value: "7d" },
+            { name: "Last 30 days", value: "30d" }
+          )
+      )
+  );
 
-  async (client, interaction) => {
-    // Type guard to ensure this is a chat input command
-    if (!interaction.isChatInputCommand()) return;
-    if (!interaction.guild) return;
+class AutoModCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "automod",
+      description: "ADMIN ONLY: Configure auto-moderation for your server",
+      category: "admin",
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        discordPermissions: [PermissionsBitField.Flags.Administrator],
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-    const subcommand = interaction.options.getSubcommand();
+    super(config);
+  }
+
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.interaction.isChatInputCommand()) {
+      return {};
+    }
+    if (!this.interaction.guild) {
+      return {};
+    }
+
+    const subcommand = this.interaction.options.getSubcommand();
 
     switch (subcommand) {
       case "create":
-        await handleCreate(client, interaction);
+        await handleCreate(this.client, this.interaction);
         break;
       case "list":
-        await handleList(client, interaction);
+        await handleList(this.client, this.interaction);
         break;
       case "configure":
-        await handleConfigure(client, interaction);
+        await handleConfigure(this.client, this.interaction);
         break;
       case "toggle":
-        await handleToggle(client, interaction);
+        await handleToggle(this.client, this.interaction);
         break;
       case "delete":
-        await handleDelete(client, interaction);
+        await handleDelete(this.client, this.interaction);
         break;
       case "test":
-        await handleTest(client, interaction);
+        await handleTest(this.client, this.interaction);
         break;
       case "stats":
-        await handleStats(client, interaction);
+        await handleStats(this.client, this.interaction);
         break;
     }
-  },
-  {
-    ephemeral: true,
-    permissions: {
-      level: PermissionLevel.ADMIN,
-      discordPermissions: [PermissionsBitField.Flags.Administrator],
-      isConfigurable: true,
-    },
+
+    return {};
   }
-);
+}
+
+export default new AutoModCommand();
 
 async function handleCreate(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) return;
@@ -255,6 +270,34 @@ async function handleCreate(client: Client, interaction: ChatInputCommandInterac
         escalation: {},
       },
     });
+
+    // Notify API of automod rule creation
+    if (client.queueService) {
+      try {
+        await client.queueService.processRequest({
+          type: "AUTOMOD_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            ruleId: rule.id,
+            action: "CREATE_RULE",
+            ruleData: {
+              name,
+              type,
+              sensitivity,
+              actions: action,
+              enabled: true,
+            },
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of automod rule creation:", error);
+      }
+    }
 
     const embed = new EmbedBuilder()
       .setColor(0x2ecc71)
@@ -329,7 +372,7 @@ async function handleList(client: Client, interaction: ChatInputCommandInteracti
 
     const embed = new EmbedBuilder()
       .setColor(0x3498db)
-      .setTitle(`📋 Auto-Moderation Rules (${rules.length})`)
+      .setTitle(`📋 Auto-Moderation Rules (${String(rules.length)})`)
       .setTimestamp()
       .setFooter({ text: `Requested by ${interaction.user.username}` });
 
@@ -348,7 +391,7 @@ async function handleList(client: Client, interaction: ChatInputCommandInteracti
         .join("\n\n");
 
       embed.addFields({
-        name: `✅ Enabled Rules (${enabledRules.length})`,
+        name: `✅ Enabled Rules (${String(enabledRules.length)})`,
         value: enabledList + (enabledRules.length > 10 ? "\n*...and more*" : ""),
         inline: false,
       });
@@ -364,7 +407,7 @@ async function handleList(client: Client, interaction: ChatInputCommandInteracti
         .join("\n\n");
 
       embed.addFields({
-        name: `❌ Disabled Rules (${disabledRules.length})`,
+        name: `❌ Disabled Rules (${String(disabledRules.length)})`,
         value: disabledList + (disabledRules.length > 5 ? "\n*...and more*" : ""),
         inline: false,
       });
@@ -415,6 +458,29 @@ async function handleToggle(client: Client, interaction: ChatInputCommandInterac
       where: { id: ruleId },
       data: { enabled },
     });
+
+    // Notify API of automod rule toggle
+    if (client.queueService) {
+      try {
+        await client.queueService.processRequest({
+          type: "AUTOMOD_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            ruleId: ruleId,
+            action: "TOGGLE_RULE",
+            enabled: enabled,
+            ruleName: rule.name,
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of automod rule toggle:", error);
+      }
+    }
 
     const embed = new EmbedBuilder()
       .setColor(enabled ? 0x2ecc71 : 0xe74c3c)
@@ -683,7 +749,10 @@ function testRuleAgainstText(rule: AutoModRuleTest, text: string): { triggered: 
       const capsPercent = ((text.match(/[A-Z]/g) ?? []).length / text.length) * 100;
       const threshold = triggers.capsPercent ?? 70;
       if (text.length >= (triggers.minLength ?? 10) && capsPercent >= threshold) {
-        return { triggered: true, reason: `${Math.round(capsPercent)}% caps (threshold: ${threshold}%)` };
+        return {
+          triggered: true,
+          reason: `${String(Math.round(capsPercent))}% caps (threshold: ${String(threshold)}%)`,
+        };
       }
       break;
     }
@@ -793,9 +862,9 @@ async function handleStats(client: Client, interaction: ChatInputCommandInteract
           {
             name: "📈 Overview",
             value:
-              `**Total Rules:** ${rules.length}\n` +
-              `**Active Rules:** ${enabledRules.length}\n` +
-              `**Disabled Rules:** ${disabledRules.length}`,
+              `**Total Rules:** ${String(rules.length)}\n` +
+              `**Active Rules:** ${String(enabledRules.length)}\n` +
+              `**Disabled Rules:** ${String(disabledRules.length)}`,
             inline: true,
           },
           { name: "⏱️ Timeframe", value: timeframe, inline: true },

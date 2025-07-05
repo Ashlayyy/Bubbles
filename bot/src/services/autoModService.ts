@@ -9,10 +9,11 @@ import type {
   AutoModTriggerConfig,
   EscalationConfig,
   LegacyActionType,
-} from "../../../shared/src/types/automod.js";
+} from "@shared/types";
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import type Client from "../structures/Client.js";
+import { cacheService } from "./cacheService.js";
 
 function isAutoModTriggerConfig(obj: unknown): obj is AutoModTriggerConfig {
   return typeof obj === "object" && obj !== null;
@@ -87,31 +88,66 @@ export class AutoModService {
       return cached.rules;
     }
 
-    const dbRules = await prisma.autoModRule.findMany({
-      where: {
-        guildId,
-        enabled: true,
-      },
-      orderBy: [
-        { triggerCount: "desc" }, // Most triggered rules first for performance
-        { createdAt: "asc" },
-      ],
-    });
+    try {
+      // Use Redis cache service for better caching
+      const cacheKey = `automod:rules:${guildId}`;
+      const cachedRules = await cacheService.get<AutoModRule[]>(cacheKey, "autoModRules");
 
-    // Convert database rules to typed format
-    const rules: AutoModRule[] = dbRules.map((rule) => ({
-      ...rule,
-      triggers: isAutoModTriggerConfig(rule.triggers) ? rule.triggers : {},
-      actions: rule.actions as AutoModActionConfig | string,
-      escalation: rule.escalation ? (rule.escalation as EscalationConfig) : undefined,
-      lastTriggered: rule.lastTriggered ?? undefined,
-      logChannel: rule.logChannel ?? undefined,
-    }));
+      if (cachedRules) {
+        // Update memory cache for backwards compatibility
+        ruleCache.set(guildId, { rules: cachedRules, timestamp: Date.now() });
+        return cachedRules;
+      }
 
-    // Cache the results
-    ruleCache.set(guildId, { rules, timestamp: Date.now() });
+      // Fetch from database if not in Redis cache
+      const dbRules = await prisma.autoModRule.findMany({
+        where: {
+          guildId,
+          enabled: true,
+        },
+        orderBy: [
+          { triggerCount: "desc" }, // Most triggered rules first for performance
+          { createdAt: "asc" },
+        ],
+      });
 
-    return rules;
+      // Convert database rules to typed format
+      const rules: AutoModRule[] = dbRules.map((rule) => ({
+        ...rule,
+        triggers:
+          typeof rule.triggers === "string"
+            ? (JSON.parse(rule.triggers) as AutoModTriggerConfig)
+            : (rule.triggers as AutoModTriggerConfig),
+        actions:
+          typeof rule.actions === "string"
+            ? (JSON.parse(rule.actions) as AutoModActionConfig)
+            : (rule.actions as AutoModActionConfig),
+        escalation: rule.escalation
+          ? typeof rule.escalation === "string"
+            ? (JSON.parse(rule.escalation) as EscalationConfig)
+            : (rule.escalation as EscalationConfig)
+          : undefined,
+        lastTriggered: rule.lastTriggered ?? undefined,
+        logChannel: rule.logChannel ?? undefined,
+      }));
+
+      // Cache in both Redis and memory
+      await cacheService.set(cacheKey, rules, "autoModRules");
+      ruleCache.set(guildId, { rules, timestamp: Date.now() });
+
+      return rules;
+    } catch (error) {
+      logger.error(`Error loading automod rules for guild ${guildId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Invalidate automod rules cache for a guild
+   */
+  static async invalidateRulesCache(guildId: string): Promise<void> {
+    ruleCache.delete(guildId);
+    await cacheService.delete(`automod:rules:${guildId}`);
   }
 
   private static isExempt(message: Message, rules: AutoModRule[]): boolean {
@@ -644,16 +680,167 @@ export class AutoModService {
           lastTriggered: new Date(),
         },
       });
+    } catch (error) {
+      logger.error("Error updating rule stats:", error);
+    }
+  }
 
-      // Invalidate cache for this rule's guild
-      for (const [guildId, cached] of ruleCache.entries()) {
-        if (cached.rules.some((rule) => rule.id === ruleId)) {
-          ruleCache.delete(guildId);
-          break;
-        }
+  /**
+   * Quick setup for automod - creates basic rules with default settings
+   */
+  static async quickSetup(guildId: string): Promise<{ configuredRules: string[] }> {
+    try {
+      const configuredRules: string[] = [];
+
+      // Create basic spam protection rule
+      await prisma.autoModRule.create({
+        data: {
+          guildId,
+          name: "Spam Protection",
+          type: "spam",
+          enabled: true,
+          sensitivity: "MEDIUM",
+          actions: "DELETE",
+          triggers: {
+            maxMessages: 5,
+            timeWindow: 10,
+            duplicateThreshold: 3,
+          },
+          escalation: {},
+          createdBy: "system",
+        },
+      });
+      configuredRules.push("Spam Protection");
+
+      // Create basic caps rule
+      await prisma.autoModRule.create({
+        data: {
+          guildId,
+          name: "Caps Lock Filter",
+          type: "caps",
+          enabled: true,
+          sensitivity: "MEDIUM",
+          actions: "DELETE",
+          triggers: {
+            capsPercent: 70,
+            minLength: 10,
+          },
+          escalation: {},
+          createdBy: "system",
+        },
+      });
+      configuredRules.push("Caps Lock Filter");
+
+      // Clear cache for this guild
+      await AutoModService.invalidateRulesCache(guildId);
+
+      return { configuredRules };
+    } catch (error) {
+      logger.error(`Failed to perform quick setup for guild ${guildId}:`, error);
+      throw new Error("Failed to configure automod rules");
+    }
+  }
+
+  /**
+   * Advanced setup for automod with custom configuration
+   */
+  static async advancedSetup(
+    guildId: string,
+    options: {
+      antiSpam?: boolean;
+      antiRaid?: boolean;
+      wordFilter?: boolean;
+      linkFilter?: boolean;
+    }
+  ): Promise<{ configuredRules: string[] }> {
+    try {
+      const configuredRules: string[] = [];
+
+      if (options.antiSpam) {
+        await prisma.autoModRule.create({
+          data: {
+            guildId,
+            name: "Advanced Spam Protection",
+            type: "spam",
+            enabled: true,
+            sensitivity: "HIGH",
+            actions: "TIMEOUT",
+            triggers: {
+              maxMessages: 3,
+              timeWindow: 5,
+              duplicateThreshold: 2,
+            },
+            escalation: {},
+            createdBy: "system",
+          },
+        });
+        configuredRules.push("Advanced Spam Protection");
       }
-    } catch (error: unknown) {
-      logger.error("Error updating rule statistics:", error);
+
+      if (options.wordFilter) {
+        await prisma.autoModRule.create({
+          data: {
+            guildId,
+            name: "Word Filter",
+            type: "words",
+            enabled: true,
+            sensitivity: "MEDIUM",
+            actions: "DELETE",
+            triggers: {
+              blockedWords: ["spam", "scam"],
+              ignoreCase: true,
+            },
+            escalation: {},
+            createdBy: "system",
+          },
+        });
+        configuredRules.push("Word Filter");
+      }
+
+      if (options.linkFilter) {
+        await prisma.autoModRule.create({
+          data: {
+            guildId,
+            name: "Link Filter",
+            type: "links",
+            enabled: true,
+            sensitivity: "MEDIUM",
+            actions: "DELETE",
+            triggers: {
+              blockedDomains: ["bit.ly", "tinyurl.com"],
+            },
+            escalation: {},
+            createdBy: "system",
+          },
+        });
+        configuredRules.push("Link Filter");
+      }
+
+      // Clear cache for this guild
+      await AutoModService.invalidateRulesCache(guildId);
+
+      return { configuredRules };
+    } catch (error) {
+      logger.error(`Failed to perform advanced setup for guild ${guildId}:`, error);
+      throw new Error("Failed to configure automod rules");
+    }
+  }
+
+  /**
+   * Reset automod configuration for a guild
+   */
+  static async resetConfig(guildId: string): Promise<void> {
+    try {
+      // Delete all automod rules for this guild
+      await prisma.autoModRule.deleteMany({
+        where: { guildId },
+      });
+
+      // Clear cache for this guild
+      await AutoModService.invalidateRulesCache(guildId);
+    } catch (error) {
+      logger.error(`Failed to reset config for guild ${guildId}:`, error);
+      throw new Error("Failed to reset automod configuration");
     }
   }
 }

@@ -1,0 +1,35 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ES2022",
+		"lib": ["ES2022"],
+		"moduleResolution": "node",
+		"allowSyntheticDefaultImports": true,
+		"esModuleInterop": true,
+		"allowJs": false,
+		"strict": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"types": ["node"],
+		"baseUrl": ".",
+		"paths": {
+			"@shared/*": ["shared/dist/*"],
+			"@shared/database": ["shared/dist/database"],
+			"@shared/types/*": ["shared/dist/types/*"],
+			"@shared/queue": ["shared/dist/queue/index"],
+			"@shared/utils/*": ["shared/dist/utils/*"],
+			"@bot/*": ["bot/src/*"],
+			"@api/*": ["api/src/*"],
+			"@shared/types": ["shared/dist/types/index"]
+		},
+		"noImplicitAny": false
+	},
+	"include": [],
+	"exclude": ["node_modules", "**/node_modules", "**/dist", "**/build"],
+	"references": [
+		{ "path": "./shared" },
+		{ "path": "./bot" },
+		{ "path": "./api" }
+	]
+}

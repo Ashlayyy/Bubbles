@@ -1,106 +1,144 @@
 import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
-
-import { prisma } from "../../database/index.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import { expandAlias, parseEvidence, type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
+import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("warn")
-    .setDescription("Warn a user")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
-    .addUserOption((option) => option.setName("user").setDescription("The user to warn").setRequired(true))
-    .addStringOption((option) => option.setName("reason").setDescription("Reason for the warning").setRequired(true))
-    .addStringOption((option) =>
-      option.setName("evidence").setDescription("Evidence links (comma-separated)").setRequired(false)
-    )
-    .addIntegerOption((option) =>
-      option
-        .setName("points")
-        .setDescription("Custom point value (default: 1)")
-        .setMinValue(1)
-        .setMaxValue(10)
-        .setRequired(false)
-    )
-    .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false)),
+/**
+ * Warn Command - Warns a user with configurable points
+ */
+export class WarnCommand extends ModerationCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "warn",
+      description: "Warn a user",
+      category: "moderation",
+      permissions: {
+        level: PermissionLevel.MODERATOR,
+        discordPermissions: [PermissionsBitField.Flags.ModerateMembers],
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
+    super(config);
+  }
 
-    const targetUser = interaction.options.getUser("user", true);
-    let reason = interaction.options.getString("reason", true);
-    const evidence =
-      interaction.options
-        .getString("evidence")
-        ?.split(",")
-        .map((s) => s.trim()) ?? [];
-    const points = interaction.options.getInteger("points") ?? 1;
-    const silent = interaction.options.getBoolean("silent") ?? false;
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
+
+    const targetUser = this.getUserOption("user", true);
+    const reasonInput = this.getStringOption("reason", true);
+    const evidenceStr = this.getStringOption("evidence");
+    const points = this.getIntegerOption("points") ?? 1;
+    const silent = this.getBooleanOption("silent") ?? false;
 
     try {
-      // Check if reason is an alias and expand it
-      const aliasName = reason.toUpperCase();
-      const alias = await prisma.alias.findUnique({
-        where: { guildId_name: { guildId: interaction.guild.id, name: aliasName } },
+      // Check if user is in the server
+      const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
+      if (!member) {
+        return this.createModerationError(
+          "warn",
+          targetUser,
+          `❌ **${targetUser.username}** is not a member of this server.\n\n` +
+            `**User ID:** \`${targetUser.id}\`\n\n` +
+            `💡 **Tip:** You can only warn active server members. Use \`/note\` to add notes about users who have left.`
+        );
+      }
+
+      // Validate moderation target (hierarchy, self-moderation, etc.)
+      try {
+        this.validateModerationTarget(member);
+      } catch (error) {
+        return this.createModerationError(
+          "warn",
+          targetUser,
+          `${error instanceof Error ? error.message : "Unknown validation error"}\n\n` +
+            `💡 **Tip:** Make sure you have appropriate permissions and role hierarchy.`
+        );
+      }
+
+      // Expand alias with automatic variable substitution
+      const reason = await expandAlias(reasonInput, {
+        guild: this.guild,
+        user: targetUser,
+        moderator: this.user,
       });
 
-      if (alias) {
-        // Expand alias content with variables
-        reason = alias.content;
-        reason = reason.replace(/\{user\}/g, `<@${targetUser.id}>`);
-        reason = reason.replace(/\{server\}/g, interaction.guild.name);
-        reason = reason.replace(/\{moderator\}/g, `<@${interaction.user.id}>`);
+      // Parse evidence automatically
+      const evidence = parseEvidence(evidenceStr ?? undefined);
 
-        // Update usage count
-        await prisma.alias.update({
-          where: { id: alias.id },
-          data: { usageCount: { increment: 1 } },
-        });
-      }
+      const invocation = {
+        interactionId: this.interaction.id,
+        commandName: this.interaction.commandName,
+        interactionLatency: Date.now() - this.interaction.createdTimestamp,
+      };
 
-      // Check if user is in the server
-      const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
-      if (!member) {
-        await interaction.reply({
-          content: `❌ **${targetUser.tag}** is not in this server.`,
-          ephemeral: true,
-        });
-        return;
-      }
-
-      // Execute the warning
-      const case_ = await client.moderationManager.warn(
-        interaction.guild,
+      // Execute the warning using moderation manager
+      const case_ = await this.client.moderationManager.warn(
+        this.guild,
         targetUser.id,
-        interaction.user.id,
+        this.user.id,
         reason,
-        evidence.length > 0 ? evidence : undefined,
-        points
+        evidence.all.length > 0 ? evidence.all : undefined,
+        points,
+        !silent,
+        invocation
       );
 
-      if (silent) {
-        await client.moderationManager.updateCaseNotification(case_.id, false);
-      }
-
       // Get user's total points for display
-      const totalPoints = await client.moderationManager.getInfractionPoints(interaction.guild.id, targetUser.id);
+      const totalPoints = await this.client.moderationManager.getInfractionPoints(this.guild.id, targetUser.id);
 
-      await interaction.reply({
-        content: `⚠️ **${targetUser.tag}** has been warned.\n📋 **Case #${case_.caseNumber}** created.\n🔢 **Total Points:** ${totalPoints}`,
-        ephemeral: true,
+      // Success response with better formatting
+      const pointsText = points === 1 ? "1 point" : `${points} points`;
+
+      return buildModSuccess({
+        title: "Warning Issued",
+        target: targetUser,
+        moderator: this.user,
+        reason,
+        notified: !silent,
+        caseNumber: case_.caseNumber,
       });
     } catch (error) {
-      await interaction.reply({
-        content: `❌ Failed to warn **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-        ephemeral: true,
-      });
+      return this.createModerationError(
+        "warn",
+        targetUser,
+        `${error instanceof Error ? error.message : "Unknown error"}\n\n` +
+          `💡 **Common solutions:**\n` +
+          `• Check if the user is still in the server\n` +
+          `• Verify you have moderation permissions\n` +
+          `• Ensure proper role hierarchy\n\n` +
+          `📖 **Need help?** Contact an administrator.`
+      );
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.MODERATOR,
-      discordPermissions: [PermissionsBitField.Flags.ModerateMembers],
-      isConfigurable: true,
-    },
   }
-);
+}
+
+// Export the command instance
+export default new WarnCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("warn")
+  .setDescription("Warn a user")
+  .setDefaultMemberPermissions(0) // Hide from all regular users
+  .addUserOption((option) => option.setName("user").setDescription("The user to warn").setRequired(true))
+  .addStringOption((option) =>
+    option.setName("reason").setDescription("Reason for the warning (or alias name)").setRequired(true)
+  )
+  .addStringOption((option) =>
+    option.setName("evidence").setDescription("Evidence links (comma-separated)").setRequired(false)
+  )
+  .addIntegerOption((option) =>
+    option
+      .setName("points")
+      .setDescription("Custom point value (default: 1)")
+      .setMinValue(1)
+      .setMaxValue(10)
+      .setRequired(false)
+  )
+  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false));

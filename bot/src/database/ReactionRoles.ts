@@ -1,14 +1,9 @@
-import type { ReactionRole, ReactionRoleLog, ReactionRoleMessage } from "@prisma/client";
-import { PrismaClient } from "@prisma/client";
-import {
-  ChatInputCommandInteraction,
-  Client,
-  EmbedBuilder,
-  MessageContextMenuCommandInteraction,
-  TextChannel,
-} from "discord.js";
+import type { ReactionRole, ReactionRoleLog, ReactionRoleMessage } from "@shared/database";
+import { PrismaClient } from "@shared/database";
+import { ChatInputCommandInteraction, MessageContextMenuCommandInteraction } from "discord.js";
 import { parseEmoji } from "../functions/general/emojis.js";
 import logger from "../logger.js";
+import type Client from "../structures/Client.js";
 
 const prisma = new PrismaClient();
 
@@ -36,7 +31,8 @@ export async function getReactionRolesByMessage(messageId: string): Promise<Reac
 }
 
 export async function getReactionRoleByEmojiAndMessage(messageId: string, emoji: string): Promise<ReactionRole | null> {
-  return await prisma.reactionRole.findUnique({
+  // Primary lookup with the current identifier format
+  const reactionRole = await prisma.reactionRole.findUnique({
     where: {
       messageId_emoji: {
         messageId,
@@ -45,6 +41,25 @@ export async function getReactionRoleByEmojiAndMessage(messageId: string, emoji:
       isActive: true,
     },
   });
+
+  if (reactionRole) return reactionRole;
+
+  // Fallback: legacy format that stored only the emoji ID (for custom emojis)
+  const legacyIdMatch = /^(\d+):[A-Za-z0-9_~]+$/.exec(emoji);
+  if (legacyIdMatch) {
+    const legacyId = legacyIdMatch[1];
+    return await prisma.reactionRole.findUnique({
+      where: {
+        messageId_emoji: {
+          messageId,
+          emoji: legacyId,
+        },
+        isActive: true,
+      },
+    });
+  }
+
+  return null;
 }
 
 export async function deleteReactionRole(messageId: string, emoji: string): Promise<void> {
@@ -153,47 +168,66 @@ export async function logReactionRoleAction(
     action: "ADDED" | "REMOVED";
   }
 ): Promise<ReactionRoleLog | null> {
-  // Check if logging is enabled for this guild
-  const guildConfig = await prisma.guildConfig.findUnique({
-    where: { guildId: data.guildId },
-    select: { logReactionRoles: true, reactionRoleLoggingEnabled: true, reactionRoleLogChannelId: true },
-  });
+  // Use the new LogManager for logging instead of direct channel approach
+  try {
+    const reactionRole = await prisma.reactionRole.findFirst({
+      where: { messageId: data.messageId, emoji: data.emoji },
+      select: { channelId: true },
+    });
 
-  if (guildConfig?.reactionRoleLoggingEnabled && guildConfig.reactionRoleLogChannelId) {
+    // Get role information for logging
+    const guild = await client.guilds.fetch(data.guildId);
+    const roles = await Promise.all(
+      data.roleIds.map(async (roleId) => {
+        try {
+          const role = await guild.roles.fetch(roleId);
+          return role?.name ?? "Unknown Role";
+        } catch {
+          return "Unknown Role";
+        }
+      })
+    );
+
+    // Log using the new LogManager system
+    const logType = data.action === "ADDED" ? "REACTION_ROLE_ADDED" : "REACTION_ROLE_REMOVED";
+    await client.logManager.log(data.guildId, logType, {
+      userId: data.userId,
+      channelId: reactionRole?.channelId,
+      roleId: data.roleIds[0], // Use first role ID
+      metadata: {
+        emoji: data.emoji,
+        roleName: roles[0],
+        roleNames: roles,
+        messageId: data.messageId,
+        action: data.action,
+        messageUrl: reactionRole?.channelId
+          ? `https://discord.com/channels/${data.guildId}/${reactionRole.channelId}/${data.messageId}`
+          : null,
+      },
+    });
+  } catch (error) {
+    logger.error("Failed to log reaction role action:", error);
+    // Log the error using LogManager too
     try {
-      const channel = await client.channels.fetch(guildConfig.reactionRoleLogChannelId);
-      if (channel instanceof TextChannel) {
-        const user = await client.users.fetch(data.userId);
-        const reactionRole = await prisma.reactionRole.findFirst({
-          where: { messageId: data.messageId, emoji: data.emoji },
-          select: { channelId: true },
-        });
-
-        const roles = data.roleIds.map((id) => `<@&${id}>`).join(", ");
-        const actionText = data.action === "ADDED" ? "gained" : "lost";
-        const embed = new EmbedBuilder()
-          .setColor(data.action === "ADDED" ? "Green" : "Red")
-          .setTitle("Reaction Role Update")
-          .setDescription(`<@${user.id}> has ${actionText} the following role(s): ${roles}`)
-          .addFields(
-            { name: "User", value: `${user.tag} (${user.id})`, inline: true },
-            { name: "Action", value: data.action, inline: true },
-            {
-              name: "Source Message",
-              value: reactionRole?.channelId
-                ? `[Jump to message](https://discord.com/channels/${data.guildId}/${reactionRole.channelId}/${data.messageId})`
-                : "Could not determine message.",
-            }
-          )
-          .setFooter({ text: `User ID: ${user.id}` })
-          .setTimestamp();
-
-        await channel.send({ embeds: [embed] });
-      }
-    } catch (error) {
-      logger.error("Failed to send reaction role log message:", error);
+      await client.logManager.log(data.guildId, "REACTION_ROLE_ERROR", {
+        userId: data.userId,
+        metadata: {
+          error: error instanceof Error ? error.message : "Unknown error",
+          action: data.action,
+          emoji: data.emoji,
+          messageId: data.messageId,
+        },
+      });
+    } catch (logError) {
+      logger.error("Failed to log reaction role error:", logError);
     }
   }
+
+  // Still create database log entry if enabled
+  const guildConfig = await prisma.guildConfig.findUnique({
+    where: { guildId: data.guildId },
+    select: { logReactionRoles: true },
+  });
 
   if (!guildConfig?.logReactionRoles) {
     return null;
@@ -263,7 +297,7 @@ export async function addReactionRole(
     return null;
   }
 
-  return prisma.reactionRole.create({
+  const result = await prisma.reactionRole.create({
     data: {
       messageId,
       emoji: emoji.identifier,
@@ -273,6 +307,29 @@ export async function addReactionRole(
       createdBy: interaction.user.id,
     },
   });
+
+  // Log the configuration addition
+  try {
+    const guild = await interaction.client.guilds.fetch(interaction.guildId);
+    const role = await guild.roles.fetch(roleId);
+
+    await (interaction.client as Client).logManager.log(interaction.guildId, "REACTION_ROLE_CONFIG_ADD", {
+      userId: interaction.user.id,
+      channelId: interaction.channelId,
+      roleId: roleId,
+      executorId: interaction.user.id,
+      metadata: {
+        emoji: emojiRaw,
+        roleName: role?.name ?? "Unknown Role",
+        messageId: messageId,
+        messageUrl: `https://discord.com/channels/${interaction.guildId}/${interaction.channelId}/${messageId}`,
+      },
+    });
+  } catch (error) {
+    logger.error("Failed to log reaction role config addition:", error);
+  }
+
+  return result;
 }
 
 export async function removeReactionRole(
@@ -286,8 +343,16 @@ export async function removeReactionRole(
     return { count: 0 };
   }
 
-  // Use soft delete approach for consistency
-  const result = await prisma.reactionRole.updateMany({
+  // Attempt primary lookup using current identifier format
+  let reactionRole = await prisma.reactionRole.findFirst({
+    where: {
+      messageId,
+      emoji: emoji.identifier,
+      isActive: true,
+    },
+  });
+
+  let result = await prisma.reactionRole.updateMany({
     where: {
       messageId,
       emoji: emoji.identifier,
@@ -297,6 +362,50 @@ export async function removeReactionRole(
       isActive: false,
     },
   });
+
+  // If nothing was updated, try legacy identifier (id only)
+  if (result.count === 0) {
+    const legacyIdMatch = /^(\d+):[A-Za-z0-9_~]+$/.exec(emoji.identifier);
+    const legacyId = legacyIdMatch ? legacyIdMatch[1] : emoji.identifier;
+
+    reactionRole = await prisma.reactionRole.findFirst({
+      where: {
+        messageId,
+        emoji: legacyId,
+        isActive: true,
+      },
+    });
+
+    result = await prisma.reactionRole.updateMany({
+      where: {
+        messageId,
+        emoji: legacyId,
+        isActive: true,
+      },
+      data: { isActive: false },
+    });
+  }
+
+  // Log the configuration removal
+  if (reactionRole && result.count > 0) {
+    try {
+      const guild = await client.guilds.fetch(reactionRole.guildId);
+      const role = await guild.roles.fetch(reactionRole.roleIds[0]);
+
+      await client.logManager.log(reactionRole.guildId, "REACTION_ROLE_CONFIG_REMOVE", {
+        channelId: reactionRole.channelId,
+        roleId: reactionRole.roleIds[0],
+        metadata: {
+          emoji: emojiRaw,
+          roleName: role?.name ?? "Unknown Role",
+          messageId: messageId,
+          messageUrl: `https://discord.com/channels/${reactionRole.guildId}/${reactionRole.channelId}/${messageId}`,
+        },
+      });
+    } catch (error) {
+      logger.error("Failed to log reaction role config removal:", error);
+    }
+  }
 
   return { count: result.count };
 }

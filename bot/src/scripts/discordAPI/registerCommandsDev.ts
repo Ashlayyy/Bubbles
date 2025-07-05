@@ -1,8 +1,12 @@
+// Load environment variables first
+import { loadEnvironment } from "../../functions/general/environmentLoader.js";
+loadEnvironment();
+
+// Force development environment for this script
+process.env.NODE_ENV = "development";
+
 import logger from "../../logger.js";
 import Client, { DiscordAPIAction } from "../../structures/Client.js";
-
-// Force development environment
-process.env.NODE_ENV = "development";
 
 const client = await Client.get();
 await client.manageDiscordAPICommands(DiscordAPIAction.Register);

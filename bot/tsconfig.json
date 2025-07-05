@@ -1,25 +1,24 @@
 {
+  "extends": "../tsconfig.json",
   "compilerOptions": {
-    "target": "ES2022",
+    "outDir": "./build",
     "module": "ES2022",
-    "moduleResolution": "Node",
-    "resolveJsonModule": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "importHelpers": true,
-
-    "declaration": false,
+    "rootDir": ".",
+    "declaration": true,
+    "declarationMap": true,
     "sourceMap": true,
-    /* do not emit dev build. tsc is only called before tsx for type-checking */
-    "noEmit": true,
-    /* TODO: fix use of path alias */
-    "baseUrl": ".",
+    "baseUrl": "..",
     "paths": {
-      "@/*": ["src/*"]
-    }
+      "@shared/*": ["shared/dist/*"],
+      "@shared/database": ["shared/dist/database"],
+      "@shared/types/*": ["shared/dist/types/*"],
+      "@shared/types": ["shared/dist/types/index"],
+      "@shared/queue": ["shared/dist/queue/index"],
+      "@shared/utils/*": ["shared/dist/utils/*"]
+    },
+    "allowJs": false
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*", "shard.ts"],
+  "exclude": ["node_modules", "build"],
+  "references": [{ "path": "../shared" }]
 }

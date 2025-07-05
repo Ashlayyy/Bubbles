@@ -1,22 +1,37 @@
 import { ChannelType, EmbedBuilder, GuildPremiumTier, PermissionsBitField, SlashCommandBuilder } from "discord.js";
-
 import logger from "../../logger.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import { type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("serverinfo")
-    .setDescription("ADMIN ONLY: Get detailed server information")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers),
+/**
+ * Server Info Command - Get detailed server information
+ */
+export class ServerInfoCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "serverinfo",
+      description: "Get detailed server information",
+      category: "admin",
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        discordPermissions: [PermissionsBitField.Flags.Administrator],
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    // Type guard to ensure this is a chat input command
-    if (!interaction.isChatInputCommand()) return;
-    if (!interaction.guild) return;
+    super(config);
+  }
+
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
 
     try {
-      const guild = interaction.guild;
+      const guild = this.guild;
 
       // Fetch owner and additional guild data
       const owner = await guild.fetchOwner().catch(() => null);
@@ -31,7 +46,7 @@ export default new Command(
         .setTimestamp()
         .setFooter({
           text: `Server ID: ${guild.id}`,
-          iconURL: interaction.user.displayAvatarURL(),
+          iconURL: this.user.displayAvatarURL(),
         });
 
       // Basic server info
@@ -165,12 +180,10 @@ export default new Command(
         embed.setImage(guild.bannerURL({ size: 1024 }));
       }
 
-      await interaction.reply({ embeds: [embed] });
-
       // Log command usage
-      await client.logManager.log(guild.id, "COMMAND_SERVERINFO", {
-        userId: interaction.user.id,
-        channelId: interaction.channel?.id,
+      await this.client.logManager.log(guild.id, "COMMAND_SERVERINFO", {
+        userId: this.user.id,
+        channelId: this.interaction.channel?.id,
         metadata: {
           guildName: guild.name,
           memberCount: totalMembers,
@@ -178,26 +191,20 @@ export default new Command(
           roleCount: roles.size,
         },
       });
+
+      return { embeds: [embed], ephemeral: true };
     } catch (error) {
       logger.error("Error in serverinfo command:", error);
-      await interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xe74c3c)
-            .setTitle("❌ Error")
-            .setDescription("Failed to fetch server information. Please try again.")
-            .setTimestamp(),
-        ],
-        ephemeral: true,
-      });
+      return this.createAdminError("Server Info Error", "Failed to fetch server information. Please try again.");
     }
-  },
-  {
-    ephemeral: true,
-    permissions: {
-      level: PermissionLevel.ADMIN,
-      discordPermissions: [PermissionsBitField.Flags.Administrator],
-      isConfigurable: true,
-    },
   }
-);
+}
+
+// Export the command instance
+export default new ServerInfoCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("serverinfo")
+  .setDescription("Get detailed server information")
+  .setDefaultMemberPermissions(0); // Hide from all regular users

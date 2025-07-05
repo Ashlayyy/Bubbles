@@ -1,4 +1,4 @@
-import type { Poll } from "@prisma/client";
+import type { Poll } from "@shared/database";
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -9,12 +9,12 @@ import {
   type ChatInputCommandInteraction,
   type GuildMember,
 } from "discord.js";
-
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
 
 interface PollOption {
   text: string;
@@ -38,46 +38,37 @@ interface PollData {
 // Store active polls in memory (in production, you'd want to use Redis or database)
 const activePolls = new Map<string, PollData>();
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("poll")
-    .setDescription("Create interactive polls with progress tracking")
-    .addStringOption((opt) =>
-      opt.setName("question").setDescription("The poll question").setRequired(true).setMaxLength(200)
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName("options")
-        .setDescription("Poll options separated by semicolons (e.g., 'Option 1; Option 2; Option 3')")
-        .setRequired(true)
-        .setMaxLength(500)
-    )
-    .addIntegerOption((opt) =>
-      opt
-        .setName("duration")
-        .setDescription("Poll duration in minutes (minimum: 1, default: 60, max: 1440)")
-        .setMinValue(1)
-        .setMaxValue(1440)
-    )
-    .addBooleanOption((opt) => opt.setName("anonymous").setDescription("Hide who voted for what (default: false)"))
-    .addBooleanOption((opt) =>
-      opt.setName("multiple_choice").setDescription("Allow multiple selections (default: false)")
-    )
-    .addRoleOption((opt) =>
-      opt.setName("role_requirement").setDescription("Role required to vote (leave empty for everyone)")
-    ),
+/**
+ * Poll Command - Create interactive polls with progress tracking
+ */
+export class PollCommand extends ModerationCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "poll",
+      description: "Create interactive polls with progress tracking",
+      category: "moderation",
+      permissions: {
+        level: PermissionLevel.PUBLIC,
+        isConfigurable: true,
+      },
+      ephemeral: false,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    // Type guard to ensure this is a chat input command
-    if (!interaction.isChatInputCommand()) return;
-    if (!interaction.guild) return;
+    super(config);
+  }
 
-    const question = interaction.options.getString("question", true);
-    const optionsInput = interaction.options.getString("options", true);
-    const duration = interaction.options.getInteger("duration") ?? 60;
-    const anonymous = interaction.options.getBoolean("anonymous") ?? false;
-    const multipleChoice = interaction.options.getBoolean("multiple_choice") ?? false;
-    const requiredRole = interaction.options.getRole("role_requirement");
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
+
+    const question = this.getStringOption("question", true);
+    const optionsInput = this.getStringOption("options", true);
+    const duration = this.getIntegerOption("duration") ?? 60;
+    const anonymous = this.getBooleanOption("anonymous") ?? false;
+    const multipleChoice = this.getBooleanOption("multiple_choice") ?? false;
+    const requiredRole = this.getRoleOption("role_requirement");
 
     try {
       // Parse options
@@ -87,19 +78,17 @@ export default new Command(
         .filter((opt) => opt.length > 0);
 
       if (options.length < 2) {
-        await interaction.reply({
+        return {
           content: "❌ A poll must have at least 2 options. Separate options with semicolons (`;`).",
           ephemeral: true,
-        });
-        return;
+        };
       }
 
       if (options.length > 10) {
-        await interaction.reply({
+        return {
           content: "❌ A poll can have at most 10 options.",
           ephemeral: true,
-        });
-        return;
+        };
       }
 
       const expiresAt = new Date(Date.now() + duration * 60 * 1000);
@@ -107,10 +96,10 @@ export default new Command(
       // Create poll in database with proper typing
       const poll: Poll = await prisma.poll.create({
         data: {
-          guildId: interaction.guild.id,
-          channelId: interaction.channel?.id ?? "",
+          guildId: this.guild.id,
+          channelId: this.interaction.channel?.id ?? "",
           messageId: "temp", // Will update after message is sent
-          createdBy: interaction.user.id,
+          createdBy: this.user.id,
           title: question,
           options,
           endsAt: expiresAt,
@@ -128,7 +117,7 @@ export default new Command(
         .setTimestamp()
         .setFooter({
           text: `Poll ID: ${poll.id} • Ends`,
-          iconURL: interaction.user.displayAvatarURL(),
+          iconURL: this.user.displayAvatarURL(),
         });
 
       // Add options with progress bars
@@ -148,7 +137,7 @@ export default new Command(
       embed.addFields(
         {
           name: "⏰ Duration",
-          value: `${duration.toString()} minute${duration !== 1 ? "s" : ""}`,
+          value: `${duration} minute${duration !== 1 ? "s" : ""}`,
           inline: true,
         },
         {
@@ -175,8 +164,8 @@ export default new Command(
           const emoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"][j];
           row.addComponents(
             new ButtonBuilder()
-              .setCustomId(`poll_vote_${poll.id}_${j.toString()}`)
-              .setLabel(`${(j + 1).toString()}. ${options[j].substring(0, 20)}${options[j].length > 20 ? "..." : ""}`)
+              .setCustomId(`poll_vote_${poll.id}_${j}`)
+              .setLabel(`${j + 1}. ${options[j].substring(0, 20)}${options[j].length > 20 ? "..." : ""}`)
               .setEmoji(emoji)
               .setStyle(ButtonStyle.Secondary)
           );
@@ -209,7 +198,7 @@ export default new Command(
           emoji: ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"][index],
           votes: new Set<string>(),
         })),
-        createdBy: interaction.user.id,
+        createdBy: this.user.id,
         createdAt: new Date(),
         endsAt: expiresAt,
         allowMultiple: multipleChoice,
@@ -219,18 +208,6 @@ export default new Command(
       };
 
       activePolls.set(poll.id, pollData);
-
-      await interaction.reply({
-        embeds: [embed],
-        components: rows,
-      });
-
-      // Update the database with the actual message ID
-      const reply = await interaction.fetchReply();
-      await prisma.poll.update({
-        where: { id: poll.id },
-        data: { messageId: reply.id },
-      });
 
       // Schedule automatic poll ending
       setTimeout(
@@ -254,7 +231,7 @@ export default new Command(
                   memoryPoll.ended = true;
 
                   try {
-                    const channel = await client.channels.fetch(activePoll.channelId);
+                    const channel = await this.client.channels.fetch(activePoll.channelId);
                     if (channel?.isTextBased()) {
                       const message = await channel.messages.fetch(activePoll.messageId);
                       const endedEmbed = createPollEmbed(memoryPoll, true);
@@ -281,10 +258,10 @@ export default new Command(
         duration * 60 * 1000
       );
 
-      // Log poll creation - logManager is always defined in Client
-      await client.logManager.log(interaction.guild.id, "POLL_CREATE", {
-        userId: interaction.user.id,
-        channelId: interaction.channel?.id,
+      // Log poll creation
+      await this.client.logManager.log(this.guild.id, "POLL_CREATE", {
+        userId: this.user.id,
+        channelId: this.interaction.channel?.id,
         metadata: {
           pollId: poll.id,
           question,
@@ -294,9 +271,15 @@ export default new Command(
           multipleChoice,
         },
       });
+
+      return {
+        embeds: [embed],
+        components: rows,
+        ephemeral: false,
+      };
     } catch (error) {
       logger.error("Error creating poll:", error);
-      await interaction.reply({
+      return {
         embeds: [
           new EmbedBuilder()
             .setColor(0xe74c3c)
@@ -305,17 +288,44 @@ export default new Command(
             .setTimestamp(),
         ],
         ephemeral: true,
-      });
+      };
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.PUBLIC,
-      isConfigurable: true,
-    },
   }
-);
+}
 
+// Export the command instance
+export default new PollCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("poll")
+  .setDescription("Create interactive polls with progress tracking")
+  .addStringOption((opt) =>
+    opt.setName("question").setDescription("The poll question").setRequired(true).setMaxLength(200)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("options")
+      .setDescription("Poll options separated by semicolons (e.g., 'Option 1; Option 2; Option 3')")
+      .setRequired(true)
+      .setMaxLength(500)
+  )
+  .addIntegerOption((opt) =>
+    opt
+      .setName("duration")
+      .setDescription("Poll duration in minutes (minimum: 1, default: 60, max: 1440)")
+      .setMinValue(1)
+      .setMaxValue(1440)
+  )
+  .addBooleanOption((opt) => opt.setName("anonymous").setDescription("Hide who voted for what (default: false)"))
+  .addBooleanOption((opt) =>
+    opt.setName("multiple_choice").setDescription("Allow multiple selections (default: false)")
+  )
+  .addRoleOption((opt) =>
+    opt.setName("role_requirement").setDescription("Role required to vote (leave empty for everyone)")
+  );
+
+// Keep the existing helper functions for poll interaction handling
 async function handleEndPoll(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   const pollId = interaction.options.getString("poll_id", true);
   const poll = activePolls.get(pollId);
@@ -352,39 +362,57 @@ async function handleEndPoll(client: Client, interaction: ChatInputCommandIntera
     return;
   }
 
-  if (poll.ended) {
+  // End the poll
+  poll.ended = true;
+
+  try {
+    // Update database
+    await prisma.poll.update({
+      where: { id: pollId },
+      data: { isActive: false },
+    });
+
+    // Update the message
+    const channel = await client.channels.fetch(interaction.channelId);
+    if (channel?.isTextBased()) {
+      const messages = await channel.messages.fetch({ limit: 50 });
+      const pollMessage = messages.find((msg) => msg.embeds[0]?.footer?.text?.includes(pollId));
+
+      if (pollMessage) {
+        const endedEmbed = createPollEmbed(poll, true);
+        await pollMessage.edit({
+          embeds: [endedEmbed],
+          components: [], // Remove all buttons
+        });
+      }
+    }
+
     await interaction.reply({
       embeds: [
         new EmbedBuilder()
-          .setColor(0xf39c12)
-          .setTitle("⚠️ Poll Already Ended")
-          .setDescription("This poll has already ended.")
+          .setColor(0x2ecc71)
+          .setTitle("✅ Poll Ended")
+          .setDescription(`Poll "${poll.question}" has been ended successfully.`)
           .setTimestamp(),
       ],
       ephemeral: true,
     });
-    return;
-  }
 
-  // End the poll
-  poll.ended = true;
-
-  const embed = createPollEmbed(poll, true);
-
-  await interaction.reply({
-    embeds: [embed],
-    ephemeral: false,
-  });
-
-  // Log poll end - logManager is always defined in Client
-  if (interaction.guild) {
-    await client.logManager.log(interaction.guild.id, "POLL_END", {
-      userId: interaction.user.id,
-      metadata: {
-        pollId,
-        endedBy: interaction.user.id,
-        totalVotes: poll.options.reduce((sum, opt) => sum + opt.votes.size, 0),
-      },
+    // Clean up memory after 1 hour
+    setTimeout(() => {
+      activePolls.delete(pollId);
+    }, 3600000);
+  } catch (error) {
+    logger.error("Error ending poll:", error);
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xe74c3c)
+          .setTitle("❌ Error")
+          .setDescription("Failed to end poll. Please try again.")
+          .setTimestamp(),
+      ],
+      ephemeral: true,
     });
   }
 }
@@ -395,69 +423,84 @@ async function handleShowResults(client: Client, interaction: ChatInputCommandIn
 
   if (!poll) {
     await interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("❌ Poll Not Found")
-          .setDescription(`No poll found with ID: \`${pollId}\``)
-          .setTimestamp(),
-      ],
+      content: `❌ No active poll found with ID: \`${pollId}\``,
       ephemeral: true,
     });
     return;
   }
 
   const resultsEmbed = createDetailedResultsEmbed(poll);
-
-  await interaction.reply({
-    embeds: [resultsEmbed],
-    ephemeral: true,
-  });
+  await interaction.reply({ embeds: [resultsEmbed], ephemeral: true });
 }
 
-// Handle button interactions
 export async function handlePollInteraction(interaction: ButtonInteraction): Promise<void> {
-  if (!interaction.customId.startsWith("poll_")) return;
+  const customId = interaction.customId;
 
-  const [, action, pollId, optionIndex] = interaction.customId.split("_");
+  if (customId.startsWith("poll_vote_")) {
+    const [, , pollId, optionIndexStr] = customId.split("_");
+    const optionIndex = parseInt(optionIndexStr, 10);
+    const poll = activePolls.get(pollId);
 
-  // For now, use in-memory polls only. Database integration would need more complex handling
-  const poll = activePolls.get(pollId);
+    if (poll) {
+      await handleVote(interaction, poll, optionIndex);
+    } else {
+      await interaction.reply({
+        content: "❌ This poll is no longer active.",
+        ephemeral: true,
+      });
+    }
+  } else if (customId.startsWith("poll_results_")) {
+    const pollId = customId.split("_")[2];
+    const poll = activePolls.get(pollId);
 
-  if (!poll) {
-    await interaction.reply({
-      content: "❌ This poll is no longer available.",
-      ephemeral: true,
-    });
-    return;
-  }
-
-  if (poll.ended) {
-    await interaction.reply({
-      content: "❌ This poll has ended and no longer accepts votes.",
-      ephemeral: true,
-    });
-    return;
-  }
-
-  switch (action) {
-    case "vote":
-      await handleVote(interaction, poll, parseInt(optionIndex, 10));
-      break;
-    case "results":
+    if (poll) {
       await handleResultsButton(interaction, poll);
-      break;
-    case "end":
+    } else {
+      await interaction.reply({
+        content: "❌ This poll is no longer active.",
+        ephemeral: true,
+      });
+    }
+  } else if (customId.startsWith("poll_end_")) {
+    const pollId = customId.split("_")[2];
+    const poll = activePolls.get(pollId);
+
+    if (poll) {
       await handleEndButton(interaction, poll);
-      break;
+    } else {
+      await interaction.reply({
+        content: "❌ This poll is no longer active.",
+        ephemeral: true,
+      });
+    }
   }
 }
 
 async function handleVote(interaction: ButtonInteraction, poll: PollData, optionIndex: number): Promise<void> {
-  const userId = interaction.user.id;
+  if (poll.ended) {
+    await interaction.reply({
+      content: "❌ This poll has ended.",
+      ephemeral: true,
+    });
+    return;
+  }
 
-  // Validate option index bounds
-  if (optionIndex < 0 || optionIndex >= poll.options.length) {
+  // Check role requirement
+  if (poll.roleRequirement && interaction.member) {
+    const member = interaction.member as GuildMember;
+    if (!member.roles.cache.has(poll.roleRequirement)) {
+      await interaction.reply({
+        content: "❌ You don't have the required role to vote in this poll.",
+        ephemeral: true,
+      });
+      return;
+    }
+  }
+
+  const userId = interaction.user.id;
+  const option = poll.options[optionIndex];
+
+  if (!option) {
     await interaction.reply({
       content: "❌ Invalid poll option.",
       ephemeral: true,
@@ -465,68 +508,49 @@ async function handleVote(interaction: ButtonInteraction, poll: PollData, option
     return;
   }
 
-  // Check role requirement
-  if (poll.roleRequirement) {
-    const member = interaction.member as GuildMember;
-    if (!member.roles.cache.has(poll.roleRequirement)) {
-      const guild = interaction.guild;
-      const requiredRole = guild?.roles.cache.get(poll.roleRequirement);
-      await interaction.reply({
-        content: `❌ You need the **${requiredRole?.name ?? "required"}** role to vote in this poll.`,
-        ephemeral: true,
-      });
-      return;
+  // Handle voting logic
+  const hasVoted = option.votes.has(userId);
+  const hasVotedElsewhere = poll.options.some((opt, idx) => idx !== optionIndex && opt.votes.has(userId));
+
+  if (!poll.allowMultiple && hasVotedElsewhere) {
+    // Remove previous vote if single choice
+    for (const opt of poll.options) {
+      opt.votes.delete(userId);
     }
   }
 
-  const option = poll.options[optionIndex];
-
-  // Check if user already voted for this option
-  const hasVotedForThis = option.votes.has(userId);
-
-  if (!poll.allowMultiple) {
-    // Single choice: remove from all other options first
-    poll.options.forEach((opt) => opt.votes.delete(userId));
-  }
-
-  if (hasVotedForThis) {
+  if (hasVoted) {
     // Remove vote
     option.votes.delete(userId);
     await interaction.reply({
-      content: `🗳️ Removed your vote for **${option.text}**`,
+      content: `✅ Removed your vote for "${option.text}"`,
       ephemeral: true,
     });
   } else {
     // Add vote
     option.votes.add(userId);
     await interaction.reply({
-      content: `✅ Voted for **${option.text}**`,
+      content: `✅ Voted for "${option.text}"`,
       ephemeral: true,
     });
   }
 
-  // Update the poll embed
+  // Update the poll message
   try {
     const updatedEmbed = createPollEmbed(poll);
-    await interaction.message.edit({
-      embeds: [updatedEmbed],
-      components: interaction.message.components,
-    });
+    await interaction.message.edit({ embeds: [updatedEmbed] });
   } catch (error) {
-    // Silently fail embed update
-    logger.warn("Failed to update poll embed:", error);
+    logger.warn("Failed to update poll message:", error);
   }
 }
 
 async function handleResultsButton(interaction: ButtonInteraction, poll: PollData): Promise<void> {
   const resultsEmbed = createDetailedResultsEmbed(poll);
-  await interaction.reply({
-    embeds: [resultsEmbed],
-    ephemeral: true,
-  });
+  await interaction.reply({ embeds: [resultsEmbed], ephemeral: true });
 }
 
 async function handleEndButton(interaction: ButtonInteraction, poll: PollData): Promise<void> {
+  // Check if user can end the poll
   const member = interaction.member as GuildMember;
   const canEnd = poll.createdBy === interaction.user.id || member.permissions.has("ManageMessages");
 
@@ -538,122 +562,115 @@ async function handleEndButton(interaction: ButtonInteraction, poll: PollData): 
     return;
   }
 
+  // End the poll
   poll.ended = true;
-  const endedEmbed = createPollEmbed(poll, true);
 
-  // Update database to mark poll as inactive
   try {
+    // Update database
     await prisma.poll.update({
       where: { id: poll.id },
       data: { isActive: false },
     });
+
+    const endedEmbed = createPollEmbed(poll, true);
+    await interaction.update({
+      embeds: [endedEmbed],
+      components: [], // Remove all buttons
+    });
+
+    // Clean up memory after 1 hour
+    setTimeout(() => {
+      activePolls.delete(poll.id);
+    }, 3600000);
   } catch (error) {
-    logger.warn(`Failed to update database for ended poll ${poll.id}:`, error);
+    logger.error("Error ending poll:", error);
+    await interaction.reply({
+      content: "❌ Failed to end poll. Please try again.",
+      ephemeral: true,
+    });
   }
-
-  await interaction.update({
-    embeds: [endedEmbed],
-    components: [], // Remove all buttons
-  });
-
-  // Clean up memory after 1 hour to prevent memory leaks
-  setTimeout(() => {
-    activePolls.delete(poll.id);
-  }, 3600000); // 1 hour
 }
 
-// Helper functions
 function createPollEmbed(poll: PollData, ended = false): EmbedBuilder {
-  const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes.size, 0);
+  const totalVotes = poll.options.reduce((sum, option) => sum + option.votes.size, 0);
 
   const embed = new EmbedBuilder()
-    .setTitle(`📊 ${poll.question}`)
     .setColor(ended ? 0x95a5a6 : 0x3498db)
-    .setAuthor({
-      name: ended ? "Poll Ended" : "Active Poll",
-      iconURL: ended ? "https://cdn.discordapp.com/emojis/1234567890.png" : undefined,
-    })
+    .setTitle(`📊 Poll${ended ? " (Ended)" : ""}`)
+    .setDescription(`**${poll.question}**`)
     .setTimestamp();
 
-  // Add options with vote counts and progress bars
-  const optionsText = poll.options
+  // Create progress bars for options
+  const optionText = poll.options
     .map((option, index) => {
-      const voteCount = option.votes.size;
-      const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
+      const votes = option.votes.size;
+      const percentage = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+      const progressBar = "█".repeat(Math.floor(percentage / 10)) + "░".repeat(10 - Math.floor(percentage / 10));
 
-      // Create progress bar
-      const barLength = 15;
-      const filledLength = Math.round((percentage / 100) * barLength);
-      const progressBar = "█".repeat(filledLength) + "░".repeat(barLength - filledLength);
-
-      return `${option.emoji} **${option.text}**\n\`${progressBar}\` ${percentage}% (${voteCount} vote${voteCount === 1 ? "" : "s"})`;
+      return `${option.emoji} ${option.text}\n${progressBar} ${percentage}% (${votes} vote${votes !== 1 ? "s" : ""})`;
     })
     .join("\n\n");
 
-  embed.setDescription(optionsText || "No options available");
-
-  // Add poll info
-  const infoFields = [];
-
-  infoFields.push({
-    name: "📊 Total Votes",
-    value: totalVotes.toString(),
-    inline: true,
+  embed.addFields({
+    name: "Options",
+    value: optionText || "No options",
+    inline: false,
   });
 
-  infoFields.push({
-    name: "👤 Created by",
-    value: `<@${poll.createdBy}>`,
-    inline: true,
-  });
+  embed.addFields(
+    {
+      name: "👥 Total Votes",
+      value: totalVotes.toString(),
+      inline: true,
+    },
+    {
+      name: "⚙️ Settings",
+      value: [
+        poll.isAnonymous ? "🔒 Anonymous" : "👤 Public",
+        poll.allowMultiple ? "☑️ Multiple Choice" : "1️⃣ Single Choice",
+        poll.roleRequirement ? "🎭 Role Required" : "🌐 Everyone",
+      ].join("\n"),
+      inline: true,
+    }
+  );
 
   if (poll.endsAt && !ended) {
-    infoFields.push({
+    embed.addFields({
       name: "⏰ Ends",
       value: `<t:${Math.floor(poll.endsAt.getTime() / 1000)}:R>`,
       inline: true,
     });
   }
 
-  if (poll.allowMultiple) {
-    infoFields.push({
-      name: "ℹ️ Multiple Choice",
-      value: "You can vote for multiple options",
-      inline: false,
-    });
-  }
-
-  embed.addFields(infoFields);
-
   embed.setFooter({
-    text: `Poll ID: ${poll.id} | ${ended ? "Ended" : "Click buttons to vote"}`,
+    text: `Poll ID: ${poll.id}${ended ? " • Ended" : ""}`,
   });
 
   return embed;
 }
 
 function createDetailedResultsEmbed(poll: PollData): EmbedBuilder {
-  const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes.size, 0);
+  const totalVotes = poll.options.reduce((sum, option) => sum + option.votes.size, 0);
 
-  const embed = new EmbedBuilder().setTitle(`📊 Detailed Results: ${poll.question}`).setColor(0x2ecc71).setTimestamp();
+  const embed = new EmbedBuilder().setColor(0x3498db).setTitle(`📊 Detailed Results: ${poll.question}`).setTimestamp();
 
-  poll.options.forEach((option, index) => {
-    const voteCount = option.votes.size;
-    const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
+  for (const [index, option] of poll.options.entries()) {
+    const votes = option.votes.size;
+    const percentage = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
 
-    let fieldValue = `**Votes:** ${voteCount} (${percentage}%)\n`;
+    let fieldValue = `**${votes} vote${votes !== 1 ? "s" : ""}** (${percentage}%)\n`;
 
-    if (!poll.isAnonymous && voteCount > 0) {
-      const voters = Array.from(option.votes)
-        .slice(0, 10) // Limit to first 10 voters
+    if (!poll.isAnonymous && votes > 0) {
+      const voterList = Array.from(option.votes)
+        .slice(0, 10)
         .map((userId) => `<@${userId}>`)
         .join(", ");
 
-      fieldValue += `**Voters:** ${voters}`;
-
-      if (voteCount > 10) {
-        fieldValue += ` and ${voteCount - 10} more...`;
-      }
+      fieldValue += `Voters: ${voterList}${votes > 10 ? ` and ${votes - 10} more...` : ""}`;
+    } else if (poll.isAnonymous) {
+      fieldValue += "*Anonymous voting enabled*";
+    } else {
+      fieldValue += "*No votes yet*";
     }
 
     embed.addFields({
@@ -661,33 +678,11 @@ function createDetailedResultsEmbed(poll: PollData): EmbedBuilder {
       value: fieldValue,
       inline: false,
     });
-  });
-
-  embed.addFields(
-    {
-      name: "📊 Total Votes",
-      value: totalVotes.toString(),
-      inline: true,
-    },
-    {
-      name: "👤 Created by",
-      value: `<@${poll.createdBy}>`,
-      inline: true,
-    },
-    {
-      name: "📅 Created",
-      value: `<t:${Math.floor(poll.createdAt.getTime() / 1000)}:R>`,
-      inline: true,
-    }
-  );
-
-  if (poll.ended) {
-    embed.setAuthor({ name: "📋 Poll Results (Ended)" });
-  } else {
-    embed.setAuthor({ name: "📋 Poll Results (Active)" });
   }
 
-  embed.setFooter({ text: `Poll ID: ${poll.id}` });
+  embed.setFooter({
+    text: `Total votes: ${totalVotes} • Poll ID: ${poll.id}`,
+  });
 
   return embed;
 }

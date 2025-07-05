@@ -1,17 +1,12 @@
-import type { Prisma } from "@prisma/client";
-import type { GuildQueueEvents, Player, PlayerEvents, PlayerEventsEmitter } from "discord-player";
+import type { Prisma } from "@shared/database";
 import type { Awaitable, ClientEvents } from "discord.js";
 
-import { bindEvent as bindDBEvent } from "../database/index.js";
 import type Client from "./Client.js";
-import QueueMetadata from "./QueueMetadata.js";
 
 /* --- BaseEvent --- */
 export enum EventEmitterType {
   Client,
   Prisma,
-  MusicPlayer,
-  MusicPlayerGuildQueue,
 }
 export function eventEmitterTypeFromDir(dirName: string): EventEmitterType {
   switch (dirName) {
@@ -20,12 +15,6 @@ export function eventEmitterTypeFromDir(dirName: string): EventEmitterType {
     }
     case "prisma": {
       return EventEmitterType.Prisma;
-    }
-    case "musicPlayer": {
-      return EventEmitterType.MusicPlayer;
-    }
-    case "musicPlayerGuildQueue": {
-      return EventEmitterType.MusicPlayerGuildQueue;
     }
 
     default: {
@@ -49,14 +38,6 @@ class BaseEvent<Ev extends string, EventRunFunc extends CallableFunction> {
 
   isClient<Ev extends keyof ClientEvents>(): this is ClientEvent<Ev> {
     return this instanceof ClientEvent;
-  }
-
-  isMusicPlayer<Ev extends keyof PlayerEvents>(): this is MusicPlayerEvent<Ev> {
-    return this instanceof MusicPlayerEvent;
-  }
-
-  isMusicPlayerGuildQueue<Ev extends keyof GuildQueueEvents<QueueMetadata>>(): this is MusicPlayerGuildQueueEvent<Ev> {
-    return this instanceof MusicPlayerGuildQueueEvent;
   }
 
   isPrisma<Ev extends PrismaEvents>(): this is PrismaEvent<Ev> {
@@ -86,31 +67,6 @@ export class ClientEvent<Ev extends keyof ClientEvents>
   }
 }
 
-/* --- Music Player --- */
-type MusicPlayerRunFunction<Ev extends keyof PlayerEvents> = PlayerEvents[Ev];
-
-export class MusicPlayerEvent<Ev extends keyof PlayerEvents>
-  extends BaseEvent<Ev, MusicPlayerRunFunction<Ev>>
-  implements IBindEvent<Player>
-{
-  bindToEventEmitter(eventEmitter: Player): void {
-    eventEmitter.on(this.event, this.run);
-  }
-}
-
-/* --- Music Player Guild Queue --- */
-type MusicPlayerGuildQueueRunFunction<Ev extends keyof GuildQueueEvents<QueueMetadata>> =
-  GuildQueueEvents<QueueMetadata>[Ev];
-
-export class MusicPlayerGuildQueueEvent<Ev extends keyof GuildQueueEvents<QueueMetadata>>
-  extends BaseEvent<Ev, MusicPlayerGuildQueueRunFunction<Ev>>
-  implements IBindEvent<PlayerEventsEmitter<GuildQueueEvents<QueueMetadata>>>
-{
-  bindToEventEmitter(eventEmitter: PlayerEventsEmitter<GuildQueueEvents<QueueMetadata>>): void {
-    eventEmitter.on(this.event, this.run);
-  }
-}
-
 /* --- Prisma --- */
 export type PrismaEvents = Prisma.LogLevel;
 
@@ -123,6 +79,7 @@ export type PrismaRunFunction<Ev extends PrismaEvents> = (
 
 export class PrismaEvent<Ev extends PrismaEvents> extends BaseEvent<Ev, PrismaRunFunction<Ev>> implements IBindEvent {
   bindToEventEmitter(): void {
-    bindDBEvent<Ev>(this.event, this.run);
+    // Note: Database event binding has been removed
+    console.warn("PrismaEvent binding is not currently supported");
   }
 }

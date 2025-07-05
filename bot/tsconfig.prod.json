@@ -3,7 +3,10 @@
   "compilerOptions": {
     /* emit production build to "build" dir */
     "noEmit": false,
-    "outDir": "build"
+    "outDir": "build",
+    "rootDir": "."
   },
-  "exclude": ["src/commands/dev"]
+  "include": ["src/**/*", "shard.ts"],
+  "exclude": ["src/commands/dev"],
+  "references": [{ "path": "../shared" }]
 }

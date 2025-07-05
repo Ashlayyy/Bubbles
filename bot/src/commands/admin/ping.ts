@@ -1,28 +1,42 @@
-import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
 
-import Command from "../../structures/Command.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("ping")
-    .setDescription("Shows the ping of the bot.")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers),
-
-  async (client, interaction) => {
-    const pingStr = `Ping => \`${client.ws.ping.toString()} ms\`\n`;
-
-    await interaction.reply({
-      content: pingStr,
+/**
+ * PingCommand – shows the bot's current WebSocket latency.
+ */
+class PingCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "ping",
+      description: "Shows the ping of the bot.",
+      category: "admin",
       ephemeral: true,
-    });
-  },
-  {
-    ephemeral: true,
-    permissions: {
-      level: PermissionLevel.ADMIN,
-      discordPermissions: [PermissionsBitField.Flags.Administrator],
-      isConfigurable: true,
-    },
+      guildOnly: true,
+    };
+
+    super(config);
   }
-);
+
+  protected async execute(): Promise<CommandResponse> {
+    // Require administrator permission (matches legacy behaviour)
+    this.validateAdminPerms(["Administrator"]);
+
+    // Ensure async function has an await to satisfy linter
+    await Promise.resolve();
+
+    const latency = this.client.ws.ping;
+
+    return this.responseBuilder.info("🏓 Pong!", `Latency: \`${latency} ms\``).ephemeral(true).build();
+  }
+}
+
+// Export the command instance
+export default new PingCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("ping")
+  .setDescription("Shows the ping of the bot.")
+  .setDefaultMemberPermissions(0);

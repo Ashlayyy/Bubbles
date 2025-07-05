@@ -14,68 +14,12 @@ export default new ClientEvent(Events.VoiceStateUpdate, async (oldState: VoiceSt
     const member = newState.member ?? oldState.member;
     if (!member || member.user.bot) return;
 
-    // Handle music player voice events
-    await handleMusicPlayerEvents(client, oldState, newState);
-
     // Log voice state changes for moderation
     await logVoiceStateChange(client, oldState, newState, guild.id, member.id);
   } catch (error) {
     logger.error("Error in voiceStateUpdate event:", error);
   }
 });
-
-async function handleMusicPlayerEvents(client: Client, oldState: VoiceState, newState: VoiceState): Promise<void> {
-  try {
-    const { useMainPlayer } = await import("discord-player");
-    const player = useMainPlayer();
-
-    const guild = newState.guild;
-
-    const queue = player.queues.get(guild.id);
-    if (!queue?.connection) return;
-
-    const botVoiceChannel = queue.connection.joinConfig.channelId;
-    if (!botVoiceChannel) return;
-
-    // Check if bot is alone in voice channel
-    const voiceChannel = guild.channels.cache.get(botVoiceChannel);
-    if (!voiceChannel?.isVoiceBased()) return;
-
-    const members = voiceChannel.members.filter((member) => !member.user.bot);
-
-    if (members.size === 0) {
-      // Bot is alone - pause and set timeout
-      if (queue.isPlaying()) {
-        queue.node.pause();
-        logger.info(`Music paused in ${guild.name} - bot alone in voice channel`);
-      }
-
-      // Set timeout to leave after 5 minutes
-      setTimeout(
-        () => {
-          const currentQueue = player.queues.get(guild.id);
-          if (currentQueue) {
-            const currentChannel = guild.channels.cache.get(botVoiceChannel);
-            if (currentChannel?.isVoiceBased()) {
-              const currentMembers = currentChannel.members.filter((m) => !m.user.bot);
-              if (currentMembers.size === 0) {
-                currentQueue.delete();
-                logger.info(`Left voice channel in ${guild.name} due to inactivity`);
-              }
-            }
-          }
-        },
-        5 * 60 * 1000
-      ); // 5 minutes
-    } else if (queue.node.isPaused() && !queue.isEmpty()) {
-      // Resume if someone joins and music was paused due to emptiness
-      queue.node.resume();
-      logger.info(`Music resumed in ${guild.name} - member joined voice channel`);
-    }
-  } catch (error) {
-    logger.error("Error handling music player voice events:", error);
-  }
-}
 
 async function logVoiceStateChange(
   client: Client,

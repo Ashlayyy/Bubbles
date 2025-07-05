@@ -38,8 +38,8 @@ export default new ClientEvent(
         const member = await guild.members.fetch(user.id).catch(() => null);
 
         if (member) {
-          const rolesToRemove = [];
-          const failedRoles = [];
+          const rolesToRemove: string[] = [];
+          const failedRoles: string[] = [];
 
           for (const roleId of reactionRole.roleIds) {
             const role = guild.roles.cache.get(roleId);

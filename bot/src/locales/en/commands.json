@@ -1,0 +1,23 @@
+{
+  "help": {
+    "description": "Show help information",
+    "title": "Bot Commands",
+    "usage": "Usage"
+  },
+  "config": {
+    "description": "Configure server settings",
+    "updated": "Configuration updated successfully",
+    "invalid_option": "Invalid configuration option"
+  },
+  "moderation": {
+    "ban": {
+      "description": "Ban a user from the server",
+      "success": "Successfully banned {{username}}",
+      "reason": "Reason: {{reason}}"
+    },
+    "kick": {
+      "description": "Kick a user from the server",
+      "success": "Successfully kicked {{username}}"
+    }
+  }
+}

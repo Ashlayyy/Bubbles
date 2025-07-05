@@ -1,84 +1,99 @@
 import { SlashCommandBuilder } from "discord.js";
-
-import { prisma } from "../../database/index.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import { expandAlias, type CommandConfig, type CommandResponse } from "../_core/index.js";
+import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
+import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("note")
-    .setDescription("Add a note about a user")
-    .addUserOption((option) => option.setName("user").setDescription("The user to add a note about").setRequired(true))
-    .addStringOption((option) => option.setName("content").setDescription("The note content").setRequired(true))
-    .addBooleanOption((option) =>
-      option
-        .setName("internal")
-        .setDescription("Make this note internal (staff-only, default: false)")
-        .setRequired(false)
-    )
-    .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false)),
+/**
+ * Note Command - Add a note about a user
+ */
+export class NoteCommand extends ModerationCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "note",
+      description: "Add a note about a user",
+      category: "moderation",
+      permissions: {
+        level: PermissionLevel.MODERATOR,
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    if (!interaction.isChatInputCommand() || !interaction.guild) return;
+    super(config);
+  }
 
-    const targetUser = interaction.options.getUser("user", true);
-    let content = interaction.options.getString("content", true);
-    const isInternal = interaction.options.getBoolean("internal") ?? false;
-    const silent = interaction.options.getBoolean("silent") ?? false;
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
+    }
+
+    const targetUser = this.getUserOption("user", true);
+    let content = this.getStringOption("content", true);
 
     try {
-      // Check if content is an alias and expand it
-      const aliasName = content.toUpperCase();
-      const alias = await prisma.alias.findUnique({
-        where: { guildId_name: { guildId: interaction.guild.id, name: aliasName } },
+      // Validate content length
+      if (content.length > 2000) {
+        return this.createModerationError(
+          "note",
+          targetUser,
+          `❌ Note content is too long: **${content.length}/2000** characters\n\n` +
+            `💡 **Tip:** Keep notes concise and focused. Split longer notes into multiple entries if needed.`
+        );
+      }
+
+      // Expand alias if provided
+      content = await expandAlias(content, {
+        guild: this.guild,
+        user: targetUser,
+        moderator: this.user,
       });
 
-      if (alias) {
-        // Expand alias content with variables
-        content = alias.content;
-        content = content.replace(/\{user\}/g, `<@${targetUser.id}>`);
-        content = content.replace(/\{server\}/g, interaction.guild.name);
-        content = content.replace(/\{moderator\}/g, `<@${interaction.user.id}>`);
-
-        // Update usage count
-        await prisma.alias.update({
-          where: { id: alias.id },
-          data: { usageCount: { increment: 1 } },
-        });
-      }
+      const invocation = {
+        interactionId: this.interaction.id,
+        commandName: this.interaction.commandName,
+        interactionLatency: Date.now() - this.interaction.createdTimestamp,
+      };
 
       // Execute the note using the moderation system
-      const case_ = await client.moderationManager.note(
-        interaction.guild,
+      const case_ = await this.client.moderationManager.note(
+        this.guild,
         targetUser.id,
-        interaction.user.id,
+        this.user.id,
         content,
-        isInternal
+        invocation
       );
 
-      // If silent option is provided, update the case
-      if (silent) {
-        await client.moderationManager.updateCaseNotification(case_.id, false);
-      }
-
-      const noteType = isInternal ? "internal" : "public";
-      const notificationStatus = silent ? " (silent)" : "";
-
-      await interaction.reply({
-        content: `📝 Added ${noteType} note about **${targetUser.tag}**.\n📋 **Case #${case_.caseNumber}** created${notificationStatus}.`,
-        ephemeral: true,
+      // Success response with better formatting
+      return buildModSuccess({
+        title: "Note Added",
+        target: targetUser,
+        moderator: this.user,
+        reason: content,
+        caseNumber: case_.caseNumber,
       });
     } catch (error) {
-      await interaction.reply({
-        content: `❌ Failed to add note about **${targetUser.tag}**: ${error instanceof Error ? error.message : "Unknown error"}`,
-        ephemeral: true,
-      });
+      return this.createModerationError(
+        "note",
+        targetUser,
+        `${error instanceof Error ? error.message : "Unknown error"}\n\n` +
+          `💡 **Common solutions:**\n` +
+          `• Check if the note content is appropriate\n` +
+          `• Verify you have moderation permissions\n` +
+          `• Try shortening the note content\n\n` +
+          `📖 **Need help?** Contact an administrator.`
+      );
     }
-  },
-  {
-    permissions: {
-      level: PermissionLevel.MODERATOR,
-      isConfigurable: true,
-    },
   }
-);
+}
+
+// Export the command instance
+export default new NoteCommand();
+
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("note")
+  .setDescription("Add a note about a user")
+  .addUserOption((option) => option.setName("user").setDescription("The user to add a note about").setRequired(true))
+  .addStringOption((option) => option.setName("content").setDescription("The note content").setRequired(true));

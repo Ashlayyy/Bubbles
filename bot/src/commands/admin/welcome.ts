@@ -1,344 +1,417 @@
-import { ChannelType, EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
-
+import { SlashCommandBuilder } from "discord.js";
 import { prisma } from "../../database/index.js";
-import logger from "../../logger.js";
-import type Client from "../../structures/Client.js";
-import type { GuildChatInputCommandInteraction } from "../../structures/Command.js";
-import Command from "../../structures/Command.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
+import type { CommandConfig, CommandResponse, SlashCommandInteraction } from "../_core/index.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-export default new Command(
-  new SlashCommandBuilder()
-    .setName("welcome")
-    .setDescription("ADMIN ONLY: Configure welcome system for new members")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
-    .addSubcommand((sub) =>
-      sub
-        .setName("setup")
-        .setDescription("Set up welcome/goodbye channels")
-        .addChannelOption((opt) =>
-          opt
-            .setName("welcome_channel")
-            .setDescription("Channel for welcome messages")
-            .addChannelTypes(ChannelType.GuildText)
-        )
-        .addChannelOption((opt) =>
-          opt
-            .setName("goodbye_channel")
-            .setDescription("Channel for goodbye messages")
-            .addChannelTypes(ChannelType.GuildText)
-        )
-        .addBooleanOption((opt) => opt.setName("welcome_enabled").setDescription("Enable welcome messages"))
-        .addBooleanOption((opt) => opt.setName("goodbye_enabled").setDescription("Enable goodbye messages"))
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("test")
-        .setDescription("Test welcome/goodbye messages")
-        .addStringOption((opt) =>
-          opt
-            .setName("type")
-            .setDescription("Message type to test")
-            .setRequired(true)
-            .addChoices({ name: "Welcome Message", value: "welcome" }, { name: "Goodbye Message", value: "goodbye" })
-        )
-    )
-    .addSubcommand((sub) => sub.setName("status").setDescription("View current welcome/goodbye configuration")),
+/**
+ * Welcome/Goodbye System Command - Manage welcome messages and auto-role assignment
+ */
+export class WelcomeCommand extends AdminCommand {
+  constructor() {
+    const config: CommandConfig = {
+      name: "welcome",
+      description: "Manage welcome messages and auto-role assignment",
+      category: "admin",
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        isConfigurable: true,
+      },
+      ephemeral: true,
+      guildOnly: true,
+    };
 
-  async (client, interaction) => {
-    // Type guard to ensure this is a chat input command
-    if (!interaction.isChatInputCommand()) return;
-    if (!interaction.guild) return;
-
-    const subcommand = interaction.options.getSubcommand();
-
-    if (subcommand === "setup") {
-      await handleSetup(client, interaction);
-    } else if (subcommand === "test") {
-      await handleTest(client, interaction);
-    } else if (subcommand === "status") {
-      await handleStatus(client, interaction);
-    }
-  },
-  {
-    ephemeral: true,
-    permissions: {
-      level: PermissionLevel.ADMIN,
-      discordPermissions: [PermissionsBitField.Flags.Administrator],
-      isConfigurable: true,
-    },
+    super(config);
   }
-);
 
-async function handleSetup(client: Client, interaction: GuildChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) return;
-
-  const welcomeChannel = interaction.options.getChannel("welcome_channel");
-  const goodbyeChannel = interaction.options.getChannel("goodbye_channel");
-  const welcomeEnabled = interaction.options.getBoolean("welcome_enabled");
-  const goodbyeEnabled = interaction.options.getBoolean("goodbye_enabled");
-
-  try {
-    // Get or create guild config
-    const guildConfig = await prisma.guildConfig.upsert({
-      where: { guildId: interaction.guild.id },
-      update: {},
-      create: { guildId: interaction.guild.id },
-    });
-
-    // Update channel and enabled settings
-    const updateData: {
-      welcomeChannelId?: string | null;
-      goodbyeChannelId?: string | null;
-      welcomeEnabled?: boolean;
-      goodbyeEnabled?: boolean;
-    } = {};
-
-    if (welcomeChannel !== null) {
-      updateData.welcomeChannelId = welcomeChannel.id;
+  protected async execute(): Promise<CommandResponse> {
+    if (!this.isSlashCommand()) {
+      throw new Error("This command only supports slash command format");
     }
 
-    if (goodbyeChannel !== null) {
-      updateData.goodbyeChannelId = goodbyeChannel.id;
+    const subcommand = (this.interaction as SlashCommandInteraction).options.getSubcommand();
+
+    try {
+      switch (subcommand) {
+        case "setup":
+          return await this.handleSetup();
+        case "test":
+          return await this.handleTest();
+        case "auto-role":
+          return await this.handleAutoRole();
+        case "message":
+          return await this.handleMessage();
+        case "stats":
+          return await this.handleStats();
+        default:
+          throw new Error("Unknown subcommand");
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      return this.createAdminError("Welcome System Error", errorMessage);
     }
+  }
 
-    if (welcomeEnabled !== null) {
-      updateData.welcomeEnabled = welcomeEnabled;
-    }
+  private async handleSetup(): Promise<CommandResponse> {
+    const welcomeChannelId = this.getStringOption("welcome-channel", true);
+    const goodbyeChannelId = this.getStringOption("goodbye-channel");
+    const autoRoleId = this.getStringOption("auto-role");
+    const welcomeEnabled = this.getBooleanOption("welcome-enabled") ?? true;
+    const goodbyeEnabled = this.getBooleanOption("goodbye-enabled") ?? true;
 
-    if (goodbyeEnabled !== null) {
-      updateData.goodbyeEnabled = goodbyeEnabled;
-    }
-
-    if (Object.keys(updateData).length > 0) {
-      await prisma.guildConfig.update({
-        where: { id: guildConfig.id },
-        data: updateData,
-      });
-    }
-
-    const embed = new EmbedBuilder().setColor(0x2ecc71).setTitle("✅ Welcome System Configured").setTimestamp();
-
-    const fields = [];
-
-    if (welcomeChannel) {
-      fields.push({
-        name: "👋 Welcome Channel",
-        value: `<#${welcomeChannel.id}>`,
-        inline: true,
-      });
-    }
-
-    if (goodbyeChannel) {
-      fields.push({
-        name: "👋 Goodbye Channel",
-        value: `<#${goodbyeChannel.id}>`,
-        inline: true,
-      });
-    }
-
-    if (welcomeEnabled !== null) {
-      fields.push({
-        name: "🎉 Welcome Messages",
-        value: welcomeEnabled ? "Enabled" : "Disabled",
-        inline: true,
-      });
-    }
-
-    if (goodbyeEnabled !== null) {
-      fields.push({
-        name: "😢 Goodbye Messages",
-        value: goodbyeEnabled ? "Enabled" : "Disabled",
-        inline: true,
-      });
-    }
-
-    if (fields.length === 0) {
-      embed.setDescription("No changes were made. Use the options to configure the welcome system.");
-    } else {
-      embed.addFields(fields);
-      embed.setDescription(
-        "Welcome/goodbye system has been updated! Messages are configured in the bot's config file."
+    // Validate channels
+    const welcomeChannel = this.guild.channels.cache.get(welcomeChannelId);
+    if (!welcomeChannel?.isTextBased()) {
+      return this.createAdminError(
+        "Invalid Welcome Channel",
+        "The specified welcome channel is not a valid text channel."
       );
     }
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    if (goodbyeChannelId) {
+      const goodbyeChannel = this.guild.channels.cache.get(goodbyeChannelId);
+      if (!goodbyeChannel?.isTextBased()) {
+        return this.createAdminError(
+          "Invalid Goodbye Channel",
+          "The specified goodbye channel is not a valid text channel."
+        );
+      }
+    }
 
-    // Log configuration change
-    await client.logManager.log(interaction.guild.id, "WELCOME_CONFIG", {
-      userId: interaction.user.id,
-      metadata: {
-        welcomeChannel: welcomeChannel?.id,
-        goodbyeChannel: goodbyeChannel?.id,
+    // Validate auto-role
+    if (autoRoleId) {
+      const autoRole = this.guild.roles.cache.get(autoRoleId);
+      if (!autoRole) {
+        return this.createAdminError("Invalid Auto-Role", "The specified auto-role does not exist.");
+      }
+    }
+
+    // Update guild config
+    await prisma.guildConfig.update({
+      where: { guildId: this.guild.id },
+      data: {
+        welcomeChannelId,
+        goodbyeChannelId: goodbyeChannelId ?? null,
         welcomeEnabled,
         goodbyeEnabled,
+        moderatorRoleIds: autoRoleId ? [autoRoleId] : [],
       },
     });
-  } catch (error) {
-    logger.error("Error configuring welcome system:", error);
-    await interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("❌ Error")
-          .setDescription("Failed to configure welcome system. Please try again.")
-          .setTimestamp(),
+
+    const embed = this.client.genEmbed({
+      title: "✅ Welcome System Configured",
+      description: "Welcome and goodbye system has been configured successfully.",
+      color: 0x2ecc71,
+      fields: [
+        { name: "👋 Welcome Channel", value: `<#${welcomeChannelId}>`, inline: true },
+        { name: "👋 Welcome Enabled", value: welcomeEnabled ? "✅ Yes" : "❌ No", inline: true },
+        { name: "👋 Goodbye Channel", value: goodbyeChannelId ? `<#${goodbyeChannelId}>` : "Not set", inline: true },
+        { name: "👋 Goodbye Enabled", value: goodbyeEnabled ? "✅ Yes" : "❌ No", inline: true },
+        { name: "🎭 Auto-Role", value: autoRoleId ? `<@&${autoRoleId}>` : "Not set", inline: true },
       ],
-      ephemeral: true,
     });
+
+    return { embeds: [embed], ephemeral: true };
   }
-}
 
-async function handleStatus(client: Client, interaction: GuildChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) return;
+  private async handleTest(): Promise<CommandResponse> {
+    const type = this.getStringOption("type", true) as "welcome" | "goodbye";
+    const testUser = this.getUserOption("user") ?? this.user;
 
-  try {
-    const guildConfig = await prisma.guildConfig.findUnique({
-      where: { guildId: interaction.guild.id },
+    const config = await prisma.guildConfig.findUnique({
+      where: { guildId: this.guild.id },
     });
 
-    const embed = new EmbedBuilder().setColor(0x3498db).setTitle("📊 Welcome System Status").setTimestamp();
-
-    const fields = [];
-
-    // Show channel configuration from database
-    fields.push({
-      name: "👋 Welcome Channel",
-      value: guildConfig?.welcomeChannelId ? `<#${guildConfig.welcomeChannelId}>` : "Not set",
-      inline: true,
-    });
-
-    fields.push({
-      name: "👋 Goodbye Channel",
-      value: guildConfig?.goodbyeChannelId ? `<#${guildConfig.goodbyeChannelId}>` : "Not set",
-      inline: true,
-    });
-
-    // Show enabled/disabled status from database
-    const welcomeMessages = client.config.welcome?.messages.length ?? 0;
-    const goodbyeMessages = client.config.goodbye?.messages.length ?? 0;
-    const welcomeEnabled = guildConfig?.welcomeEnabled ?? true;
-    const goodbyeEnabled = guildConfig?.goodbyeEnabled ?? true;
-
-    fields.push({
-      name: "🎉 Welcome Messages",
-      value: welcomeEnabled ? `✅ Enabled (${welcomeMessages} messages)` : "❌ Disabled",
-      inline: true,
-    });
-
-    fields.push({
-      name: "😢 Goodbye Messages",
-      value: goodbyeEnabled ? `✅ Enabled (${goodbyeMessages} messages)` : "❌ Disabled",
-      inline: true,
-    });
-
-    embed.addFields(fields);
-
-    if (!guildConfig?.welcomeChannelId && !guildConfig?.goodbyeChannelId) {
-      embed.setDescription("⚠️ No channels configured. Use `/welcome setup` to set up channels.");
-    } else {
-      embed.setDescription(
-        "📝 Messages are configured in the bot's config file. Enable/disable and channels are set per server."
+    if (!config) {
+      return this.createAdminError(
+        "No Configuration",
+        "Welcome system has not been configured yet. Use `/welcome setup` first."
       );
     }
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-  } catch (error) {
-    logger.error("Error getting welcome status:", error);
-    await interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("❌ Error")
-          .setDescription("Failed to get welcome system status.")
-          .setTimestamp(),
+    if (type === "welcome" && !config.welcomeEnabled) {
+      return this.createAdminError("Welcome Disabled", "Welcome messages are currently disabled.");
+    }
+
+    if (type === "goodbye" && !config.goodbyeEnabled) {
+      return this.createAdminError("Goodbye Disabled", "Goodbye messages are currently disabled.");
+    }
+
+    const channelId = type === "welcome" ? config.welcomeChannelId : config.goodbyeChannelId;
+    if (!channelId) {
+      return this.createAdminError(
+        "No Channel Set",
+        `${type === "welcome" ? "Welcome" : "Goodbye"} channel is not configured.`
+      );
+    }
+
+    const channel = this.guild.channels.cache.get(channelId);
+    if (!channel?.isTextBased()) {
+      return this.createAdminError("Invalid Channel", `The ${type} channel is not accessible.`);
+    }
+
+    // Create test message
+    const embed = this.client.genEmbed({
+      title: type === "welcome" ? "👋 Welcome!" : "👋 Goodbye!",
+      description:
+        type === "welcome"
+          ? `Welcome to **${this.guild.name}**, ${testUser}! We're glad to have you here.`
+          : `Goodbye, ${testUser}! We'll miss you.`,
+      color: type === "welcome" ? 0x2ecc71 : 0xe74c3c,
+      fields: [
+        { name: "👤 User", value: `${testUser} (${testUser.id})`, inline: true },
+        { name: "📅 Joined", value: `<t:${Math.floor(testUser.createdAt.getTime() / 1000)}:F>`, inline: true },
+        { name: "🎭 Member Count", value: `${this.guild.memberCount}`, inline: true },
       ],
-      ephemeral: true,
+      thumbnail: { url: testUser.displayAvatarURL() },
     });
+
+    try {
+      await channel.send({ embeds: [embed] });
+
+      return this.createAdminSuccess("Test Message Sent", `Test ${type} message has been sent to <#${channelId}>.`);
+    } catch (error) {
+      return this.createAdminError(
+        "Failed to Send",
+        `Could not send test message to <#${channelId}>. Check bot permissions.`
+      );
+    }
+  }
+
+  private async handleAutoRole(): Promise<CommandResponse> {
+    const action = this.getStringOption("action", true) as "add" | "remove" | "list";
+    const roleId = this.getStringOption("role");
+
+    const config = await prisma.guildConfig.findUnique({
+      where: { guildId: this.guild.id },
+    });
+
+    if (!config) {
+      return this.createAdminError(
+        "No Configuration",
+        "Welcome system has not been configured yet. Use `/welcome setup` first."
+      );
+    }
+
+    const currentRoles = config.moderatorRoleIds;
+
+    switch (action) {
+      case "add": {
+        if (!roleId) {
+          return this.createAdminError("Role Required", "Please specify a role to add.");
+        }
+
+        const role = this.guild.roles.cache.get(roleId);
+        if (!role) {
+          return this.createAdminError("Invalid Role", "The specified role does not exist.");
+        }
+
+        if (currentRoles.includes(roleId)) {
+          return this.createAdminError("Role Already Added", "This role is already in the auto-role list.");
+        }
+
+        const newRoles = [...currentRoles, roleId];
+        await prisma.guildConfig.update({
+          where: { guildId: this.guild.id },
+          data: { moderatorRoleIds: newRoles },
+        });
+
+        return this.createAdminSuccess("Auto-Role Added", `Role <@&${roleId}> has been added to the auto-role list.`);
+      }
+
+      case "remove": {
+        if (!roleId) {
+          return this.createAdminError("Role Required", "Please specify a role to remove.");
+        }
+
+        if (!currentRoles.includes(roleId)) {
+          return this.createAdminError("Role Not Found", "This role is not in the auto-role list.");
+        }
+
+        const updatedRoles = currentRoles.filter((id) => id !== roleId);
+        await prisma.guildConfig.update({
+          where: { guildId: this.guild.id },
+          data: { moderatorRoleIds: updatedRoles },
+        });
+
+        return this.createAdminSuccess(
+          "Auto-Role Removed",
+          `Role <@&${roleId}> has been removed from the auto-role list.`
+        );
+      }
+
+      case "list": {
+        if (currentRoles.length === 0) {
+          return this.createAdminInfo("No Auto-Roles", "No auto-roles are currently configured.");
+        }
+
+        const embed = this.client.genEmbed({
+          title: "🎭 Auto-Roles",
+          description: "Roles that will be automatically assigned to new members:",
+          color: 0x3498db,
+          fields: currentRoles.map((roleId, index) => ({
+            name: `Role ${index + 1}`,
+            value: `<@&${roleId}>`,
+            inline: true,
+          })),
+        });
+
+        return { embeds: [embed], ephemeral: true };
+      }
+    }
+  }
+
+  private async handleMessage(): Promise<CommandResponse> {
+    const type = this.getStringOption("type", true) as "welcome" | "goodbye";
+    const message = this.getStringOption("message");
+    const embedEnabled = this.getBooleanOption("embed-enabled") ?? true;
+
+    const config = await prisma.guildConfig.findUnique({
+      where: { guildId: this.guild.id },
+    });
+
+    if (!config) {
+      return this.createAdminError(
+        "No Configuration",
+        "Welcome system has not been configured yet. Use `/welcome setup` first."
+      );
+    }
+
+    // For now, we'll store custom messages in the welcomeStats field
+    // In a full implementation, you'd want a dedicated table for this
+    const currentStats = config.welcomeStats ?? {};
+    currentStats[`${type}Message`] = message;
+    currentStats[`${type}EmbedEnabled`] = embedEnabled;
+
+    await prisma.guildConfig.update({
+      where: { guildId: this.guild.id },
+      data: { welcomeStats: currentStats },
+    });
+
+    const embed = this.client.genEmbed({
+      title: "✅ Message Updated",
+      description: `${type === "welcome" ? "Welcome" : "Goodbye"} message has been updated.`,
+      color: 0x2ecc71,
+      fields: [
+        { name: "📝 Message", value: message ?? "Using default message", inline: false },
+        { name: "🎨 Embed Enabled", value: embedEnabled ? "✅ Yes" : "❌ No", inline: true },
+      ],
+    });
+
+    return { embeds: [embed], ephemeral: true };
+  }
+
+  private async handleStats(): Promise<CommandResponse> {
+    const config = await prisma.guildConfig.findUnique({
+      where: { guildId: this.guild.id },
+    });
+
+    if (!config) {
+      return this.createAdminError(
+        "No Configuration",
+        "Welcome system has not been configured yet. Use `/welcome setup` first."
+      );
+    }
+
+    // Get recent member joins (last 7 days)
+    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const recentMembers = this.guild.members.cache.filter((member) => member.joinedAt && member.joinedAt > oneWeekAgo);
+
+    const embed = this.client.genEmbed({
+      title: "📊 Welcome System Statistics",
+      description: "Current configuration and recent activity:",
+      color: 0x3498db,
+      fields: [
+        {
+          name: "👋 Welcome Channel",
+          value: config.welcomeChannelId ? `<#${config.welcomeChannelId}>` : "Not set",
+          inline: true,
+        },
+        { name: "👋 Welcome Enabled", value: config.welcomeEnabled ? "✅ Yes" : "❌ No", inline: true },
+        {
+          name: "👋 Goodbye Channel",
+          value: config.goodbyeChannelId ? `<#${config.goodbyeChannelId}>` : "Not set",
+          inline: true,
+        },
+        { name: "👋 Goodbye Enabled", value: config.goodbyeEnabled ? "✅ Yes" : "❌ No", inline: true },
+        {
+          name: "🎭 Auto-Roles",
+          value: config.moderatorRoleIds.length ? config.moderatorRoleIds.map((id) => `<@&${id}>`).join(", ") : "None",
+          inline: false,
+        },
+        { name: "📈 Recent Joins", value: `${recentMembers.size} members in the last 7 days`, inline: true },
+        { name: "👥 Total Members", value: `${this.guild.memberCount}`, inline: true },
+      ],
+    });
+
+    return { embeds: [embed], ephemeral: true };
   }
 }
 
-async function handleTest(client: Client, interaction: GuildChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) return;
+// Export the command instance
+export default new WelcomeCommand();
 
-  const type = interaction.options.getString("type", true);
-
-  try {
-    // Get guild config to check if the feature is enabled
-    const guildConfig = await prisma.guildConfig.findUnique({
-      where: { guildId: interaction.guild.id },
-    });
-
-    const isEnabled =
-      type === "welcome" ? (guildConfig?.welcomeEnabled ?? true) : (guildConfig?.goodbyeEnabled ?? true);
-
-    if (!isEnabled) {
-      await interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xf39c12)
-            .setTitle("⚠️ Feature Disabled")
-            .setDescription(`${type.charAt(0).toUpperCase() + type.slice(1)} messages are disabled for this server.`)
-            .setTimestamp(),
-        ],
-        ephemeral: true,
-      });
-      return;
-    }
-
-    const config = type === "welcome" ? client.config.welcome : client.config.goodbye;
-    const messages = config?.messages ?? [];
-
-    if (messages.length === 0) {
-      await interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xf39c12)
-            .setTitle("⚠️ No Messages")
-            .setDescription(`No ${type} messages are configured in the bot's config file.`)
-            .setTimestamp(),
-        ],
-        ephemeral: true,
-      });
-      return;
-    }
-
-    // Pick a random message
-    const message = messages[Math.floor(Math.random() * messages.length)];
-
-    // Replace variables
-    const processedTitle = message.title
-      .replace(/\{user\}/g, `<@${interaction.user.id}>`)
-      .replace(/\{server\}/g, interaction.guild.name)
-      .replace(/\{membercount\}/g, interaction.guild.memberCount.toString());
-
-    const processedDescription = message.description
-      .replace(/\{user\}/g, `<@${interaction.user.id}>`)
-      .replace(/\{server\}/g, interaction.guild.name)
-      .replace(/\{membercount\}/g, interaction.guild.memberCount.toString());
-
-    const embed = new EmbedBuilder()
-      .setTitle(processedTitle)
-      .setDescription(processedDescription)
-      .setColor(parseInt(message.color.replace("#", ""), 16))
-      .setTimestamp()
-      .setFooter({ text: `Test ${type} message` });
-
-    await interaction.reply({
-      embeds: [embed],
-      content: `🧪 **Test ${type.charAt(0).toUpperCase() + type.slice(1)} Message:**`,
-    });
-  } catch (error) {
-    logger.error(`Error testing ${type} message:`, error);
-    await interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("❌ Error")
-          .setDescription(`Failed to test ${type} message. Please try again.`)
-          .setTimestamp(),
-      ],
-      ephemeral: true,
-    });
-  }
-}
+// Export the Discord command builder for registration
+export const builder = new SlashCommandBuilder()
+  .setName("welcome")
+  .setDescription("Manage welcome messages and auto-role assignment")
+  .setDefaultMemberPermissions(0)
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("setup")
+      .setDescription("Configure welcome and goodbye system")
+      .addStringOption((option) =>
+        option.setName("welcome-channel").setDescription("Channel for welcome messages").setRequired(true)
+      )
+      .addStringOption((option) => option.setName("goodbye-channel").setDescription("Channel for goodbye messages"))
+      .addStringOption((option) =>
+        option.setName("auto-role").setDescription("Role to automatically assign to new members")
+      )
+      .addBooleanOption((option) => option.setName("welcome-enabled").setDescription("Enable welcome messages"))
+      .addBooleanOption((option) => option.setName("goodbye-enabled").setDescription("Enable goodbye messages"))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("test")
+      .setDescription("Test welcome or goodbye message")
+      .addStringOption((option) =>
+        option
+          .setName("type")
+          .setDescription("Type of message to test")
+          .setRequired(true)
+          .addChoices({ name: "Welcome", value: "welcome" }, { name: "Goodbye", value: "goodbye" })
+      )
+      .addUserOption((option) => option.setName("user").setDescription("User to test with (defaults to you)"))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("auto-role")
+      .setDescription("Manage auto-role assignment")
+      .addStringOption((option) =>
+        option
+          .setName("action")
+          .setDescription("Action to perform")
+          .setRequired(true)
+          .addChoices(
+            { name: "Add Role", value: "add" },
+            { name: "Remove Role", value: "remove" },
+            { name: "List Roles", value: "list" }
+          )
+      )
+      .addStringOption((option) => option.setName("role").setDescription("Role ID (required for add/remove)"))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("message")
+      .setDescription("Set custom welcome or goodbye message")
+      .addStringOption((option) =>
+        option
+          .setName("type")
+          .setDescription("Type of message")
+          .setRequired(true)
+          .addChoices({ name: "Welcome", value: "welcome" }, { name: "Goodbye", value: "goodbye" })
+      )
+      .addStringOption((option) => option.setName("message").setDescription("Custom message (leave empty for default)"))
+      .addBooleanOption((option) => option.setName("embed-enabled").setDescription("Enable embed formatting"))
+  )
+  .addSubcommand((subcommand) => subcommand.setName("stats").setDescription("View welcome system statistics"));
