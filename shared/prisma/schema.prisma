@@ -1562,3 +1562,359 @@ model TicketSharingConfig {
   inactiveThresholdDays Int      @default(7)
   logChannel            String?
 }
+
+/// -------------------------
+/// Music System Models
+/// -------------------------
+
+model MusicPlaylist {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  name      String
+  tracks    Json // Array of track objects
+  public    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guildId, userId])
+  @@index([public])
+}
+
+model MusicHistory {
+  id       String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId  String
+  userId   String
+  trackId  String
+  title    String
+  artist   String
+  duration Int
+  playedAt DateTime @default(now())
+
+  @@index([guildId, playedAt])
+  @@index([userId, playedAt])
+}
+
+/// -------------------------
+/// Economy System Models
+/// -------------------------
+
+model UserEconomy {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  balance   BigInt    @default(0)
+  bank      BigInt    @default(0)
+  xp        Int       @default(0)
+  level     Int       @default(1)
+  lastDaily DateTime?
+  streak    Int       @default(0)
+  inventory Json      @default("[]")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  transactions EconomyTransaction[]
+
+  @@unique([guildId, userId])
+  @@index([guildId, level])
+}
+
+model EconomyTransaction {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  type      String // earn, spend, transfer, daily
+  amount    BigInt
+  reason    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user UserEconomy @relation(fields: [guildId, userId], references: [guildId, userId])
+
+  @@index([guildId, userId, createdAt])
+}
+
+model EconomyShop {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  itemId      String
+  name        String
+  description String
+  price       BigInt
+  category    String
+  stock       Int? // Null = unlimited
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, itemId])
+  @@index([guildId, category])
+}
+
+/// -------------------------
+/// Event Management Models
+/// -------------------------
+
+model Event {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId          String
+  createdBy        String
+  title            String
+  description      String?
+  startTime        DateTime
+  endTime          DateTime?
+  timezone         String
+  location         String? // Voice channel or external location
+  maxAttendees     Int?
+  requiresApproval Boolean   @default(false)
+  recurring        Json? // Recurring event configuration
+  reminderTimes    Int[] // Minutes before event for reminders
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  rsvps EventRSVP[]
+
+  @@index([guildId, startTime])
+}
+
+model EventRSVP {
+  id      String   @id @default(auto()) @map("_id") @db.ObjectId
+  eventId String
+  userId  String
+  status  String // going, maybe, not_going
+  notes   String?
+  rsvpAt  DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id])
+
+  @@unique([eventId, userId])
+  @@index([eventId, status])
+}
+
+/// -------------------------
+/// Advanced Polling Models
+/// -------------------------
+
+model PollAdvanced {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  channelId   String
+  messageId   String?
+  createdBy   String
+  title       String
+  description String?
+  type        String // single, multiple, ranked, rating
+  options     Json // Poll options
+  settings    Json // Privacy, duration, etc.
+  anonymous   Boolean   @default(false)
+  multiSelect Boolean   @default(false)
+  maxChoices  Int?
+  endTime     DateTime?
+  status      String // active, closed, scheduled
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  votes PollVote[]
+
+  @@index([guildId, status])
+  @@index([createdBy])
+}
+
+model PollVote {
+  id      String   @id @default(auto()) @map("_id") @db.ObjectId
+  pollId  String
+  userId  String
+  choices String[] // Selected option IDs
+  ranking Json? // For ranked voting
+  rating  Int? // For rating polls
+  votedAt DateTime @default(now())
+
+  poll PollAdvanced @relation(fields: [pollId], references: [id])
+
+  @@unique([pollId, userId])
+  @@index([pollId, votedAt])
+}
+
+/// -------------------------
+/// Automation System Models
+/// -------------------------
+
+model Automation {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  name        String
+  description String?
+  enabled     Boolean   @default(true)
+  trigger     Json // Trigger configuration
+  conditions  Json // Condition logic
+  actions     Json // Action sequence
+  schedule    String? // Cron expression for scheduled automation
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastRun     DateTime?
+  runCount    Int       @default(0)
+
+  executions AutomationExecution[]
+
+  @@index([guildId, enabled])
+}
+
+model AutomationExecution {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  automationId String
+  triggeredBy  String?
+  triggeredAt  DateTime @default(now())
+  status       String // running, completed, failed
+  result       Json?
+  errorMessage String?
+  duration     Int? // Execution time in milliseconds
+
+  automation Automation @relation(fields: [automationId], references: [id])
+
+  @@index([automationId, triggeredAt])
+}
+
+/// -------------------------
+/// Premium System Models
+/// -------------------------
+
+model GuildSubscription {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String    @unique
+  tier         String // free, premium
+  status       String // active, canceled, expired
+  subscribedAt DateTime?
+  expiresAt    DateTime?
+  features     String[] // Enabled premium features
+  limits       Json // Usage limits configuration
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  usage FeatureUsage[]
+
+  @@index([tier, status])
+}
+
+model FeatureUsage {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  feature   String
+  usage     Int      @default(0)
+  limit     Int
+  resetAt   DateTime // Monthly reset
+  createdAt DateTime @default(now())
+
+  subscription GuildSubscription @relation(fields: [guildId], references: [guildId])
+
+  @@unique([guildId, feature])
+  @@index([resetAt])
+}
+
+/// -------------------------
+/// Custom Commands Enhancement
+/// -------------------------
+
+model CustomCommand {
+  id                  String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId             String
+  name                String
+  description         String?
+  content             String
+  aliases             String[]  @default([])
+  category            String    @default("general")
+  enabled             Boolean   @default(true)
+  cooldownSeconds     Int       @default(0)
+  requiredRoles       String[]  @default([])
+  requiredPermissions String[]  @default([])
+  allowedChannels     String[]  @default([])
+  script              String? // JavaScript code for complex commands
+  usageCount          Int       @default(0)
+  lastUsed            DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  logs CustomCommandLog[]
+
+  @@unique([guildId, name])
+  @@index([guildId, category])
+  @@index([guildId, enabled])
+}
+
+model CustomCommandLog {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId       String
+  commandId     String
+  commandName   String
+  userId        String
+  channelId     String?
+  success       Boolean
+  error         String?
+  executionTime Int? // Execution time in milliseconds
+  timestamp     DateTime @default(now())
+
+  command CustomCommand @relation(fields: [commandId], references: [id])
+
+  @@index([guildId, commandId, timestamp])
+  @@index([userId, timestamp])
+}
+
+/// -------------------------
+/// Reminder System Models
+/// -------------------------
+
+model ReminderAdvanced {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId    String
+  userId     String
+  channelId  String?
+  message    String
+  reminderAt DateTime
+  recurring  Json? // Recurring reminder configuration
+  completed  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([reminderAt, completed])
+  @@index([guildId, userId])
+}
+
+/// -------------------------
+/// Giveaway System Models
+/// -------------------------
+
+model GiveawayAdvanced {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  channelId    String
+  messageId    String?
+  createdBy    String
+  title        String
+  description  String?
+  prize        String
+  winnerCount  Int      @default(1)
+  requirements Json? // Entry requirements
+  startTime    DateTime @default(now())
+  endTime      DateTime
+  status       String   @default("active") // active, ended, cancelled
+  winners      String[] @default([])
+  entryCount   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  entries GiveawayEntryAdvanced[]
+
+  @@index([guildId, status])
+  @@index([endTime])
+}
+
+model GiveawayEntryAdvanced {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  giveawayId String
+  userId     String
+  enteredAt  DateTime @default(now())
+
+  giveaway GiveawayAdvanced @relation(fields: [giveawayId], references: [id])
+
+  @@unique([giveawayId, userId])
+  @@index([giveawayId])
+}

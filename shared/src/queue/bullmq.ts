@@ -1,4 +1,4 @@
-import { Queue, QueueScheduler, QueueEvents } from 'bullmq';
+import { Queue, QueueEvents } from 'bullmq';
 import type { RedisOptions } from 'ioredis';
 import IORedis from 'ioredis';
 import * as promClient from 'prom-client';
@@ -36,12 +36,12 @@ export function createBullMQConnection(options?: Partial<RedisOptions>) {
 }
 
 /**
- * Registry that holds a single Queue + accompanying QueueScheduler & QueueEvents per queue name.
+ * Registry that holds a single Queue + accompanying QueueEvents per queue name.
  * This singleton helps ensure all services share the same Redis connection pool.
+ * Note: QueueScheduler was deprecated in BullMQ v4.0.0 - delayed jobs are now handled automatically by Workers.
  */
 export class BullMQRegistry {
 	private queues = new Map<string, any>();
-	private schedulers = new Map<string, any>();
 	private events = new Map<string, any>();
 	private connection = createBullMQConnection();
 
@@ -91,8 +91,7 @@ export class BullMQRegistry {
 			},
 		});
 
-		// Scheduler for delayed / repeatable jobs
-		const scheduler = new QueueScheduler(name, { connection: this.connection });
+		// QueueEvents for monitoring job state changes
 		const queueEvents = new QueueEvents(name, { connection: this.connection });
 
 		// Metrics instrumentation
@@ -109,7 +108,6 @@ export class BullMQRegistry {
 		});
 
 		this.queues.set(name, queue);
-		this.schedulers.set(name, scheduler);
 		this.events.set(name, queueEvents);
 
 		return queue;
@@ -120,10 +118,10 @@ export class BullMQRegistry {
 		return this.events.get(name) || null;
 	}
 
-	/** Clean shutdown for workers & schedulers */
+	/** Clean shutdown for queues and events */
 	async shutdown(): Promise<void> {
 		await Promise.all([
-			...Array.from(this.schedulers.values()).map((s) => s.close()),
+			...Array.from(this.events.values()).map((e) => e.close()),
 			...Array.from(this.queues.values()).map((q) => q.close()),
 			this.connection.quit(),
 		]);
