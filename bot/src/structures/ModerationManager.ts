@@ -295,10 +295,10 @@ export default class ModerationManager {
    * Get user's moderation history
    */
   async getUserHistory(guildId: string, userId: string, limit = 50): Promise<ModerationCase[]> {
-    const cacheKey = `moderation:history:${guildId}:${userId}:${limit}`;
+    const cacheKey = `moderation:history:${guildId}:${userId}:${String(limit)}`;
 
     // Try to get from cache first
-    const cached = await cacheService.get<ModerationCase[]>(cacheKey, "userInfractions");
+    const cached = cacheService.get(cacheKey) as ModerationCase[] | null;
     if (cached) {
       return cached;
     }
@@ -319,7 +319,7 @@ export default class ModerationManager {
     });
 
     // Cache the result
-    await cacheService.set(cacheKey, cases, "userInfractions");
+    cacheService.set(cacheKey, cases);
 
     return cases as unknown as ModerationCase[];
   }
@@ -382,7 +382,7 @@ export default class ModerationManager {
     const cacheKey = `moderation:points:${guildId}:${userId}`;
 
     // Try to get from cache first
-    const cached = await cacheService.get<number>(cacheKey, "userInfractions");
+    const cached = cacheService.get(cacheKey) as number | null;
     if (cached !== null) {
       return cached;
     }
@@ -401,7 +401,7 @@ export default class ModerationManager {
       const points = infractions?.totalPoints ?? 0;
 
       // Cache the result with shorter TTL since points change frequently
-      await cacheService.set(cacheKey, points, "userInfractions");
+      cacheService.set(cacheKey, points, 60 * 1000); // 1 minute TTL
 
       return points;
     } catch (error) {
@@ -610,7 +610,7 @@ export default class ModerationManager {
         if (action.duration) {
           const timeoutDuration = action.duration * 1000; // Convert to milliseconds
           await member.timeout(timeoutDuration, action.reason);
-          logger.info(`Direct timeout executed for user ${action.userId} for ${action.duration}s`);
+          logger.info(`Direct timeout executed for user ${action.userId} for ${String(action.duration)}s`);
         } else {
           throw new Error("Duration is required for timeout action");
         }
@@ -654,7 +654,7 @@ export default class ModerationManager {
         .setColor(this.getActionColor(case_.type))
         .addFields(
           { name: "Action", value: case_.type, inline: true },
-          { name: "Case #", value: case_.caseNumber.toString(), inline: true },
+          { name: "Case #", value: String(case_.caseNumber), inline: true },
           { name: "Reason", value: case_.reason ?? "No reason provided", inline: false }
         )
         .setTimestamp()
@@ -700,7 +700,7 @@ export default class ModerationManager {
       });
 
       // Invalidate cache entries for this user
-      await cacheService.deletePattern(`moderation:*:${guildId}:${userId}*`);
+      cacheService.invalidatePattern(`moderation:.*:${guildId}:${userId}.*`);
     } catch (error) {
       logger.error("Error updating infraction points:", error);
     }
@@ -761,11 +761,11 @@ export default class ModerationManager {
     for (const unit of units) {
       const count = Math.floor(seconds / unit.seconds);
       if (count > 0) {
-        return `${count} ${unit.name}${count !== 1 ? "s" : ""}`;
+        return `${String(count)} ${unit.name}${count !== 1 ? "s" : ""}`;
       }
     }
 
-    return `${seconds} second${seconds !== 1 ? "s" : ""}`;
+    return `${String(seconds)} second${seconds !== 1 ? "s" : ""}`;
   }
 
   /**

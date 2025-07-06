@@ -189,8 +189,11 @@ export default class Client extends DiscordClient {
       // Warm up cache with current guilds if any
       const guildIds = this.guilds.cache.map((guild) => guild.id);
       if (guildIds.length > 0) {
-        logger.info(`Warming up cache for ${guildIds.length} guilds...`);
-        cacheService.warmup(guildIds);
+        logger.info(`Warming up cache for ${String(guildIds.length)} guilds...`);
+        // Note: warmUp currently just logs, actual implementation pending
+        for (const guildId of guildIds) {
+          cacheService.warmUp(guildId);
+        }
       }
 
       logger.info("Logging into Discord... ");
@@ -248,7 +251,7 @@ export default class Client extends DiscordClient {
       try {
         const port = Number(process.env.METRICS_PORT ?? "9321");
         startMetricsServer(this, this.queueService, port);
-        logger.info(`Metrics server started on port ${port}`);
+        logger.info(`Metrics server started on port ${String(port)}`);
       } catch (error) {
         logger.warn("Failed to start metrics server:", error);
       }
@@ -258,7 +261,7 @@ export default class Client extends DiscordClient {
       // Log cache statistics after startup
       const stats = cacheService.getStats();
       logger.info(
-        `Cache service ready - Memory entries: ${stats.memoryEntries}, Redis connected: ${stats.redisConnected}`
+        `Cache service ready - Total keys: ${String(stats.totalKeys)}, Memory usage: ${String(stats.memoryUsage)} bytes`
       );
     } catch (error) {
       logger.error(error);

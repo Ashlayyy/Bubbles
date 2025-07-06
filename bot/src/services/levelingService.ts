@@ -133,7 +133,7 @@ export class LevelingService {
         await this.onVoiceLevelUp(guildId, userId, newLevel, newTotal);
       }
 
-      loggerChild.debug(`Awarded ${xpToAward} voice XP to ${userId} in guild ${guildId}`);
+      loggerChild.debug(`Awarded ${String(xpToAward)} voice XP to ${userId} in guild ${guildId}`);
     } catch (error) {
       loggerChild.error("Error awarding voice XP:", error);
     }
@@ -238,7 +238,7 @@ export class LevelingService {
         return;
       }
 
-      loggerChild.info(`Syncing ${keys.length} XP records to database`);
+      loggerChild.info(`Syncing ${String(keys.length)} XP records to database`);
 
       for (const key of keys) {
         try {
@@ -255,14 +255,16 @@ export class LevelingService {
         }
       }
 
-      loggerChild.info(`Completed syncing ${keys.length} XP records`);
+      loggerChild.info(`Completed syncing ${String(keys.length)} XP records`);
     } catch (error) {
       loggerChild.error("Error syncing all user data:", error);
     }
   }
 
   private async onLevelUp(message: Message, level: number, totalXp: number): Promise<void> {
-    const guildId = message.guild!.id;
+    if (!message.guild) return;
+
+    const guildId = message.guild.id;
     const userId = message.author.id;
 
     // Record level-up history
@@ -284,7 +286,7 @@ export class LevelingService {
         where: { guildId, level },
       });
       if (reward && message.member) {
-        await message.member.roles.add(reward.roleId, `Level ${level} reward`);
+        await message.member.roles.add(reward.roleId, `Level ${String(level)} reward`);
       }
     } catch (err) {
       loggerChild.warn("Failed to assign level reward:", err);
@@ -294,7 +296,7 @@ export class LevelingService {
     if ("send" in message.channel) {
       const channelToSend = message.channel as unknown as { send: (options: any) => Promise<any> };
       await channelToSend.send({
-        content: `🎉 <@${userId}> just reached level **${level}**! (${totalXp} XP)`,
+        content: `🎉 <@${userId}> just reached level **${String(level)}**! (${String(totalXp)} XP)`,
       });
     }
   }
@@ -319,17 +321,15 @@ export class LevelingService {
         where: { guildId, level },
       });
       if (reward) {
-        // Get guild and member to assign role
-        const guild = await prisma.user.findFirst(); // We'll need to get guild from Discord API
-        loggerChild.info(`User ${userId} reached level ${level} through voice activity in guild ${guildId}`);
-        // Note: Role assignment from voice level-up requires Discord API access
-        // For now, we'll log it and let the next message level-up handle role assignment
+        loggerChild.info(`User ${userId} reached level ${String(level)} through voice activity in guild ${guildId}`);
       }
     } catch (err) {
       loggerChild.warn("Failed to assign voice level reward:", err);
     }
 
-    loggerChild.info(`🎉 User ${userId} reached level ${level} through voice activity! (${totalXp} XP)`);
+    loggerChild.info(
+      `🎉 User ${userId} reached level ${String(level)} through voice activity! (${String(totalXp)} XP)`
+    );
   }
 }
 

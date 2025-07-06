@@ -41,9 +41,9 @@ class CacheService {
   private stats = { hits: 0, misses: 0 };
 
   constructor(options: CacheOptions = {}) {
-    this.defaultTTL = options.defaultTTL || 5 * 60 * 1000; // 5 minutes
-    this.maxSize = options.maxSize || 1000;
-    this.keyPrefix = options.keyPrefix || "bot-cache";
+    this.defaultTTL = (options.defaultTTL ?? 5) * 60 * 1000;
+    this.maxSize = options.maxSize ?? 1000;
+    this.keyPrefix = options.keyPrefix ?? "bot-cache";
 
     // Clean up expired entries every minute
     setInterval(() => {
@@ -82,7 +82,7 @@ class CacheService {
     const entry: CacheEntry<any> = {
       data: value,
       timestamp: Date.now(),
-      ttl: ttl || this.defaultTTL,
+      ttl: ttl ?? this.defaultTTL,
     };
 
     // If cache is full, remove oldest entry
@@ -178,14 +178,14 @@ class CacheService {
       }
     }
 
-    logger.info(`Invalidated ${count} cache entries matching pattern: ${pattern}`);
+    logger.info(`Invalidated ${String(count)} cache entries matching pattern: ${pattern}`);
     return count;
   }
 
   /**
    * Warm up cache with common data
    */
-  async warmUp(guildId: string): Promise<void> {
+  warmUp(guildId: string): void {
     logger.info("Warming up cache for guild", { guildId });
 
     // This could be implemented to pre-fetch common data
@@ -215,7 +215,7 @@ class CacheService {
     }
 
     if (cleanedCount > 0) {
-      logger.debug(`Cleaned up ${cleanedCount} expired cache entries`);
+      logger.debug(`Cleaned up ${String(cleanedCount)} expired cache entries`);
     }
   }
 

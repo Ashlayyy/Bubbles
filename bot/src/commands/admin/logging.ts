@@ -669,7 +669,7 @@ async function showCategorySelection(interaction: ButtonInteraction): Promise<vo
   categories.forEach(([category, types]) => {
     const isHighVolume = category === "HIGH_VOLUME";
     const emoji = isHighVolume ? "⚠️" : "✅";
-    const description = isHighVolume ? "High-volume events (can spam channels)" : `${types.length} event types`;
+    const description = isHighVolume ? "High-volume events (can spam channels)" : `${String(types.length)} event types`;
 
     categoryEmbed.addFields({
       name: `${emoji} ${category}`,
@@ -720,7 +720,7 @@ async function performQuickSetup(interaction: ButtonInteraction, client: Client)
       .setTitle("⚡ Quick Setup Complete!")
       .setDescription(
         "Successfully enabled standard logging configuration.\n\n" +
-          `**Enabled:** ${STANDARD_LOG_TYPES.length} essential log types\n` +
+          `**Enabled:** ${String(STANDARD_LOG_TYPES.length)} essential log types\n` +
           "**Excluded:** High-volume spam events"
       )
       .addFields({
@@ -924,7 +924,7 @@ async function showLoggingStatus(client: Client, interaction: ChatInputCommandIn
   }
 }
 
-async function configureChannels(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+async function configureChannels(_client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) {
     await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
@@ -1270,12 +1270,14 @@ async function handleAllChannelSelection(interaction: ChannelSelectMenuInteracti
               .slice(0, 8)
               .map((cat) => `• ${cat.toLowerCase().replace(/_/g, " ")}`)
               .join("\n") +
-            (Object.keys(LOG_CATEGORIES).length > 8 ? `\n• ...and ${Object.keys(LOG_CATEGORIES).length - 8} more` : ""),
+            (Object.keys(LOG_CATEGORIES).length > 8
+              ? `\n• ...and ${String(Object.keys(LOG_CATEGORIES).length - 8)} more`
+              : ""),
           inline: false,
         },
         {
           name: "📊 Total Log Types",
-          value: `**${ALL_LOG_TYPES.length}** different log types will be sent to this channel`,
+          value: `**${String(ALL_LOG_TYPES.length)}** different log types will be sent to this channel`,
           inline: false,
         },
         {
@@ -1370,7 +1372,7 @@ async function handleChannelConfiguration(interaction: ButtonInteraction, client
           .slice(0, 5)
           .map((type: string) => `• ${type.replace(/_/g, " ").toLowerCase()}`)
           .join("\n") +
-        (categoryTypes.length > 5 ? `\n• ...and ${categoryTypes.length - 5} more` : "")
+        (categoryTypes.length > 5 ? `\n• ...and ${String(categoryTypes.length - 5)} more` : "")
     )
     .addFields({
       name: "💡 Tips",
@@ -1388,7 +1390,7 @@ async function handleChannelConfiguration(interaction: ButtonInteraction, client
   });
 }
 
-async function handleAllCategoryConfiguration(interaction: ButtonInteraction, client: Client): Promise<void> {
+async function handleAllCategoryConfiguration(interaction: ButtonInteraction, _client: Client): Promise<void> {
   if (!interaction.guild) {
     await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
@@ -1408,12 +1410,12 @@ async function handleAllCategoryConfiguration(interaction: ButtonInteraction, cl
     .setDescription(
       "Select a single channel where **all** log categories will be sent.\n\n" +
         "**This will route all log types to one channel including:**\n" +
-        `• Message logs (${LOG_CATEGORIES.MESSAGE.length} types)\n` +
-        `• Member logs (${LOG_CATEGORIES.MEMBER.length} types)\n` +
-        `• Moderation logs (${LOG_CATEGORIES.MODERATION.length} types)\n` +
-        `• Server logs (${LOG_CATEGORIES.SERVER.length} types)\n` +
-        `• Voice logs (${LOG_CATEGORIES.VOICE.length} types)\n` +
-        `• And ${Object.keys(LOG_CATEGORIES).length - 5} more categories`
+        `• Message logs (${String(LOG_CATEGORIES.MESSAGE.length)} types)\n` +
+        `• Member logs (${String(LOG_CATEGORIES.MEMBER.length)} types)\n` +
+        `• Moderation logs (${String(LOG_CATEGORIES.MODERATION.length)} types)\n` +
+        `• Server logs (${String(LOG_CATEGORIES.SERVER.length)} types)\n` +
+        `• Voice logs (${String(LOG_CATEGORIES.VOICE.length)} types)\n` +
+        `• And ${String(Object.keys(LOG_CATEGORIES).length - 5)} more categories`
     )
     .addFields(
       {
@@ -1517,7 +1519,7 @@ async function toggleCategory(client: Client, interaction: ChatInputCommandInter
   }
 }
 
-async function showAdvancedOptions(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+async function showAdvancedOptions(_client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   await interaction.deferReply({ ephemeral: true });
 
   const advancedEmbed = new EmbedBuilder()

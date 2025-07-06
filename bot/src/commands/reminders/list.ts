@@ -47,9 +47,9 @@ class ListRemindersCommand extends GeneralCommand {
       const customApiUrl = process.env.API_URL || "http://localhost:3001";
 
       // Fetch reminders from API
-      const response = await fetch(`${customApiUrl}/api/reminders/${guildId}?${params}`, {
+      const response = await fetch(`${customApiUrl}/api/reminders/${guildId}?${String(params)}`, {
         headers: {
-          Authorization: `Bearer ${process.env.API_TOKEN}`,
+          Authorization: `Bearer ${String(process.env.API_TOKEN)}`,
           "Content-Type": "application/json",
         },
       });
@@ -86,9 +86,9 @@ class ListRemindersCommand extends GeneralCommand {
       reminders.forEach((reminder: any, index: number) => {
         const timeDisplay =
           reminder.status === "pending"
-            ? `<t:${Math.floor(new Date(reminder.remindAt).getTime() / 1000)}:R>`
+            ? `<t:${String(Math.floor(new Date(reminder.remindAt).getTime() / 1000))}:R>`
             : reminder.status === "completed"
-              ? `✅ Completed <t:${Math.floor(new Date(reminder.completedAt).getTime() / 1000)}:R>`
+              ? `✅ Completed <t:${String(Math.floor(new Date(reminder.completedAt).getTime() / 1000))}:R>`
               : "❌ Cancelled";
 
         const priorityIcon = this.getPriorityIcon(reminder.priority);
@@ -106,7 +106,7 @@ class ListRemindersCommand extends GeneralCommand {
           .join("\n");
 
         embed.addFields({
-          name: `${index + 1}. ${reminder.title}`,
+          name: `${String(index + 1)}. ${reminder.title}`,
           value,
           inline: false,
         });
@@ -114,7 +114,7 @@ class ListRemindersCommand extends GeneralCommand {
 
       // Add pagination info
       embed.setFooter({
-        text: `Page ${pagination.currentPage} of ${pagination.totalPages} • Total: ${pagination.totalItems} reminders`,
+        text: `Page ${String(pagination.currentPage)} of ${String(pagination.totalPages)} • Total: ${String(pagination.totalItems)} reminders`,
       });
 
       // Add action buttons info

@@ -14,7 +14,7 @@ export default new ClientEvent(Events.GuildMemberAdd, async (member: GuildMember
   const accountAgeMs = Date.now() - accountCreated.getTime();
   const accountAgeDays = Math.floor(accountAgeMs / (1000 * 60 * 60 * 24));
   const accountAgeFormatted =
-    accountAgeDays < 30 ? `${accountAgeDays} days` : `${Math.floor(accountAgeDays / 30)} months`;
+    accountAgeDays < 30 ? `${String(accountAgeDays)} days` : `${String(Math.floor(accountAgeDays / 30))} months`;
 
   // Check if this might be a suspicious account
   const isSuspiciousAccount = accountAgeDays < 7; // Account created less than a week ago

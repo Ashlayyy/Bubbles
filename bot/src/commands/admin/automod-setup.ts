@@ -622,13 +622,13 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied`)
       .setDescription(
         `Successfully applied the **${preset.name}** preset configuration!\n\n` +
-          `**Rules Created:** ${createdRules}/${preset.rules.length}\n` +
+          `**Rules Created:** ${String(createdRules)}/${String(preset.rules.length)}\n` +
           `**Status:** Active and monitoring\n\n` +
           preset.description
       )
       .addFields({
         name: "📋 Applied Rules",
-        value: preset.rules.map((rule, index) => `${index + 1}. **${rule.name}** (${rule.type})`).join("\n"),
+        value: preset.rules.map((rule, index) => `${String(index + 1)}. **${rule.name}** (${rule.type})`).join("\n"),
         inline: false,
       })
       .addFields({
@@ -668,7 +668,7 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
   }
 }
 
-async function applyPreset(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+async function _applyPreset(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   const presetType = interaction.options.getString("type", true);
   const preset = AUTOMOD_PRESETS.find((p) => p.name.toLowerCase().includes(presetType));
 
@@ -758,14 +758,16 @@ async function applyPreset(client: Client, interaction: ChatInputCommandInteract
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied`)
       .setDescription(
         `Successfully applied the **${preset.name}** preset configuration!\n\n` +
-          `**Rules Created:** ${createdRules}/${preset.rules.length}\n` +
+          `**Rules Created:** ${String(createdRules)}/${String(preset.rules.length)}\n` +
           `**Status:** Active and monitoring\n\n` +
           preset.description
       )
       .addFields({
         name: "📋 Applied Rules",
         value: preset.rules
-          .map((rule: AutoModPreset["rules"][0], index: number) => `${index + 1}. **${rule.name}** (${rule.type})`)
+          .map(
+            (rule: AutoModPreset["rules"][0], index: number) => `${String(index + 1)}. **${rule.name}** (${rule.type})`
+          )
           .join("\n"),
         inline: false,
       })
@@ -806,7 +808,7 @@ async function applyPreset(client: Client, interaction: ChatInputCommandInteract
   }
 }
 
-async function showStatus(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+async function _showStatus(_client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   await interaction.deferReply({ ephemeral: true });
 
   if (!interaction.guild) {
@@ -847,10 +849,10 @@ async function showStatus(client: Client, interaction: ChatInputCommandInteracti
         {
           name: "📈 Overview",
           value:
-            `**Total Rules:** ${rules.length}\n` +
-            `**Active Rules:** ${enabledRules.length}\n` +
-            `**Disabled Rules:** ${disabledRules.length}\n` +
-            `**24h Actions:** ${recentActivity}`,
+            `**Total Rules:** ${String(rules.length)}\n` +
+            `**Active Rules:** ${String(enabledRules.length)}\n` +
+            `**Disabled Rules:** ${String(disabledRules.length)}\n` +
+            `**24h Actions:** ${String(recentActivity)}`,
           inline: true,
         },
         {
@@ -860,7 +862,7 @@ async function showStatus(client: Client, interaction: ChatInputCommandInteracti
               ? enabledRules
                   .map((rule: AutoModRule) => `• **${rule.type}** (${rule.sensitivity.toLowerCase()})`)
                   .slice(0, 6)
-                  .join("\n") + (enabledRules.length > 6 ? `\n... and ${enabledRules.length - 6} more` : "")
+                  .join("\n") + (enabledRules.length > 6 ? `\n... and ${String(enabledRules.length - 6)} more` : "")
               : "No protection currently active",
           inline: true,
         }

@@ -35,7 +35,7 @@ class ApiClient {
           config.headers.Authorization = `Bearer ${this.token}`;
         }
 
-        logger.debug(`API Request: ${config.method?.toUpperCase()} ${config.url}`, {
+        logger.debug(`API Request: ${String(config.method?.toUpperCase())} ${String(config.url)}`, {
           method: config.method,
           url: config.url,
           hasAuth: !!config.headers.Authorization,
@@ -52,7 +52,7 @@ class ApiClient {
     // Response interceptor - Handle common errors and rate limits
     this.client.interceptors.response.use(
       (response: AxiosResponse) => {
-        logger.debug(`API Response: ${response.status} ${response.config.url}`, {
+        logger.debug(`API Response: ${String(response.status)} ${response.config.url ?? "unknown"}`, {
           status: response.status,
           url: response.config.url,
           hasData: !!response.data,
@@ -64,7 +64,7 @@ class ApiClient {
         const status = error.response?.status;
         const config = error.config as AxiosRequestConfig & { _retry?: boolean };
 
-        logger.error(`API Error: ${status} ${config?.url}`, {
+        logger.error(`API Error: ${String(status ?? "unknown")} ${config?.url ?? "unknown"}`, {
           status,
           url: config?.url,
           message: error.message,
@@ -74,11 +74,11 @@ class ApiClient {
         // Handle rate limiting (429)
         if (status === 429 && !config._retry) {
           const retryAfter =
-            error.response?.headers["retry-after"] || error.response?.headers["x-ratelimit-reset-after"];
+            error.response?.headers["retry-after"] ?? error.response?.headers["x-ratelimit-reset-after"];
 
           if (retryAfter) {
             const delayMs = Math.ceil(parseFloat(retryAfter) * 1000);
-            logger.warn(`Rate limited, retrying after ${delayMs}ms`);
+            logger.warn(`Rate limited, retrying after ${String(delayMs)}ms`);
 
             config._retry = true;
             await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -110,7 +110,7 @@ class ApiClient {
 
     // Try to get from cache first
     if (shouldCache) {
-      const cached = cacheService.get<T>(cacheKey);
+      const cached = cacheService.get(cacheKey) as T;
       if (cached !== null) {
         logger.debug(`Cache hit for ${endpoint}`);
         return cached;
@@ -230,7 +230,7 @@ class ApiClient {
   private handleError(error: AxiosError, method: string, endpoint: string): Error {
     const status = error.response?.status;
     const message = error.response?.data
-      ? (error.response.data as any).error || (error.response.data as any).message || error.message
+      ? ((error.response.data as any).error ?? (error.response.data as any).message ?? error.message)
       : error.message;
 
     logger.error(`API ${method} ${endpoint} failed:`, {

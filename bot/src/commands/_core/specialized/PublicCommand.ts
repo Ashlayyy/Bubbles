@@ -5,7 +5,7 @@ export abstract class PublicCommand extends BaseCommand {
   constructor(config: CommandConfig) {
     super({
       ...config,
-      category: config.category || "public",
+      category: config.category ?? "public",
     });
   }
 
@@ -104,7 +104,7 @@ export abstract class PublicCommand extends BaseCommand {
   /**
    * Handle custom cooldown for public commands
    */
-  protected async checkCustomCooldown(commandName: string, cooldownSeconds = 5): Promise<boolean> {
+  protected async checkCustomCooldown(_commandName: string, _cooldownSeconds = 5): Promise<boolean> {
     // Use the built-in cooldown system from BaseCommand
     return await this.cooldown(this.interaction);
   }

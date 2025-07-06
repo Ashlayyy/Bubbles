@@ -52,7 +52,7 @@ interface AutoModTriggerConfig {
   patterns?: string[]; // Custom regex patterns
 }
 
-interface AutoModActionConfig {
+interface _AutoModActionConfig {
   // Primary actions
   delete?: boolean;
   warn?: boolean;
@@ -343,7 +343,7 @@ async function handleCreate(client: Client, interaction: ChatInputCommandInterac
   }
 }
 
-async function handleList(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+async function handleList(_client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) return;
 
   const detailed = interaction.options.getBoolean("detailed") ?? false;
@@ -545,7 +545,7 @@ function getTypeEmoji(type: string): string {
 }
 
 // Complete implementation of missing functions
-async function handleConfigure(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+async function handleConfigure(_client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) return;
 
   const ruleId = interaction.options.getString("rule", true);
@@ -613,7 +613,7 @@ async function handleConfigure(client: Client, interaction: ChatInputCommandInte
   }
 }
 
-async function handleDelete(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+async function handleDelete(_client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) return;
 
   const ruleId = interaction.options.getString("rule", true);
@@ -668,7 +668,7 @@ async function handleDelete(client: Client, interaction: ChatInputCommandInterac
   }
 }
 
-async function handleTest(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+async function handleTest(_client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) return;
 
   const ruleId = interaction.options.getString("rule", true);
@@ -794,7 +794,7 @@ function testRuleAgainstText(rule: AutoModRuleTest, text: string): { triggered: 
   return { triggered: false };
 }
 
-async function handleStats(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+async function handleStats(_client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) return;
 
   const ruleId = interaction.options.getString("rule");
@@ -825,7 +825,7 @@ async function handleStats(client: Client, interaction: ChatInputCommandInteract
         "30d": 30 * 24 * 60 * 60 * 1000,
       };
 
-      const since = new Date(Date.now() - timeRanges[timeframe as keyof typeof timeRanges]);
+      const _since = new Date(Date.now() - timeRanges[timeframe as keyof typeof timeRanges]);
 
       // For now, show placeholder stats since we don't have moderation action logging yet
       const embed = new EmbedBuilder()

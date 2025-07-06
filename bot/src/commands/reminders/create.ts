@@ -95,7 +95,7 @@ class CreateReminderCommand extends GeneralCommand {
           },
           {
             name: "⏰ Remind At",
-            value: `<t:${Math.floor(new Date(reminder.remindAt).getTime() / 1000)}:F>`,
+            value: `<t:${String(Math.floor(new Date(reminder.remindAt).getTime() / 1000))}:F>`,
             inline: true,
           },
           {
@@ -151,7 +151,7 @@ class CreateReminderCommand extends GeneralCommand {
         },
         {
           name: "📅 Created",
-          value: `<t:${Math.floor(new Date(reminder.createdAt).getTime() / 1000)}:R>`,
+          value: `<t:${String(Math.floor(new Date(reminder.createdAt).getTime() / 1000))}:R>`,
           inline: true,
         },
         {
@@ -288,11 +288,12 @@ class CreateReminderCommand extends GeneralCommand {
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
 
-    if (days > 0) return `${days} day${days !== 1 ? "s" : ""}, ${hours % 24} hour${hours % 24 !== 1 ? "s" : ""}`;
+    if (days > 0)
+      return `${String(days)} day${days !== 1 ? "s" : ""}, ${String(hours % 24)} hour${hours % 24 !== 1 ? "s" : ""}`;
     if (hours > 0)
-      return `${hours} hour${hours !== 1 ? "s" : ""}, ${minutes % 60} minute${minutes % 60 !== 1 ? "s" : ""}`;
-    if (minutes > 0) return `${minutes} minute${minutes !== 1 ? "s" : ""}`;
-    return `${seconds} second${seconds !== 1 ? "s" : ""}`;
+      return `${String(hours)} hour${hours !== 1 ? "s" : ""}, ${String(minutes % 60)} minute${minutes % 60 !== 1 ? "s" : ""}`;
+    if (minutes > 0) return `${String(minutes)} minute${minutes !== 1 ? "s" : ""}`;
+    return `${String(seconds)} second${seconds !== 1 ? "s" : ""}`;
   }
 }
 

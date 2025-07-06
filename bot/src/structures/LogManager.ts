@@ -372,7 +372,7 @@ export default class LogManager {
 
     try {
       // Try cache first
-      const cached = await cacheService.get<LogSettings>(cacheKey, "default");
+      const cached = cacheService.get(cacheKey) as LogSettings | null;
       if (cached) {
         return cached;
       }
@@ -393,7 +393,7 @@ export default class LogManager {
       };
 
       // Cache result
-      await cacheService.set(cacheKey, logSettings, "default");
+      cacheService.set(cacheKey, logSettings, 5 * 60 * 1000); // 5 minutes
 
       return logSettings;
     } catch (error) {
@@ -412,7 +412,7 @@ export default class LogManager {
    * Invalidate log settings cache
    */
   static async invalidateLogSettingsCache(guildId: string): Promise<void> {
-    await cacheService.delete(`logs:settings:${guildId}`);
+    cacheService.delete(`logs:settings:${guildId}`);
   }
 
   /**
@@ -447,7 +447,7 @@ export default class LogManager {
    */
   private createStubLogEntry(guildId: string, logType: string, data: Partial<LogEvent>): LogEntry {
     return {
-      id: `stub_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      id: `stub_${String(Date.now().toString(36))}${String(Math.random().toString(36).slice(2, 6))}`,
       guildId,
       logType,
       userId: data.userId ?? null,
