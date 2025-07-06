@@ -11,7 +11,7 @@ class UserInfoCommand extends GeneralCommand {
       description: "Display information about a user",
       category: "general",
       guildOnly: true,
-      ephemeral: false,
+      ephemeral: true,
     };
 
     super(config);
@@ -177,7 +177,7 @@ class UserInfoCommand extends GeneralCommand {
 
       await this.logCommandUsage("userinfo", { target: targetUser.id });
 
-      return { embeds: [embed], ephemeral: false };
+      return { embeds: [embed], ephemeral: true };
     } catch (error) {
       logger.error("Error in userinfo command:", error);
       return this.createGeneralError(

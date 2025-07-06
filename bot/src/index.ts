@@ -53,3 +53,26 @@ import Client from "./structures/Client.js";
 
 const client = await Client.get();
 await client.start();
+
+// Start periodic voice XP processing
+import { levelingService } from "./services/levelingService.js";
+setInterval(() => {
+  (async () => {
+    try {
+      await levelingService.processVoiceXP();
+    } catch (error) {
+      console.error("Error processing voice XP:", error);
+    }
+  })();
+}, 60000); // Process every minute
+
+// Start periodic database sync (every 15 minutes)
+setInterval(() => {
+  (async () => {
+    try {
+      await levelingService.syncAllUserData();
+    } catch (error) {
+      console.error("Error syncing user data:", error);
+    }
+  })();
+}, 900000); // Sync every 15 minutes

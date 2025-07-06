@@ -53,6 +53,10 @@ export default new ClientEvent(Events.MessageCreate, async (message: Message) =>
   const { AutoModService } = await import("../../services/autoModService.js");
   await AutoModService.processMessage(client, message);
 
+  // Award XP for leveling system
+  const { levelingService } = await import("../../services/levelingService.js");
+  await levelingService.handleMessage(message);
+
   // Log the message creation to general logging system
   await client.logManager.log(message.guild.id, "messageCreate", {
     userId: message.author.id,

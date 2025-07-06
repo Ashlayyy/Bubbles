@@ -58,13 +58,10 @@ export class TicketRoleManager {
           supportRoles: ticketRoleConfig.supportRoles.map((r) => r.roleId),
           autoAddRoles: ticketRoleConfig.autoAddRoles || [],
           persistentRoles: ticketRoleConfig.persistentRoles || [],
-          categorySpecificRoles: ticketRoleConfig.categoryRoles.reduce(
-            (acc, cr) => {
-              acc[cr.category] = cr.roleIds;
-              return acc;
-            },
-            {} as Record<string, string[]>
-          ),
+          categorySpecificRoles: ticketRoleConfig.categoryRoles.reduce<Record<string, string[]>>((acc, cr) => {
+            acc[cr.category] = cr.roleIds;
+            return acc;
+          }, {}),
           temporaryRoles: ticketRoleConfig.temporaryRoles.map((r) => r.roleId),
           roleHierarchy:
             ticketRoleConfig.roleHierarchy &&

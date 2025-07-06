@@ -5,7 +5,7 @@ import { cacheService } from "../services/cacheService.js";
 // Legacy compatibility functions for existing code
 export function setCachedGuildConfig(guildId: string, config: GuildConfig): void {
   // Set in new cache service asynchronously
-  void cacheService.set(`guild:config:${guildId}`, config, "guildConfig");
+  cacheService.set(`guild:config:${guildId}`, config, "guildConfig");
   logger.debug(`Cached guild config for ${guildId}`);
 }
 
@@ -24,7 +24,7 @@ export class GuildConfigCacheManager {
    * Get guild config from cache
    */
   static async getGuildConfigCached(guildId: string): Promise<GuildConfig | null> {
-    return await cacheService.get<GuildConfig>(`${this.CACHE_PREFIX}${guildId}`, "guildConfig");
+    return cacheService.get<GuildConfig>(`${this.CACHE_PREFIX}${guildId}`, "guildConfig");
   }
 
   /**

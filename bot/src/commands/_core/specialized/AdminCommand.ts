@@ -11,6 +11,14 @@ export abstract class AdminCommand extends BaseCommand {
     });
   }
 
+  /**
+   * Get default admin permissions for command builders
+   * This should be used in the builder's .setDefaultMemberPermissions()
+   */
+  static getDefaultAdminPermissions(): string {
+    return "0"; // Requires administrator permission
+  }
+
   // Admin-specific utility methods
 
   /**

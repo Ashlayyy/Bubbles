@@ -1,372 +1,137 @@
-import Redis from "ioredis";
 import logger from "../logger.js";
 
-export interface CacheEntry<T> {
+/**
+ * Cache entry with TTL support
+ */
+interface CacheEntry<T> {
   data: T;
-  expires: number;
-  hits: number;
-  lastAccessed: number;
-}
-
-export interface CacheStats {
-  totalHits: number;
-  totalMisses: number;
-  hitRate: number;
-  memoryEntries: number;
-  redisConnected: boolean;
-}
-
-export type CacheType =
-  | "guildConfig"
-  | "moderationCase"
-  | "userInfractions"
-  | "ticketData"
-  | "autoModRules"
-  | "permissions"
-  | "default";
-
-export interface BulkCacheEntry {
-  key: string;
-  value: unknown;
-  type?: CacheType;
+  timestamp: number;
+  ttl: number;
 }
 
 /**
- * Warmup entry structure for guild configurations
+ * Cache configuration options
  */
-export interface WarmupEntry {
-  guildId: string;
-  configData: unknown;
+interface CacheOptions {
+  defaultTTL?: number; // in milliseconds
+  maxSize?: number;
+  keyPrefix?: string;
 }
 
-export class CacheService {
-  private redis: Redis;
-  private memoryCache = new Map<string, CacheEntry<unknown>>();
-  private stats = {
-    hits: 0,
-    misses: 0,
-    memoryHits: 0,
-    redisHits: 0,
-  };
+/**
+ * Cache statistics for monitoring
+ */
+export interface CacheStats {
+  hits: number;
+  misses: number;
+  hitRatio: number;
+  totalKeys: number;
+  memoryUsage: number;
+}
 
-  private redisConnected = false;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5; // Limit reconnection attempts
-  private hasGivenUpReconnecting = false;
+/**
+ * Cache Service
+ * Provides intelligent caching for API responses with TTL support
+ */
+class CacheService {
+  private cache = new Map<string, CacheEntry<any>>();
+  private readonly defaultTTL: number;
+  private readonly maxSize: number;
+  private readonly keyPrefix: string;
+  private stats = { hits: 0, misses: 0 };
 
-  // Cache TTL configurations (in milliseconds)
-  private readonly TTL_CONFIG: Record<CacheType, number> = {
-    guildConfig: 30 * 60 * 1000, // 30 minutes
-    moderationCase: 15 * 60 * 1000, // 15 minutes
-    userInfractions: 10 * 60 * 1000, // 10 minutes
-    ticketData: 5 * 60 * 1000, // 5 minutes
-    autoModRules: 20 * 60 * 1000, // 20 minutes
-    permissions: 25 * 60 * 1000, // 25 minutes
-    default: 10 * 60 * 1000, // 10 minutes default
-  };
+  constructor(options: CacheOptions = {}) {
+    this.defaultTTL = options.defaultTTL || 5 * 60 * 1000; // 5 minutes
+    this.maxSize = options.maxSize || 1000;
+    this.keyPrefix = options.keyPrefix || "bot-cache";
 
-  // Memory cache size limits
-  private readonly MAX_MEMORY_ENTRIES = 1000;
-  private readonly CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
-
-  constructor() {
-    // Use dedicated Redis DB for caching (different from queues)
-    this.redis = this.createLimitedRedisConnection();
-
-    this.setupRedisEventHandlers();
-    this.startCleanupInterval();
-
-    // Attempt initial connection to test Redis availability
-    void this.initializeRedisConnection();
-
-    logger.info("Cache service initialized with Redis and memory layers");
-  }
-
-  private createLimitedRedisConnection(): Redis {
-    const redis = new Redis({
-      host: process.env.REDIS_HOST ?? "localhost",
-      port: parseInt(process.env.REDIS_PORT ?? "6379"),
-      password: process.env.REDIS_PASSWORD,
-      db: 0,
-      lazyConnect: true,
-      maxRetriesPerRequest: 3,
-      enableReadyCheck: true,
-      connectTimeout: 5000,
-      commandTimeout: 5000,
-    });
-
-    // Limit reconnection attempts to prevent infinite loops
-    redis.on("reconnecting", () => {
-      this.reconnectAttempts++;
-
-      if (this.reconnectAttempts > this.maxReconnectAttempts) {
-        logger.warn(`Cache Redis giving up after ${this.maxReconnectAttempts} reconnection attempts`);
-        this.hasGivenUpReconnecting = true;
-        redis.disconnect(false); // Stop reconnecting
-        return;
-      }
-
-      logger.warn(`Cache Redis reconnecting... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-    });
-
-    return redis;
-  }
-
-  private setupRedisEventHandlers(): void {
-    this.redis.on("connect", () => {
-      logger.info("Cache Redis connected successfully");
-      this.redisConnected = true;
-      this.reconnectAttempts = 0; // Reset attempts on successful connection
-      this.hasGivenUpReconnecting = false;
-    });
-
-    this.redis.on("ready", () => {
-      logger.info("Cache Redis is ready");
-      this.redisConnected = true;
-    });
-
-    this.redis.on("error", (error) => {
-      if (!this.hasGivenUpReconnecting) {
-        logger.error("Cache Redis connection error:", error.message);
-      }
-      this.redisConnected = false;
-    });
-
-    this.redis.on("close", () => {
-      if (!this.hasGivenUpReconnecting) {
-        logger.warn("Cache Redis connection closed");
-      }
-      this.redisConnected = false;
-    });
-
-    this.redis.on("end", () => {
-      logger.warn("Cache Redis has stopped reconnecting - operating in memory-only mode");
-      this.redisConnected = false;
-      this.hasGivenUpReconnecting = true;
-    });
-  }
-
-  /**
-   * Initialize Redis connection by attempting a simple operation
-   */
-  private async initializeRedisConnection(): Promise<void> {
-    try {
-      // Attempt to connect and ping Redis
-      await this.redis.ping();
-      logger.info("Cache Redis connection test successful");
-    } catch (error) {
-      logger.warn("Cache Redis connection test failed - will operate in memory-only mode", error);
-    }
-  }
-
-  /**
-   * Check if Redis is available for cache operations
-   */
-  private isRedisAvailable(): boolean {
-    return this.redisConnected && !this.hasGivenUpReconnecting;
-  }
-
-  private startCleanupInterval(): void {
+    // Clean up expired entries every minute
     setInterval(() => {
-      this.cleanupMemoryCache();
-    }, this.CLEANUP_INTERVAL);
-  }
-
-  private cleanupMemoryCache(): void {
-    const now = Date.now();
-    let cleaned = 0;
-
-    for (const [key, entry] of this.memoryCache.entries()) {
-      if (now >= entry.expires) {
-        this.memoryCache.delete(key);
-        cleaned++;
-      }
-    }
-
-    // Also enforce size limits
-    if (this.memoryCache.size > this.MAX_MEMORY_ENTRIES) {
-      const entries = Array.from(this.memoryCache.entries());
-      // Sort by least recently accessed
-      entries.sort((a, b) => a[1].lastAccessed - b[1].lastAccessed);
-
-      const toRemove = this.memoryCache.size - this.MAX_MEMORY_ENTRIES;
-      for (let i = 0; i < toRemove; i++) {
-        this.memoryCache.delete(entries[i][0]);
-        cleaned++;
-      }
-    }
-
-    if (cleaned > 0) {
-      logger.debug(`Cleaned ${cleaned} expired/excess entries from memory cache`);
-    }
-  }
-
-  private getTTL(type: CacheType): number {
-    return this.TTL_CONFIG[type] || this.TTL_CONFIG.default;
+      this.cleanup();
+    }, 60 * 1000);
   }
 
   /**
-   * Get value from cache with multi-level lookup
-   * L1: Memory Cache (fastest)
-   * L2: Redis Cache (shared, if available)
-   * L3: Miss (needs DB lookup)
+   * Get value from cache
    */
-  async get<T = unknown>(key: string, type: CacheType = "default"): Promise<T | null> {
-    const now = Date.now();
+  get(key: string): any {
+    const fullKey = this.buildKey(key);
+    const entry = this.cache.get(fullKey);
 
-    // L1: Check memory cache first
-    const memoryEntry = this.memoryCache.get(key);
-    if (memoryEntry && now < memoryEntry.expires) {
-      memoryEntry.hits++;
-      memoryEntry.lastAccessed = now;
-      this.stats.hits++;
-      this.stats.memoryHits++;
-      logger.debug(`Cache HIT (memory): ${key}`);
-      return memoryEntry.data as T;
+    if (!entry) {
+      this.stats.misses++;
+      return null;
     }
 
-    // L2: Check Redis cache (only if available)
-    if (this.isRedisAvailable()) {
-      try {
-        const redisValue = await this.redis.get(key);
-        if (redisValue) {
-          const parsed = JSON.parse(redisValue) as T;
-
-          // Store in memory cache for faster future access
-          this.memoryCache.set(key, {
-            data: parsed,
-            expires: now + this.getTTL(type),
-            hits: 1,
-            lastAccessed: now,
-          });
-
-          this.stats.hits++;
-          this.stats.redisHits++;
-          logger.debug(`Cache HIT (redis): ${key}`);
-          return parsed;
-        }
-      } catch (error) {
-        logger.error(`Redis cache error for key ${key}:`, error);
-        // Continue to cache miss - don't fail the operation
-      }
+    // Check if expired
+    if (Date.now() - entry.timestamp > entry.ttl) {
+      this.cache.delete(fullKey);
+      this.stats.misses++;
+      return null;
     }
 
-    // L3: Cache miss
-    this.stats.misses++;
-    logger.debug(`Cache MISS: ${key}`);
-    return null;
+    this.stats.hits++;
+    return entry.data;
   }
 
   /**
-   * Set value in both cache layers (Redis only if available)
+   * Set value in cache
    */
-  async set(key: string, value: unknown, type: CacheType = "default"): Promise<void> {
-    const now = Date.now();
-    const ttl = this.getTTL(type);
-    const expires = now + ttl;
-
-    // Always store in memory cache
-    this.memoryCache.set(key, {
+  set(key: string, value: any, ttl?: number): void {
+    const fullKey = this.buildKey(key);
+    const entry: CacheEntry<any> = {
       data: value,
-      expires,
-      hits: 0,
-      lastAccessed: now,
-    });
+      timestamp: Date.now(),
+      ttl: ttl || this.defaultTTL,
+    };
 
-    // Store in Redis only if available
-    if (this.isRedisAvailable()) {
-      try {
-        await this.redis.setex(key, Math.floor(ttl / 1000), JSON.stringify(value));
-        logger.debug(`Cache SET: ${key} (TTL: ${Math.floor(ttl / 1000)}s)`);
-      } catch (error) {
-        logger.error(`Redis cache set error for key ${key}:`, error);
-        // Continue - memory cache is still set
+    // If cache is full, remove oldest entry
+    if (this.cache.size >= this.maxSize) {
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey) {
+        this.cache.delete(oldestKey);
       }
-    } else {
-      logger.debug(`Cache SET (memory only): ${key} - Redis unavailable`);
     }
+
+    this.cache.set(fullKey, entry);
   }
 
   /**
-   * Delete from both cache layers
+   * Delete value from cache
    */
-  async delete(key: string): Promise<void> {
-    this.memoryCache.delete(key);
-
-    if (this.isRedisAvailable()) {
-      try {
-        await this.redis.del(key);
-        logger.debug(`Cache DELETE: ${key}`);
-      } catch (error) {
-        logger.error(`Redis cache delete error for key ${key}:`, error);
-      }
-    }
+  delete(key: string): boolean {
+    const fullKey = this.buildKey(key);
+    return this.cache.delete(fullKey);
   }
 
   /**
-   * Delete multiple keys with pattern
+   * Clear all cache entries
    */
-  async deletePattern(pattern: string): Promise<void> {
-    // Clear matching keys from memory cache
-    for (const key of this.memoryCache.keys()) {
-      if (key.includes(pattern.replace("*", ""))) {
-        this.memoryCache.delete(key);
-      }
-    }
-
-    // Clear from Redis if available
-    if (this.isRedisAvailable()) {
-      try {
-        const keys = await this.redis.keys(pattern);
-        if (keys.length > 0) {
-          await this.redis.del(...keys);
-          logger.debug(`Cache DELETE PATTERN: ${pattern} (${keys.length} keys)`);
-        }
-      } catch (error) {
-        logger.error(`Redis cache pattern delete error for pattern ${pattern}:`, error);
-      }
-    }
+  clear(): void {
+    this.cache.clear();
+    this.stats.hits = 0;
+    this.stats.misses = 0;
+    logger.info("Cache cleared");
   }
 
   /**
-   * Bulk set operation for efficiency
+   * Check if key exists in cache
    */
-  async setBulk(entries: BulkCacheEntry[]): Promise<void> {
-    const now = Date.now();
+  has(key: string): boolean {
+    const fullKey = this.buildKey(key);
+    const entry = this.cache.get(fullKey);
 
-    // Always set in memory
-    for (const entry of entries) {
-      const type = entry.type ?? "default";
-      const ttl = this.getTTL(type);
-      const expires = now + ttl;
-
-      this.memoryCache.set(entry.key, {
-        data: entry.value,
-        expires,
-        hits: 0,
-        lastAccessed: now,
-      });
+    if (!entry) {
+      return false;
     }
 
-    // Set in Redis if available
-    if (this.isRedisAvailable()) {
-      const pipeline = this.redis.pipeline();
-
-      for (const entry of entries) {
-        const type = entry.type ?? "default";
-        const ttl = this.getTTL(type);
-        pipeline.setex(entry.key, Math.floor(ttl / 1000), JSON.stringify(entry.value));
-      }
-
-      try {
-        await pipeline.exec();
-        logger.debug(`Cache BULK SET: ${entries.length} entries`);
-      } catch (error) {
-        logger.error("Redis bulk set error:", error);
-      }
-    } else {
-      logger.debug(`Cache BULK SET (memory only): ${entries.length} entries - Redis unavailable`);
+    // Check if expired
+    if (Date.now() - entry.timestamp > entry.ttl) {
+      this.cache.delete(fullKey);
+      return false;
     }
+
+    return true;
   }
 
   /**
@@ -374,92 +139,107 @@ export class CacheService {
    */
   getStats(): CacheStats {
     const totalRequests = this.stats.hits + this.stats.misses;
+    const hitRatio = totalRequests > 0 ? this.stats.hits / totalRequests : 0;
 
     return {
-      totalHits: this.stats.hits,
-      totalMisses: this.stats.misses,
-      hitRate: totalRequests > 0 ? (this.stats.hits / totalRequests) * 100 : 0,
-      memoryEntries: this.memoryCache.size,
-      redisConnected: this.isRedisAvailable(),
+      hits: this.stats.hits,
+      misses: this.stats.misses,
+      hitRatio: Math.round(hitRatio * 100) / 100,
+      totalKeys: this.cache.size,
+      memoryUsage: this.calculateMemoryUsage(),
     };
   }
 
   /**
-   * Reset statistics
+   * Get or set value with async function
    */
-  resetStats(): void {
-    this.stats = {
-      hits: 0,
-      misses: 0,
-      memoryHits: 0,
-      redisHits: 0,
-    };
-  }
-
-  /**
-   * Warmup cache with guild configurations
-   */
-  warmup(guildIds: string[]): void {
-    logger.info(`Warming up cache for ${guildIds.length} guilds...`);
-
-    // This is typically called during startup, so we'll skip actual DB calls
-    // and just log that warmup was requested - the actual data will be cached
-    // on first access via normal get/set operations
-
-    logger.info("Cache warmup completed (lazy loading enabled)");
-  }
-
-  /**
-   * Get or set pattern - atomic cache operation
-   */
-  async getOrSet<T = unknown>(key: string, getter: () => Promise<T>, type: CacheType = "default"): Promise<T> {
-    const cached = await this.get<T>(key, type);
+  async getOrSet<T>(key: string, fetchFunction: () => Promise<T>, ttl?: number): Promise<T> {
+    const cached = this.get(key) as T | null;
     if (cached !== null) {
       return cached;
     }
 
-    const value = await getter();
-    await this.set(key, value, type);
+    const value = await fetchFunction();
+    this.set(key, value, ttl);
     return value;
   }
 
   /**
-   * Clear all caches
+   * Invalidate cache entries by pattern
    */
-  async clear(): Promise<void> {
-    this.memoryCache.clear();
+  invalidatePattern(pattern: string): number {
+    const regex = new RegExp(pattern);
+    let count = 0;
 
-    if (this.isRedisAvailable()) {
-      try {
-        await this.redis.flushdb();
-        logger.info("All caches cleared");
-      } catch (error) {
-        logger.error("Error clearing Redis cache:", error);
+    for (const key of this.cache.keys()) {
+      if (regex.test(key)) {
+        this.cache.delete(key);
+        count++;
       }
-    } else {
-      logger.info("Memory cache cleared (Redis unavailable)");
+    }
+
+    logger.info(`Invalidated ${count} cache entries matching pattern: ${pattern}`);
+    return count;
+  }
+
+  /**
+   * Warm up cache with common data
+   */
+  async warmUp(guildId: string): Promise<void> {
+    logger.info("Warming up cache for guild", { guildId });
+
+    // This could be implemented to pre-fetch common data
+    // For now, we'll just log the intent
+    logger.info("Cache warm-up completed for guild", { guildId });
+  }
+
+  /**
+   * Build full cache key with prefix
+   */
+  private buildKey(key: string): string {
+    return `${this.keyPrefix}:${key}`;
+  }
+
+  /**
+   * Clean up expired entries
+   */
+  private cleanup(): void {
+    const now = Date.now();
+    let cleanedCount = 0;
+
+    for (const [key, entry] of this.cache.entries()) {
+      if (now - entry.timestamp > entry.ttl) {
+        this.cache.delete(key);
+        cleanedCount++;
+      }
+    }
+
+    if (cleanedCount > 0) {
+      logger.debug(`Cleaned up ${cleanedCount} expired cache entries`);
     }
   }
 
   /**
-   * Graceful shutdown
+   * Calculate approximate memory usage
    */
-  async shutdown(): Promise<void> {
-    logger.info("Shutting down cache service...");
-
-    try {
-      if (this.isRedisAvailable()) {
-        await this.redis.quit();
-      } else {
-        this.redis.disconnect();
-      }
-      this.memoryCache.clear();
-      logger.info("Cache service shutdown complete");
-    } catch (error) {
-      logger.error("Error during cache shutdown:", error);
+  private calculateMemoryUsage(): number {
+    // Rough estimate of memory usage in bytes
+    let size = 0;
+    for (const [key, entry] of this.cache.entries()) {
+      size += key.length * 2; // Unicode chars are 2 bytes
+      size += JSON.stringify(entry.data).length * 2;
+      size += 16; // Approximate overhead per entry
     }
+    return size;
   }
 }
 
-export const cacheService = new CacheService();
-export default cacheService;
+// Export singleton instance
+export const cacheService = new CacheService({
+  defaultTTL: 5 * 60 * 1000, // 5 minutes
+  maxSize: 1000,
+  keyPrefix: "bubbles-bot",
+});
+
+// Export class for testing
+export { CacheService };

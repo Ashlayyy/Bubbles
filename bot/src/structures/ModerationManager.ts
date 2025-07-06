@@ -6,7 +6,7 @@ import { getGuildConfig } from "../database/GuildConfig.js";
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import { cacheService } from "../services/cacheService.js";
-import ModerationMutex, { MutexError } from "../utils/ModerationMutex.js";
+import { ModerationMutex, MutexError } from "../utils/ModerationMutex.js";
 import { ModerationThrottle, ThrottleError } from "../utils/ModerationThrottle.js";
 import type Client from "./Client.js";
 import type LogManager from "./LogManager.js";
