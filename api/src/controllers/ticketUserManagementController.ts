@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '@bubbles/shared';
-import { validateRequest } from '../validation/zodValidate.js';
+import { getPrismaClient } from '../services/databaseService.js';
+import type { AuthRequest } from '../middleware/auth.js';
 
 // Validation schemas
 const addUserSchema = z.object({

@@ -7,6 +7,22 @@ import { wsManager } from '../websocket/manager.js';
 
 const logger = createLogger('tickets-controller');
 
+// Helper function to create WebSocket message
+function createWebSocketMessage(event: string, data: any) {
+	return {
+		type: 'SYSTEM',
+		event: event,
+		data,
+		timestamp: Date.now(),
+		messageId: generateId(),
+	};
+}
+
+// Helper function to generate ID
+function generateId(): string {
+	return Math.random().toString(36).substr(2, 9);
+}
+
 // Get ticket settings
 export const getTicketSettings = async (req: AuthRequest, res: Response) => {
 	try {
@@ -806,7 +822,7 @@ export const bulkAssignTickets = async (req: AuthRequest, res: Response) => {
 		// Update all tickets
 		const updatedTickets = await prisma.ticket.updateMany({
 			where: {
-				id: { in: tickets.map((t) => t.id) },
+				id: { in: tickets.map((t: any) => t.id) },
 			},
 			data: {
 				assignedTo,
@@ -815,7 +831,7 @@ export const bulkAssignTickets = async (req: AuthRequest, res: Response) => {
 		});
 
 		// Log assignments
-		const logMessages = tickets.map((ticket) => ({
+		const logMessages = tickets.map((ticket: any) => ({
 			ticketId: ticket.id,
 			messageId: 'system',
 			userId: assignerId || 'system',
@@ -836,7 +852,7 @@ export const bulkAssignTickets = async (req: AuthRequest, res: Response) => {
 		wsManager.broadcastToGuild(
 			guildId,
 			createWebSocketMessage('ticketsBulkAssigned', {
-				ticketIds: tickets.map((t) => t.id),
+				ticketIds: tickets.map((t: any) => t.id),
 				assignedTo,
 				assignedBy: assignerId,
 				count: tickets.length,
@@ -1049,8 +1065,8 @@ export const getAssignmentStatistics = async (
 		});
 
 		const responseTimeData = assignedTickets
-			.filter((ticket) => ticket.messages.length > 0)
-			.map((ticket) => {
+			.filter((ticket: any) => ticket.messages.length > 0)
+			.map((ticket: any) => {
 				const firstResponse = ticket.messages[0];
 				const responseTime =
 					firstResponse.createdAt.getTime() - ticket.createdAt.getTime();
@@ -1063,19 +1079,24 @@ export const getAssignmentStatistics = async (
 			});
 
 		// Calculate average response times by staff
-		const staffResponseTimes = responseTimeData.reduce((acc, data) => {
-			if (!acc[data.assignedTo!]) {
-				acc[data.assignedTo!] = [];
-			}
-			acc[data.assignedTo!].push(data.responseTime);
-			return acc;
-		}, {} as Record<string, number[]>);
+		const staffResponseTimes = responseTimeData.reduce(
+			(acc: any, data: any) => {
+				if (!acc[data.assignedTo!]) {
+					acc[data.assignedTo!] = [];
+				}
+				acc[data.assignedTo!].push(data.responseTime);
+				return acc;
+			},
+			{} as Record<string, number[]>
+		);
 
 		const staffAverages = Object.entries(staffResponseTimes).map(
-			([staffId, times]) => ({
+			([staffId, times]: [string, any]) => ({
 				staffId,
-				averageResponseTime: times.reduce((a, b) => a + b, 0) / times.length,
-				ticketCount: times.length,
+				averageResponseTime:
+					(times as number[]).reduce((a: number, b: number) => a + b, 0) /
+					(times as number[]).length,
+				ticketCount: (times as number[]).length,
 			})
 		);
 
@@ -1090,7 +1111,7 @@ export const getAssignmentStatistics = async (
 
 		const statistics = {
 			period: period as string,
-			workloads: staffWorkloads.map((w) => ({
+			workloads: staffWorkloads.map((w: any) => ({
 				staffId: w.assignedTo,
 				activeTickets: w._count.assignedTo,
 			})),
@@ -1098,7 +1119,7 @@ export const getAssignmentStatistics = async (
 			assignmentHistory: assignmentHistory.slice(0, 50), // Last 50 assignments
 			unassignedTickets: unassignedCount,
 			totalAssignedTickets: staffWorkloads.reduce(
-				(sum, w) => sum + w._count.assignedTo,
+				(sum: number, w: any) => sum + w._count.assignedTo,
 				0
 			),
 		};

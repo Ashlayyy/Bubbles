@@ -1,7 +1,14 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '@bubbles/shared';
-import { validateRequest } from '../validation/zodValidate.js';
+import { getPrismaClient } from '../services/databaseService.js';
+import type { AuthRequest } from '../middleware/auth.js';
+
+const prisma = getPrismaClient();
+
+// Helper function to validate request
+function validateRequest<T>(schema: z.ZodSchema<T>, data: any) {
+	return schema.safeParse(data);
+}
 
 // Validation schemas
 const createTemplateSchema = z.object({
@@ -198,12 +205,13 @@ export const getTicketTemplate = async (
  * Create a new ticket template
  */
 export const createTicketTemplate = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
 		const { guildId } = req.params;
-		const validation = validateRequest(createTemplateSchema, req.body);
+		const prisma = getPrismaClient();
+		const validation = createTemplateSchema.safeParse(req.body);
 
 		if (!validation.success) {
 			res.status(400).json({
@@ -431,7 +439,7 @@ export const deleteTicketTemplate = async (
  * Use a template to create a ticket
  */
 export const useTicketTemplate = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
@@ -481,8 +489,8 @@ export const useTicketTemplate = async (
 
 		// Validate required fields
 		const missingFields = template.fields
-			.filter((field) => field.required && !fieldValues[field.name])
-			.map((field) => field.name);
+			.filter((field: any) => field.required && !fieldValues?.[field.name])
+			.map((field: any) => field.name);
 
 		if (missingFields.length > 0) {
 			res.status(400).json({
@@ -520,7 +528,7 @@ export const useTicketTemplate = async (
 		});
 
 		// Store field values
-		if (Object.keys(fieldValues).length > 0) {
+		if (fieldValues && Object.keys(fieldValues).length > 0) {
 			const fieldValueData = Object.entries(fieldValues).map(
 				([fieldName, value]) => ({
 					ticketId: ticket.id,
@@ -575,7 +583,7 @@ export const useTicketTemplate = async (
  * Get ticket types
  */
 export const getTicketTypes = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {

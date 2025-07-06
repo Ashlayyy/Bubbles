@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '@bubbles/shared';
-import { validateRequest } from '../validation/zodValidate.js';
+import { getPrismaClient } from '../services/databaseService.js';
 
 // Validation schemas
 const analyticsQuerySchema = z.object({
@@ -39,7 +38,8 @@ export const getTicketAnalytics = async (
 ): Promise<void> => {
 	try {
 		const { guildId } = req.params;
-		const validation = validateRequest(analyticsQuerySchema, req.query);
+		const prisma = getPrismaClient();
+		const validation = analyticsQuerySchema.safeParse(req.query);
 
 		if (!validation.success) {
 			res.status(400).json({
@@ -196,7 +196,8 @@ export const getResponseTimeAnalytics = async (
 ): Promise<void> => {
 	try {
 		const { guildId } = req.params;
-		const validation = validateRequest(analyticsQuerySchema, req.query);
+		const prisma = getPrismaClient();
+		const validation = analyticsQuerySchema.safeParse(req.query);
 
 		if (!validation.success) {
 			res.status(400).json({
@@ -318,7 +319,8 @@ export const getSatisfactionAnalytics = async (
 ): Promise<void> => {
 	try {
 		const { guildId } = req.params;
-		const validation = validateRequest(analyticsQuerySchema, req.query);
+		const prisma = getPrismaClient();
+		const validation = analyticsQuerySchema.safeParse(req.query);
 
 		if (!validation.success) {
 			res.status(400).json({
@@ -343,7 +345,6 @@ export const getSatisfactionAnalytics = async (
 				lte: defaultEndDate,
 			},
 		};
-
 		if (category) {
 			whereClause.category = category;
 		}
@@ -494,7 +495,8 @@ export const submitSatisfactionSurvey = async (
 ): Promise<void> => {
 	try {
 		const { guildId, ticketId } = req.params;
-		const validation = validateRequest(satisfactionSurveySchema, req.body);
+		const prisma = getPrismaClient();
+		const validation = satisfactionSurveySchema.safeParse(req.body);
 
 		if (!validation.success) {
 			res.status(400).json({
@@ -588,7 +590,8 @@ export const getStaffPerformance = async (
 ): Promise<void> => {
 	try {
 		const { guildId } = req.params;
-		const validation = validateRequest(analyticsQuerySchema, req.query);
+		const prisma = getPrismaClient();
+		const validation = analyticsQuerySchema.safeParse(req.query);
 
 		if (!validation.success) {
 			res.status(400).json({
@@ -672,6 +675,7 @@ async function getTimeSeriesData(
 	category?: string,
 	assigneeId?: string
 ): Promise<any[]> {
+	const prisma = getPrismaClient();
 	const whereClause: any = {
 		guildId,
 		date: {
@@ -700,6 +704,7 @@ async function getTopPerformers(
 	endDate: Date,
 	category?: string
 ): Promise<any[]> {
+	const prisma = getPrismaClient();
 	const whereClause: any = {
 		guildId,
 		createdAt: {

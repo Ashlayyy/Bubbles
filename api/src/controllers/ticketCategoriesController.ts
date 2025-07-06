@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '@shared/database';
-import { validateRequest } from '../validation/zodValidate.js';
+// import { validateRequest } from '../validation/zodValidate.js';
 
 // Validation schemas
 const createCategorySchema = z.object({
@@ -173,7 +173,7 @@ export const createTicketCategory = async (
 ): Promise<void> => {
 	try {
 		const { guildId } = req.params;
-		const validation = validateRequest(createCategorySchema, req.body);
+		const validation = createCategorySchema.safeParse(req.body);
 
 		if (!validation.success) {
 			res.status(400).json({
@@ -235,7 +235,7 @@ export const updateTicketCategory = async (
 ): Promise<void> => {
 	try {
 		const { guildId, categoryId } = req.params;
-		const validation = validateRequest(updateCategorySchema, req.body);
+		const validation = updateCategorySchema.safeParse(req.body);
 
 		if (!validation.success) {
 			res.status(400).json({
@@ -383,7 +383,7 @@ export const createCategoryWorkflow = async (
 ): Promise<void> => {
 	try {
 		const { guildId, categoryId } = req.params;
-		const validation = validateRequest(createWorkflowSchema, req.body);
+		const validation = createWorkflowSchema.safeParse(req.body);
 
 		if (!validation.success) {
 			res.status(400).json({
@@ -475,7 +475,7 @@ export const createCategoryField = async (
 ): Promise<void> => {
 	try {
 		const { guildId, categoryId } = req.params;
-		const validation = validateRequest(createFieldSchema, req.body);
+		const validation = createFieldSchema.safeParse(req.body);
 
 		if (!validation.success) {
 			res.status(400).json({

@@ -2,9 +2,25 @@ import type { Response } from 'express';
 import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
-import { wsManager, createWebSocketMessage } from '../websocket/manager.js';
+import { wsManager } from '../websocket/manager.js';
 
 const logger = createLogger('server-stats-controller');
+
+// Helper function to create WebSocket message
+function createWebSocketMessage(event: string, data: any) {
+	return {
+		type: 'SYSTEM',
+		event: event,
+		data,
+		timestamp: Date.now(),
+		messageId: generateId(),
+	};
+}
+
+// Helper function to generate ID
+function generateId(): string {
+	return Math.random().toString(36).substr(2, 9);
+}
 
 interface ServerStatsSnapshot {
 	guildId: string;
@@ -133,14 +149,14 @@ export const getHistoricalStats = async (req: AuthRequest, res: Response) => {
 		let processedData;
 		switch (metric) {
 			case 'members':
-				processedData = snapshots.map((s) => ({
+				processedData = snapshots.map((s: any) => ({
 					timestamp: s.timestamp,
 					memberCount: s.memberCount,
 					onlineCount: s.onlineCount,
 				}));
 				break;
 			case 'activity':
-				processedData = snapshots.map((s) => ({
+				processedData = snapshots.map((s: any) => ({
 					timestamp: s.timestamp,
 					messageCount: s.messageCount24h,
 					commandsExecuted: s.commandsExecuted24h,
@@ -148,7 +164,7 @@ export const getHistoricalStats = async (req: AuthRequest, res: Response) => {
 				}));
 				break;
 			case 'moderation':
-				processedData = snapshots.map((s) => ({
+				processedData = snapshots.map((s: any) => ({
 					timestamp: s.timestamp,
 					moderationCases: s.moderationCases24h,
 					ticketsCreated: s.ticketsCreated24h,
@@ -227,7 +243,7 @@ export const getGrowthAnalytics = async (req: AuthRequest, res: Response) => {
 				previous.commandsExecuted24h + previous.voiceMinutes24h,
 				current.commandsExecuted24h + current.voiceMinutes24h
 			),
-			retentionRate: calculateRetentionRate(guildId, startDate),
+			retentionRate: await calculateRetentionRate(guildId, startDate),
 			engagementRate: calculateEngagementRate(current),
 		};
 
