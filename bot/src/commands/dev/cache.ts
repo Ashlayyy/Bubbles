@@ -52,7 +52,7 @@ class CacheCommand extends DevCommand {
   private handleStats(): CommandResponse {
     const stats = cacheService.getStats();
 
-    const efficiency = stats.hitRate;
+    const efficiency = stats.hitRatio * 100; // Convert ratio to percentage
     const efficiencyColor = efficiency >= 80 ? "🟢" : efficiency >= 60 ? "🟡" : "🔴";
     const efficiencyStatus = efficiency >= 80 ? "Excellent" : efficiency >= 60 ? "Good" : "Needs Improvement";
 
@@ -64,31 +64,31 @@ class CacheCommand extends DevCommand {
         {
           name: "📊 Hit/Miss Statistics",
           value:
-            `**Total Hits:** ${stats.totalHits.toLocaleString()}\n` +
-            `**Total Misses:** ${stats.totalMisses.toLocaleString()}\n` +
-            `**Hit Rate:** ${stats.hitRate.toFixed(2)}%`,
+            `**Total Hits:** ${stats.hits.toLocaleString()}\n` +
+            `**Total Misses:** ${stats.misses.toLocaleString()}\n` +
+            `**Hit Rate:** ${(stats.hitRatio * 100).toFixed(2)}%`,
           inline: true,
         },
         {
           name: "💾 Memory Usage",
           value:
-            `**Memory Entries:** ${stats.memoryEntries.toLocaleString()}\n` +
-            `**Redis Connected:** ${stats.redisConnected ? "✅ Yes" : "❌ No"}`,
+            `**Total Keys:** ${stats.totalKeys.toLocaleString()}\n` +
+            `**Memory Usage:** ${(stats.memoryUsage / 1024 / 1024).toFixed(2)} MB`,
           inline: true,
         },
         {
           name: "⚡ Performance Impact",
           value:
-            `**DB Queries Avoided:** ${stats.totalHits.toLocaleString()}\n` +
-            `**Estimated Time Saved:** ${(stats.totalHits * 0.05).toFixed(2)}s\n` +
-            `**Load Reduction:** ${stats.hitRate.toFixed(1)}%`,
+            `**DB Queries Avoided:** ${stats.hits.toLocaleString()}\n` +
+            `**Estimated Time Saved:** ${(stats.hits * 0.05).toFixed(2)}s\n` +
+            `**Load Reduction:** ${(stats.hitRatio * 100).toFixed(1)}%`,
           inline: false,
         }
       )
       .setTimestamp()
       .setFooter({ text: "Cache statistics reset on bot restart" });
 
-    if (stats.hitRate < 60) {
+    if (stats.hitRatio * 100 < 60) {
       embed.addFields({
         name: "💡 Recommendations",
         value:
@@ -108,7 +108,7 @@ class CacheCommand extends DevCommand {
 
     try {
       if (pattern) {
-        await cacheService.deletePattern(pattern);
+        cacheService.invalidatePattern(pattern);
 
         const embed = this.buildEmbed(
           0xf39c12,
@@ -157,7 +157,8 @@ class CacheCommand extends DevCommand {
 
     // Send initial embed (auto-deferred already) via follow-up in BaseCommand? to simplify we only return final embed after warmup.
 
-    cacheService.warmup(guildIds);
+    // Warm up cache for each guild
+    guildIds.forEach((guildId) => cacheService.warmUp(guildId));
 
     await Promise.resolve();
 

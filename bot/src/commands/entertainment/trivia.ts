@@ -304,23 +304,25 @@ export class TriviaCommand extends PublicCommand {
       time: 300000, // 5 minutes to join/start
     });
 
-    collector?.on("collect", async (interaction) => {
-      try {
-        if (interaction.customId === `trivia_join_${channelId}`) {
-          await this.handleJoinGame(interaction, game);
-        } else if (interaction.customId === `trivia_start_${channelId}`) {
-          if (interaction.user.id === game.hostId) {
-            await this.startTriviaQuestions(channelId, questions);
-            await interaction.update({ content: "🎮 Game started!", embeds: [], components: [] });
-          } else {
-            await interaction.reply({ content: "❌ Only the host can start the game!", ephemeral: true });
+    collector?.on("collect", (interaction) => {
+      void (async () => {
+        try {
+          if (interaction.customId === `trivia_join_${channelId}`) {
+            await this.handleJoinGame(interaction, game);
+          } else if (interaction.customId === `trivia_start_${channelId}`) {
+            if (interaction.user.id === game.hostId) {
+              await this.startTriviaQuestions(channelId, questions);
+              await interaction.update({ content: "🎮 Game started!", embeds: [], components: [] });
+            } else {
+              await interaction.reply({ content: "❌ Only the host can start the game!", ephemeral: true });
+            }
+          } else if (interaction.customId.startsWith("trivia_answer_")) {
+            await this.handleAnswer(interaction, game);
           }
-        } else if (interaction.customId.startsWith("trivia_answer_")) {
-          await this.handleAnswer(interaction, game);
+        } catch (error) {
+          console.error("Error in trivia interaction:", error);
         }
-      } catch (error) {
-        console.error("Error in trivia interaction:", error);
-      }
+      })();
     });
 
     collector?.on("end", () => {
@@ -581,6 +583,9 @@ export class TriviaCommand extends PublicCommand {
     console.log("Saving trivia results for game:", game.channelId);
   }
 }
+
+// Export the command instance
+export default new TriviaCommand();
 
 // Export the Discord command builder for registration
 export const builder = new SlashCommandBuilder()

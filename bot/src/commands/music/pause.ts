@@ -1,13 +1,14 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
+import { musicService } from "../../services/musicService.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
 
-class PauseCommand extends GeneralCommand {
+class MusicPauseCommand extends GeneralCommand {
   constructor() {
     const config: CommandConfig = {
       name: "pause",
-      description: "Pause or resume music playback",
+      description: "Pause or resume music playback (smart toggle)",
       category: "music",
       ephemeral: false,
       guildOnly: true,
@@ -18,64 +19,26 @@ class PauseCommand extends GeneralCommand {
 
   protected async execute(): Promise<CommandResponse> {
     // Check if user is in a voice channel
-    const member = this.member;
-    if (!member?.voice.channel) {
+    const voiceChannel = this.member?.voice?.channel;
+    if (!voiceChannel) {
       return this.createGeneralError("Not in Voice Channel", "You must be in a voice channel to control music!");
     }
 
     try {
-      const musicApiUrl = process.env.API_URL || "http://localhost:3001";
-
-      // First get current status to determine if we should pause or resume
-      const statusResponse = await fetch(`${musicApiUrl}/api/music/${this.guild.id}/status`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${process.env.API_TOKEN}`,
-        },
-      });
-
-      if (!statusResponse.ok) {
-        throw new Error(`API request failed: ${statusResponse.status}`);
+      if (!musicService.isAvailable()) {
+        return this.createGeneralError("Service Unavailable", "Music service is currently unavailable.");
       }
 
-      const statusResult = (await statusResponse.json()) as any;
+      // Get current status
+      const status = await musicService.getStatus(this.guild.id);
 
-      if (!statusResult.success) {
-        return this.createGeneralError("Music Error", "Failed to get music status");
-      }
-
-      const status = statusResult.data;
-
-      if (!status.currentTrack) {
+      if (!status || !status.currentTrack) {
         return this.createGeneralError("No Music Playing", "There is no music currently playing to pause!");
       }
 
-      // Determine action based on current state
-      const action = status.isPaused ? "resume" : "pause";
-      const endpoint = status.isPaused ? "resume" : "pause";
-
-      // Make the pause/resume request
-      const response = await fetch(`${musicApiUrl}/api/music/${this.guild.id}/${endpoint}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.API_TOKEN}`,
-        },
-        body: JSON.stringify({
-          requestedBy: this.user.id,
-          requestedByName: this.user.username,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
-      }
-
-      const result = (await response.json()) as any;
-
-      if (!result.success) {
-        return this.createGeneralError("Music Error", result.error || `Failed to ${action} music`);
-      }
+      // Smart pause/resume toggle - returns true if paused, false if resumed
+      const wasPaused = await musicService.pause(this.guild.id);
+      const action = wasPaused ? "pause" : "resume";
 
       // Create success embed
       const embed = new EmbedBuilder()
@@ -120,20 +83,19 @@ class PauseCommand extends GeneralCommand {
       await this.logCommandUsage("pause", {
         action,
         trackTitle: status.currentTrack.title,
-        voiceChannel: member.voice.channel.id,
+        voiceChannel: voiceChannel.id,
       });
 
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
-      logger.error("Error executing pause command:", error);
-      return this.createGeneralError(
-        "Error",
-        "An error occurred while trying to control music playback. Please try again."
-      );
+      logger.error("Error in pause command:", error);
+      return this.createGeneralError("Error", "Failed to toggle playback.");
     }
   }
 }
 
-export default new PauseCommand();
+export default new MusicPauseCommand();
 
-export const builder = new SlashCommandBuilder().setName("pause").setDescription("Pause or resume music playback");
+export const builder = new SlashCommandBuilder()
+  .setName("pause")
+  .setDescription("Pause or resume music playback (smart toggle)");

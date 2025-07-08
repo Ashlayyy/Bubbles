@@ -31,8 +31,8 @@ import { connect as connectToDB } from "../database/index.js";
 import { isDevEnvironment } from "../functions/general/environment.js";
 import logger from "../logger.js";
 import { startMetricsServer } from "../metricsServer.js";
+import { BotQueueService } from "../services/botQueueService.js";
 import { ScheduledActionService } from "../services/scheduledActionService.js";
-import { UnifiedQueueService } from "../services/unifiedQueueService.js";
 import { WebSocketService } from "../services/websocketService.js";
 import Command from "./Command.js";
 import type LogManager from "./LogManager.js";
@@ -79,7 +79,7 @@ export default class Client extends DiscordClient {
   // WebSocket service for API communication
   public wsService: WebSocketService | null = null;
   // Queue service for unified queue processing
-  public queueService: UnifiedQueueService | null = null;
+  public queueService: BotQueueService | null = null;
   // Health service for monitoring
   public healthService: any = null;
   public scheduledActionService: ScheduledActionService | null = null;
@@ -249,9 +249,11 @@ export default class Client extends DiscordClient {
 
       // Start metrics server (Prometheus pull model)
       try {
-        const port = Number(process.env.METRICS_PORT ?? "9321");
-        startMetricsServer(this, this.queueService, port);
-        logger.info(`Metrics server started on port ${String(port)}`);
+        if (process.env.METRICS_ENABLED === "true") {
+          const port = Number(process.env.METRICS_PORT ?? "9321");
+          startMetricsServer(this, this.queueService, port);
+          logger.info(`Metrics server started on port ${String(port)}`);
+        }
       } catch (error) {
         logger.warn("Failed to start metrics server:", error);
       }
@@ -273,8 +275,8 @@ export default class Client extends DiscordClient {
   /** Start queue processors */
   private async startQueueProcessors(): Promise<void> {
     try {
-      const { UnifiedQueueService } = await import("../services/unifiedQueueService.js");
-      const queueService = new UnifiedQueueService(this);
+      const { BotQueueService } = await import("../services/botQueueService.js");
+      const queueService = new BotQueueService(this);
       await queueService.initialize();
 
       // Store reference for access throughout the application

@@ -1,6 +1,6 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
-import { musicApiService } from "../../services/musicApiService.js";
+import { musicService } from "../../services/musicService.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
 
@@ -8,7 +8,7 @@ class PlayCommand extends GeneralCommand {
   constructor() {
     const config: CommandConfig = {
       name: "play",
-      description: "Play music or add to queue",
+      description: "Join voice channel and start music playback",
       category: "music",
       ephemeral: false,
       guildOnly: true,
@@ -18,89 +18,75 @@ class PlayCommand extends GeneralCommand {
   }
 
   protected async execute(): Promise<CommandResponse> {
-    const query = this.getStringOption("query", true);
-
-    // Check if user is in a voice channel
-    if (!this.member.voice.channel) {
-      return this.createGeneralError("Not in Voice Channel", "You must be in a voice channel to play music!");
-    }
-
     try {
-      // Check if API service is configured
-      if (!musicApiService.isConfigured()) {
-        return this.createGeneralError("Service Unavailable", "Music service is not properly configured.");
+      if (!musicService.isAvailable()) {
+        return this.createGeneralError("Service Unavailable", "Music service is currently unavailable.");
       }
 
-      // Prepare play request
-      const playRequest = {
-        query,
-        userId: this.user.id,
-        username: this.user.username,
-        voiceChannelId: this.member.voice.channel.id,
-        textChannelId: this.channel.id,
-      };
-
-      // Use the API service to play music
-      const result = await musicApiService.play(this.guild.id, playRequest);
-
-      if (!result.success) {
-        return this.createGeneralError("Music Error", result.error || "Failed to play music");
+      // Check if user is in voice channel
+      const voiceChannel = this.member?.voice?.channel;
+      if (!voiceChannel) {
+        return this.createGeneralError("Not in Voice", "You need to be in a voice channel to use music commands!");
       }
 
-      const musicData = result.data!;
-      const track = musicData.track;
-      const position = musicData.position;
+      // Try to join the voice channel
+      await musicService.joinVoice(this.member);
+
+      // Get current status
+      const status = await musicService.getStatus(this.guild.id);
 
       // Create response embed
-      const embed = new EmbedBuilder().setTitle("🎵 Music").setColor("#00ff00").setTimestamp();
+      const embed = new EmbedBuilder().setTitle("🎵 Music Bot Connected").setColor("#00ff00").setTimestamp();
 
-      const description = position === 1 ? `**Now playing:**\n${track.title}` : `**Added to queue:**\n${track.title}`;
-      embed.setDescription(description);
+      if (status?.currentTrack && status.isPlaying) {
+        const track = status.currentTrack;
+        embed.setDescription(`**Now playing:**\n${track.title} by ${track.artist}`);
 
-      const fields = [
-        { name: "👤 Artist", value: track.artist || "Unknown", inline: true },
-        { name: "⏱️ Duration", value: this.formatDuration(track.duration), inline: true },
-      ];
+        if (track.thumbnail) {
+          embed.setThumbnail(track.thumbnail);
+        }
 
-      if (position === 1) {
-        fields.push({
-          name: "🎤 Platform",
-          value: track.platform.charAt(0).toUpperCase() + track.platform.slice(1),
-          inline: true,
-        });
+        embed.addFields(
+          { name: "⏱️ Duration", value: this.formatDuration(track.duration), inline: true },
+          {
+            name: "🎤 Platform",
+            value: track.platform.charAt(0).toUpperCase() + track.platform.slice(1),
+            inline: true,
+          },
+          { name: "📍 Position", value: `${status.position + 1}/${status.queue.length}`, inline: true }
+        );
+
+        if (status.isPaused) {
+          const currentDescription = embed.data.description || "";
+          embed.setDescription(currentDescription + "\n\n⏸️ **Currently paused**");
+        }
+      } else if (status?.queue.length && status.queue.length > 0) {
+        embed.setDescription("Connected to voice channel. Queue has tracks but nothing is playing.");
+        embed.addFields({ name: "📊 Queue", value: `${status.queue.length} track(s) in queue`, inline: true });
       } else {
-        fields.push({ name: "📍 Position", value: `#${position}`, inline: true });
+        embed.setDescription(
+          "Connected to voice channel and ready to play music!\n\nUse `/music add <query>` to add songs to the queue."
+        );
       }
 
-      embed.addFields(...fields);
-
-      if (track.thumbnail) {
-        embed.setThumbnail(track.thumbnail);
-      }
-
-      if (track.url) {
-        embed.setURL(track.url);
-      }
-
+      // Add voice channel info
       embed.addFields({
-        name: "👤 Requested by",
-        value: this.user.username,
+        name: "🔊 Voice Channel",
+        value: voiceChannel.name,
         inline: true,
       });
 
       // Log command usage
-      logger.info("Music play command executed", {
-        query,
-        trackTitle: track.title,
-        position,
+      logger.info("Music play command executed - joined voice channel", {
+        voiceChannelId: voiceChannel.id,
         userId: this.user.id,
         guildId: this.guild.id,
       });
 
       return { embeds: [embed] };
     } catch (error) {
-      logger.error("Error executing play command:", error);
-      return this.createGeneralError("Error", "An error occurred while trying to play music. Please try again.");
+      logger.error("Error in play command:", error);
+      return this.createGeneralError("Error", "Failed to join voice channel or get music status.");
     }
   }
 
@@ -123,7 +109,4 @@ export default new PlayCommand();
 
 export const builder = new SlashCommandBuilder()
   .setName("play")
-  .setDescription("Play music or add to queue")
-  .addStringOption((option) =>
-    option.setName("query").setDescription("Song name, artist, or URL to play").setRequired(true)
-  );
+  .setDescription("Join voice channel and start music playback");

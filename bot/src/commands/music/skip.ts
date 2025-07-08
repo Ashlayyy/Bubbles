@@ -1,5 +1,6 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
+import { musicService } from "../../services/musicService.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
 
@@ -24,33 +25,29 @@ class SkipCommand extends GeneralCommand {
     }
 
     try {
-      const musicApiUrl = process.env.API_URL || "http://localhost:3001";
-
-      // Make the skip request
-      const response = await fetch(`${musicApiUrl}/api/music/${this.guild.id}/skip`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.API_TOKEN}`,
-        },
-        body: JSON.stringify({
-          requestedBy: this.user.id,
-          requestedByName: this.user.username,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
+      if (!musicService.isAvailable()) {
+        return this.createGeneralError("Service Unavailable", "Music service is currently unavailable.");
       }
 
-      const result = (await response.json()) as any;
+      // Get current status
+      const status = await musicService.getStatus(this.guild.id);
 
-      if (!result.success) {
-        return this.createGeneralError("Music Error", result.error || "Failed to skip track");
+      if (!status || !status.currentTrack) {
+        return this.createGeneralError("No Music Playing", "There is no music currently playing to skip!");
       }
 
-      const skippedTrack = result.data.skippedTrack;
-      const nextTrack = result.data.nextTrack;
+      const skippedTrack = status.currentTrack;
+
+      // Skip the current track
+      const result = await musicService.skip(this.guild.id);
+
+      if (!result) {
+        return this.createGeneralError("Skip Failed", "Failed to skip the current track.");
+      }
+
+      // Get updated status to see what's playing next
+      const newStatus = await musicService.getStatus(this.guild.id);
+      const nextTrack = newStatus?.currentTrack;
 
       // Create success embed
       const embed = new EmbedBuilder()
@@ -59,7 +56,7 @@ class SkipCommand extends GeneralCommand {
         .addFields(
           {
             name: "⏭️ Skipped Track",
-            value: skippedTrack ? `${skippedTrack.title} - ${skippedTrack.artist}` : "No track was playing",
+            value: `${skippedTrack.title} - ${skippedTrack.artist}`,
             inline: false,
           },
           {
@@ -75,7 +72,7 @@ class SkipCommand extends GeneralCommand {
         });
 
       // Add next track info if available
-      if (nextTrack) {
+      if (nextTrack && newStatus?.isPlaying) {
         embed.setDescription(`Now playing: **${nextTrack.title}** by **${nextTrack.artist}**`);
         embed.addFields({
           name: "▶️ Now Playing",
@@ -87,25 +84,34 @@ class SkipCommand extends GeneralCommand {
         if (nextTrack.thumbnail) {
           embed.setThumbnail(nextTrack.thumbnail);
         }
+
+        // Add queue info
+        if (newStatus.queue.length > 1) {
+          embed.addFields({
+            name: "📊 Queue",
+            value: `${newStatus.queue.length - 1} track(s) remaining`,
+            inline: true,
+          });
+        }
       } else {
-        embed.setDescription("Queue is now empty. Add more songs with `/play`!");
+        embed.setDescription("Queue is now empty. Add more songs with `/music add`!");
         embed.addFields({
           name: "🎵 Queue Status",
-          value: "Empty - Add songs with `/play`",
+          value: "Empty - Add songs with `/music add`",
           inline: true,
         });
       }
 
       await this.logCommandUsage("skip", {
-        skippedTrack: skippedTrack?.title || "None",
+        skippedTrack: skippedTrack.title,
         nextTrack: nextTrack?.title || "None",
         voiceChannel: member.voice.channel.id,
       });
 
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
-      logger.error("Error executing skip command:", error);
-      return this.createGeneralError("Error", "An error occurred while trying to skip the track. Please try again.");
+      logger.error("Error in skip command:", error);
+      return this.createGeneralError("Error", "Failed to skip track.");
     }
   }
 }

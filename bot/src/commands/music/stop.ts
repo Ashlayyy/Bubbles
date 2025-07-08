@@ -1,5 +1,6 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
+import { musicService } from "../../services/musicService.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
 
@@ -7,7 +8,7 @@ class StopCommand extends GeneralCommand {
   constructor() {
     const config: CommandConfig = {
       name: "stop",
-      description: "Stop music playback and clear the queue",
+      description: "Stop music playback and leave voice channel",
       category: "music",
       ephemeral: false,
       guildOnly: true,
@@ -24,38 +25,27 @@ class StopCommand extends GeneralCommand {
     }
 
     try {
-      const musicApiUrl = process.env.API_URL || "http://localhost:3001";
-
-      // Make the stop request
-      const response = await fetch(`${musicApiUrl}/api/music/${this.guild.id}/stop`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.API_TOKEN}`,
-        },
-        body: JSON.stringify({
-          requestedBy: this.user.id,
-          requestedByName: this.user.username,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
+      if (!musicService.isAvailable()) {
+        return this.createGeneralError("Service Unavailable", "Music service is currently unavailable.");
       }
 
-      const result = (await response.json()) as any;
+      // Get current status before stopping
+      const status = await musicService.getStatus(this.guild.id);
 
-      if (!result.success) {
-        return this.createGeneralError("Music Error", result.error || "Failed to stop music");
+      if (!status || (!status.isPlaying && status.queue.length === 0)) {
+        return this.createGeneralError("Nothing Playing", "There is no music currently playing to stop!");
       }
 
-      const stoppedTrack = result.data.stoppedTrack;
-      const clearedTracks = result.data.clearedTracks || 0;
+      const stoppedTrack = status.currentTrack;
+      const queueLength = status.queue.length;
+
+      // Stop the music and leave voice channel
+      await musicService.stop(this.guild.id);
 
       // Create success embed
       const embed = new EmbedBuilder()
         .setTitle("⏹️ Music Stopped")
-        .setDescription("Music playback has been stopped and the queue has been cleared.")
+        .setDescription("Music playback has been stopped and I have left the voice channel.")
         .setColor("#ff0000")
         .addFields(
           {
@@ -66,8 +56,8 @@ class StopCommand extends GeneralCommand {
           {
             name: "🗑️ Queue Cleared",
             value:
-              clearedTracks > 0
-                ? `${clearedTracks} track${clearedTracks === 1 ? "" : "s"} removed from queue`
+              queueLength > 0
+                ? `${queueLength} track${queueLength === 1 ? "" : "s"} removed from queue`
                 : "Queue was already empty",
             inline: true,
           },
@@ -78,7 +68,7 @@ class StopCommand extends GeneralCommand {
           },
           {
             name: "📱 Next Steps",
-            value: "Use `/play` to start playing music again!",
+            value: "Use `/play` to join voice channel and `/music add` to start playing music again!",
             inline: false,
           }
         )
@@ -88,16 +78,21 @@ class StopCommand extends GeneralCommand {
           iconURL: this.user.displayAvatarURL(),
         });
 
+      // Add thumbnail if there was a stopped track
+      if (stoppedTrack?.thumbnail) {
+        embed.setThumbnail(stoppedTrack.thumbnail);
+      }
+
       await this.logCommandUsage("stop", {
         stoppedTrack: stoppedTrack?.title || "None",
-        clearedTracks,
+        clearedTracks: queueLength,
         voiceChannel: member.voice.channel.id,
       });
 
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
-      logger.error("Error executing stop command:", error);
-      return this.createGeneralError("Error", "An error occurred while trying to stop music. Please try again.");
+      logger.error("Error in stop command:", error);
+      return this.createGeneralError("Error", "Failed to stop music playback.");
     }
   }
 }
@@ -106,4 +101,4 @@ export default new StopCommand();
 
 export const builder = new SlashCommandBuilder()
   .setName("stop")
-  .setDescription("Stop music playback and clear the queue");
+  .setDescription("Stop music playback and leave voice channel");

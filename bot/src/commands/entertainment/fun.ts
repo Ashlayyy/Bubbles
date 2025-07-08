@@ -1,6 +1,6 @@
-import { EmbedBuilder, GuildMember, SlashCommandBuilder } from "discord.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
-import { type CommandConfig, type CommandResponse, PublicCommand } from "../_core/index.js";
+import { EmbedBuilder, SlashCommandBuilder, type GuildMember } from "discord.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { PublicCommand } from "../_core/specialized/PublicCommand.js";
 
 interface FunCommandData {
   type: "eightball" | "dice" | "coinflip" | "random_user" | "random_number" | "choose" | "rate" | "ship";
@@ -15,64 +15,47 @@ interface FunCommandData {
 }
 
 /**
- * Fun Command - Collection of entertaining and interactive commands
+ * Fun Command - Various fun and entertainment commands
  */
 export class FunCommand extends PublicCommand {
   constructor() {
     const config: CommandConfig = {
       name: "fun",
-      description: "Collection of fun and entertaining commands",
+      description: "Various fun and entertainment commands",
       category: "entertainment",
-      permissions: {
-        level: PermissionLevel.PUBLIC,
-        isConfigurable: true,
-      },
       ephemeral: false,
-      guildOnly: true,
+      guildOnly: false,
     };
 
     super(config);
   }
 
   protected async execute(): Promise<CommandResponse> {
-    if (!this.interaction.guild || !this.interaction.isChatInputCommand()) {
-      return {};
+    if (!this.isSlashCommand()) {
+      return this.createPublicError("Invalid Command", "This command only works as a slash command.");
     }
 
-    const subcommand = this.interaction.options.getSubcommand();
+    const subcommand = (this.interaction as any).options.getSubcommand();
 
-    try {
-      switch (subcommand) {
-        case "eightball":
-          return await this.handleEightBall();
-        case "dice":
-          return await this.handleDice();
-        case "coinflip":
-          return await this.handleCoinFlip();
-        case "random-user":
-          return await this.handleRandomUser();
-        case "random-number":
-          return await this.handleRandomNumber();
-        case "choose":
-          return await this.handleChoose();
-        case "rate":
-          return await this.handleRate();
-        case "ship":
-          return await this.handleShip();
-        default:
-          await this.interaction.reply({
-            content: "❌ Unknown subcommand!",
-            ephemeral: true,
-          });
-          return {};
-      }
-    } catch (error) {
-      console.error("Error in fun command:", error);
-      await this.interaction.reply({
-        content: "❌ Something went wrong while executing the command.",
-        ephemeral: true,
-      });
-      return {};
+    switch (subcommand) {
+      case "eightball":
+        return await this.handleEightBall();
+      case "dice":
+        return await this.handleDice();
+      case "coinflip":
+        return await this.handleCoinFlip();
+      case "random_user":
+        return await this.handleRandomUser();
+      case "random_number":
+        return await this.handleRandomNumber();
+      case "choose":
+        return await this.handleChoose();
+      case "rate":
+        return await this.handleRate();
+      case "ship":
+        return await this.handleShip();
+      default:
+        return this.createPublicError("Unknown Command", "Unknown fun command. Please try again.");
     }
   }
 
@@ -80,159 +63,121 @@ export class FunCommand extends PublicCommand {
     const question = this.getStringOption("question", true);
 
     const responses = [
-      // Positive responses
-      "🟢 It is certain",
-      "🟢 Without a doubt",
-      "🟢 Yes definitely",
-      "🟢 You may rely on it",
-      "🟢 As I see it, yes",
-      "🟢 Most likely",
-      "🟢 Outlook good",
-      "🟢 Yes",
-      "🟢 Signs point to yes",
-
-      // Neutral responses
-      "🟡 Reply hazy, try again",
-      "🟡 Ask again later",
-      "🟡 Better not tell you now",
-      "🟡 Cannot predict now",
-      "🟡 Concentrate and ask again",
-
-      // Negative responses
-      "🔴 Don't count on it",
-      "🔴 My reply is no",
-      "🔴 My sources say no",
-      "🔴 Outlook not so good",
-      "🔴 Very doubtful",
+      "It is certain",
+      "It is decidedly so",
+      "Without a doubt",
+      "Yes definitely",
+      "You may rely on it",
+      "As I see it, yes",
+      "Most likely",
+      "Outlook good",
+      "Yes",
+      "Signs point to yes",
+      "Reply hazy, try again",
+      "Ask again later",
+      "Better not tell you now",
+      "Cannot predict now",
+      "Concentrate and ask again",
+      "Don't count on it",
+      "My reply is no",
+      "My sources say no",
+      "Outlook not so good",
+      "Very doubtful",
     ];
 
     const randomResponse = responses[Math.floor(Math.random() * responses.length)];
 
     const embed = new EmbedBuilder()
-      .setColor(0x7c3aed)
       .setTitle("🎱 Magic 8-Ball")
-      .addFields(
-        { name: "❓ Question", value: question, inline: false },
-        { name: "🔮 Answer", value: randomResponse, inline: false }
-      )
-      .setFooter({ text: `Asked by ${this.interaction.user.displayName}` })
-      .setTimestamp();
+      .setDescription(`**Question:** ${question}\n**Answer:** ${randomResponse}`)
+      .setColor("#4B0082")
+      .setTimestamp()
+      .setFooter({ text: `Asked by ${this.user.username}`, iconURL: this.user.displayAvatarURL() });
 
-    await this.interaction.reply({ embeds: [embed] });
-    return {};
+    await this.logCommandUsage("eightball", { question, answer: randomResponse });
+
+    return { embeds: [embed] };
   }
 
   private async handleDice(): Promise<CommandResponse> {
-    const sides = this.getIntegerOption("sides") || 6;
-    const count = this.getIntegerOption("count") || 1;
+    const sides = this.getIntegerOption("sides") ?? 6;
 
-    if (count > 10) {
-      await this.interaction.reply({
-        content: "❌ You can only roll up to 10 dice at once!",
-        ephemeral: true,
-      });
-      return {};
+    if (sides < 2 || sides > 100) {
+      return this.createPublicError("Invalid Dice", "Dice must have between 2 and 100 sides!");
     }
 
-    const results: number[] = [];
-    let total = 0;
-
-    for (let i = 0; i < count; i++) {
-      const roll = Math.floor(Math.random() * sides) + 1;
-      results.push(roll);
-      total += roll;
-    }
-
-    const diceEmoji = this.getDiceEmoji(sides);
-    const resultText =
-      results.length === 1 ? `**${results[0]}**` : `${results.map((r) => `**${r}**`).join(" + ")} = **${total}**`;
+    const result = Math.floor(Math.random() * sides) + 1;
+    const emoji = this.getDiceEmoji(sides);
 
     const embed = new EmbedBuilder()
-      .setColor(0x10b981)
-      .setTitle(`${diceEmoji} Dice Roll`)
-      .addFields(
-        { name: "🎲 Roll", value: `${count}d${sides}`, inline: true },
-        { name: "🎯 Result", value: resultText, inline: true }
-      )
-      .setFooter({ text: `Rolled by ${this.interaction.user.displayName}` })
-      .setTimestamp();
+      .setTitle(`${emoji} Dice Roll`)
+      .setDescription(`**Sides:** ${sides}\n**Result:** ${result}`)
+      .setColor("#FF6B6B")
+      .setTimestamp()
+      .setFooter({ text: `Rolled by ${this.user.username}`, iconURL: this.user.displayAvatarURL() });
 
-    await this.interaction.reply({ embeds: [embed] });
-    return {};
+    await this.logCommandUsage("dice", { sides, result });
+
+    return { embeds: [embed] };
   }
 
   private async handleCoinFlip(): Promise<CommandResponse> {
-    const isHeads = Math.random() < 0.5;
-    const result = isHeads ? "Heads" : "Tails";
-    const emoji = isHeads ? "🪙" : "⚡";
+    const result = Math.random() < 0.5 ? "Heads" : "Tails";
+    const emoji = result === "Heads" ? "🟡" : "⚪";
 
     const embed = new EmbedBuilder()
-      .setColor(isHeads ? 0xfbbf24 : 0x6b7280)
-      .setTitle("🪙 Coin Flip")
-      .setDescription(`${emoji} **${result}**`)
-      .setFooter({ text: `Flipped by ${this.interaction.user.displayName}` })
-      .setTimestamp();
+      .setTitle(`${emoji} Coin Flip`)
+      .setDescription(`**Result:** ${result}`)
+      .setColor(result === "Heads" ? "#FFD700" : "#C0C0C0")
+      .setTimestamp()
+      .setFooter({ text: `Flipped by ${this.user.username}`, iconURL: this.user.displayAvatarURL() });
 
-    await this.interaction.reply({ embeds: [embed] });
-    return {};
+    await this.logCommandUsage("coinflip", { result });
+
+    return { embeds: [embed] };
   }
 
   private async handleRandomUser(): Promise<CommandResponse> {
-    const members = await this.interaction.guild!.members.fetch();
-    const humanMembers = members.filter((member) => !member.user.bot);
+    const members = await this.guild.members.fetch();
+    const randomMember = members.random();
 
-    if (humanMembers.size === 0) {
-      await this.interaction.reply({
-        content: "❌ No human members found in this server!",
-        ephemeral: true,
-      });
-      return {};
+    if (!randomMember) {
+      return this.createPublicError("No Members", "No members found in this server.");
     }
 
-    const randomMember = humanMembers.random()!;
-
     const embed = new EmbedBuilder()
-      .setColor(0x8b5cf6)
-      .setTitle("🎲 Random User Picker")
-      .setDescription(`🎯 **${randomMember.displayName}** has been chosen!`)
+      .setTitle("🎲 Random User")
+      .setDescription(`**Selected:** ${randomMember.user.username}`)
+      .setColor("#4ECDC4")
       .setThumbnail(randomMember.user.displayAvatarURL())
-      .addFields(
-        { name: "👤 User", value: `<@${randomMember.id}>`, inline: true },
-        { name: "📅 Joined", value: randomMember.joinedAt?.toDateString() || "Unknown", inline: true }
-      )
-      .setFooter({ text: `Picked by ${this.interaction.user.displayName}` })
-      .setTimestamp();
+      .setTimestamp()
+      .setFooter({ text: `Requested by ${this.user.username}`, iconURL: this.user.displayAvatarURL() });
 
-    await this.interaction.reply({ embeds: [embed] });
-    return {};
+    await this.logCommandUsage("random_user", { selectedUserId: randomMember.id });
+
+    return { embeds: [embed] };
   }
 
   private async handleRandomNumber(): Promise<CommandResponse> {
-    const min = this.getIntegerOption("min") || 1;
-    const max = this.getIntegerOption("max") || 100;
+    const min = this.getIntegerOption("min") ?? 1;
+    const max = this.getIntegerOption("max") ?? 100;
 
     if (min >= max) {
-      await this.interaction.reply({
-        content: "❌ Minimum value must be less than maximum value!",
-        ephemeral: true,
-      });
-      return {};
+      return this.createPublicError("Invalid Range", "Minimum value must be less than maximum value!");
     }
 
-    const randomNumber = Math.floor(Math.random() * (max - min + 1)) + min;
+    const result = Math.floor(Math.random() * (max - min + 1)) + min;
 
     const embed = new EmbedBuilder()
-      .setColor(0x06b6d4)
-      .setTitle("🔢 Random Number Generator")
-      .addFields(
-        { name: "📊 Range", value: `${min} - ${max}`, inline: true },
-        { name: "🎯 Result", value: `**${randomNumber}**`, inline: true }
-      )
-      .setFooter({ text: `Generated by ${this.interaction.user.displayName}` })
-      .setTimestamp();
+      .setTitle("🔢 Random Number")
+      .setDescription(`**Range:** ${min} - ${max}\n**Result:** ${result}`)
+      .setColor("#FF9F43")
+      .setTimestamp()
+      .setFooter({ text: `Generated for ${this.user.username}`, iconURL: this.user.displayAvatarURL() });
 
-    await this.interaction.reply({ embeds: [embed] });
-    return {};
+    await this.logCommandUsage("random_number", { min, max, result });
+
+    return { embeds: [embed] };
   }
 
   private async handleChoose(): Promise<CommandResponse> {
@@ -243,221 +188,170 @@ export class FunCommand extends PublicCommand {
       .filter((choice) => choice.length > 0);
 
     if (choices.length < 2) {
-      await this.interaction.reply({
-        content: "❌ Please provide at least 2 options separated by commas!",
-        ephemeral: true,
-      });
-      return {};
+      return this.createPublicError("Not Enough Options", "Please provide at least 2 options separated by commas!");
     }
 
-    if (choices.length > 20) {
-      await this.interaction.reply({
-        content: "❌ Please provide no more than 20 options!",
-        ephemeral: true,
-      });
-      return {};
-    }
-
-    const randomChoice = choices[Math.floor(Math.random() * choices.length)];
+    const chosen = choices[Math.floor(Math.random() * choices.length)];
 
     const embed = new EmbedBuilder()
-      .setColor(0xf59e0b)
-      .setTitle("🤔 Choice Picker")
-      .addFields(
-        { name: "📝 Options", value: choices.map((choice, i) => `${i + 1}. ${choice}`).join("\n"), inline: false },
-        { name: "🎯 I choose", value: `**${randomChoice}**`, inline: false }
-      )
-      .setFooter({ text: `Chosen by ${this.interaction.user.displayName}` })
-      .setTimestamp();
+      .setTitle("🤔 Choose")
+      .setDescription(`**Options:** ${choices.join(", ")}\n**I choose:** ${chosen}`)
+      .setColor("#A55EEA")
+      .setTimestamp()
+      .setFooter({ text: `Chosen for ${this.user.username}`, iconURL: this.user.displayAvatarURL() });
 
-    await this.interaction.reply({ embeds: [embed] });
-    return {};
+    await this.logCommandUsage("choose", { options: choices, chosen });
+
+    return { embeds: [embed] };
   }
 
   private async handleRate(): Promise<CommandResponse> {
     const thing = this.getStringOption("thing", true);
     const rating = Math.floor(Math.random() * 11); // 0-10
 
-    const ratingEmojis = ["💀", "😢", "😞", "😕", "😐", "🙂", "😊", "😄", "😍", "🤩", "✨"];
-    const emoji = ratingEmojis[rating];
+    let emoji = "😐";
+    let color = 0x95a5a6;
 
-    const descriptions = [
-      "Absolutely terrible!",
-      "Really bad...",
-      "Pretty bad",
-      "Not great",
-      "Meh, it's okay",
-      "Not bad!",
-      "Pretty good!",
-      "Really good!",
-      "Amazing!",
-      "Incredible!",
-      "PERFECT! ✨",
-    ];
+    if (rating >= 8) {
+      emoji = "😍";
+      color = 0x2ecc71;
+    } else if (rating >= 6) {
+      emoji = "😊";
+      color = 0xf39c12;
+    } else if (rating >= 4) {
+      emoji = "😐";
+      color = 0x95a5a6;
+    } else {
+      emoji = "😞";
+      color = 0xe74c3c;
+    }
 
     const embed = new EmbedBuilder()
-      .setColor(rating >= 7 ? 0x10b981 : rating >= 4 ? 0xf59e0b : 0xef4444)
-      .setTitle("⭐ Rating Machine")
-      .addFields(
-        { name: "📝 Item", value: thing, inline: false },
-        { name: "⭐ Rating", value: `${emoji} **${rating}/10** - ${descriptions[rating]}`, inline: false }
-      )
-      .setFooter({ text: `Rated by ${this.interaction.user.displayName}` })
-      .setTimestamp();
+      .setTitle(`${emoji} Rate`)
+      .setDescription(`**Item:** ${thing}\n**Rating:** ${rating}/10`)
+      .setColor(color)
+      .setTimestamp()
+      .setFooter({ text: `Rated for ${this.user.username}`, iconURL: this.user.displayAvatarURL() });
 
-    await this.interaction.reply({ embeds: [embed] });
-    return {};
+    await this.logCommandUsage("rate", { thing, rating });
+
+    return { embeds: [embed] };
   }
 
   private async handleShip(): Promise<CommandResponse> {
-    const user1 = this.getMemberOption("user1", true);
-    const user2 = this.getMemberOption("user2", true);
-
-    if (!user1 || !user2) {
-      await this.interaction.reply({
-        content: "❌ Please mention two valid users!",
-        ephemeral: true,
-      });
-      return {};
-    }
+    const user1 = this.getUserOption("user1", true);
+    const user2 = this.getUserOption("user2", true);
 
     if (user1.id === user2.id) {
-      await this.interaction.reply({
-        content: "❌ You can't ship someone with themselves!",
-        ephemeral: true,
-      });
-      return {};
+      return this.createPublicError("Same User", "You can't ship a user with themselves!");
     }
 
-    // Generate a "compatibility" score based on user IDs for consistency
-    const combined = user1.id + user2.id;
-    const hash = combined.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const compatibility = hash % 101; // 0-100
+    const compatibility = Math.floor(Math.random() * 101); // 0-100
+    const shipName = this.generateShipName(user1.username, user2.username);
 
-    const shipName = this.generateShipName(user1.displayName, user2.displayName);
+    let emoji = "💔";
+    let color = 0xe74c3c;
+    let description = "It's not meant to be...";
 
-    const hearts = "💖".repeat(Math.floor(compatibility / 10));
-    const emptyHearts = "🤍".repeat(10 - Math.floor(compatibility / 10));
-    const heartBar = hearts + emptyHearts;
-
-    let description: string;
-    if (compatibility >= 90) description = "Perfect match! 💕";
-    else if (compatibility >= 75) description = "Great compatibility! 💖";
-    else if (compatibility >= 50) description = "Good potential! 💝";
-    else if (compatibility >= 25) description = "Could work... 💛";
-    else description = "Not looking good... 💔";
+    if (compatibility >= 80) {
+      emoji = "💕";
+      color = 0xe91e63;
+      description = "Perfect match! 💖";
+    } else if (compatibility >= 60) {
+      emoji = "💝";
+      color = 0x9b59b6;
+      description = "Great compatibility! 💕";
+    } else if (compatibility >= 40) {
+      emoji = "💙";
+      color = 0x3498db;
+      description = "Could work out! 💙";
+    } else if (compatibility >= 20) {
+      emoji = "💛";
+      color = 0xf1c40f;
+      description = "Friendship material! 💛";
+    }
 
     const embed = new EmbedBuilder()
-      .setColor(compatibility >= 75 ? 0xf43f5e : compatibility >= 50 ? 0xf59e0b : 0x6b7280)
-      .setTitle("💕 Love Calculator")
-      .setDescription(`**${user1.displayName}** + **${user2.displayName}** = **${shipName}**`)
-      .addFields({
-        name: "💖 Compatibility",
-        value: `${heartBar}\n**${compatibility}%** - ${description}`,
-        inline: false,
-      })
-      .setFooter({ text: `Shipped by ${this.interaction.user.displayName}` })
-      .setTimestamp();
+      .setTitle(`${emoji} Ship`)
+      .setDescription(
+        `**${user1.username}** + **${user2.username}** = **${shipName}**\n\n` +
+          `**Compatibility:** ${compatibility}%\n` +
+          `**Status:** ${description}`
+      )
+      .setColor(color)
+      .setTimestamp()
+      .setFooter({ text: `Shipped by ${this.user.username}`, iconURL: this.user.displayAvatarURL() });
 
-    await this.interaction.reply({ embeds: [embed] });
-    return {};
+    await this.logCommandUsage("ship", { user1Id: user1.id, user2Id: user2.id, compatibility, shipName });
+
+    return { embeds: [embed] };
   }
 
   private getDiceEmoji(sides: number): string {
     const emojiMap: Record<number, string> = {
-      4: "🔺",
+      4: "🎲",
       6: "🎲",
-      8: "🎯",
-      10: "🔟",
+      8: "🎲",
+      10: "🎲",
       12: "🎲",
-      20: "🎮",
+      20: "🎲",
     };
     return emojiMap[sides] || "🎲";
   }
 
   private generateShipName(name1: string, name2: string): string {
-    const clean1 = name1.replace(/[^a-zA-Z]/g, "").toLowerCase();
-    const clean2 = name2.replace(/[^a-zA-Z]/g, "").toLowerCase();
-
-    const part1 = clean1.slice(0, Math.ceil(clean1.length / 2));
-    const part2 = clean2.slice(Math.floor(clean2.length / 2));
-
-    return (part1 + part2).charAt(0).toUpperCase() + (part1 + part2).slice(1);
+    const half1 = name1.substring(0, Math.ceil(name1.length / 2));
+    const half2 = name2.substring(Math.floor(name2.length / 2));
+    return half1 + half2;
   }
 }
 
-// Export the Discord command builder for registration
+export default new FunCommand();
+
 export const builder = new SlashCommandBuilder()
   .setName("fun")
-  .setDescription("Collection of fun and entertaining commands")
+  .setDescription("Various fun and entertainment commands")
   .addSubcommand((subcommand) =>
     subcommand
       .setName("eightball")
       .setDescription("Ask the magic 8-ball a question")
-      .addStringOption((option) =>
-        option
-          .setName("question")
-          .setDescription("Your question for the magic 8-ball")
-          .setRequired(true)
-          .setMaxLength(200)
-      )
+      .addStringOption((option) => option.setName("question").setDescription("Your question").setRequired(true))
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName("dice")
-      .setDescription("Roll dice")
+      .setDescription("Roll a dice")
       .addIntegerOption((option) =>
-        option
-          .setName("sides")
-          .setDescription("Number of sides on the dice (default: 6)")
-          .setMinValue(2)
-          .setMaxValue(100)
-      )
-      .addIntegerOption((option) =>
-        option
-          .setName("count")
-          .setDescription("Number of dice to roll (default: 1, max: 10)")
-          .setMinValue(1)
-          .setMaxValue(10)
+        option.setName("sides").setDescription("Number of sides (2-100)").setMinValue(2).setMaxValue(100)
       )
   )
   .addSubcommand((subcommand) => subcommand.setName("coinflip").setDescription("Flip a coin"))
-  .addSubcommand((subcommand) => subcommand.setName("random-user").setDescription("Pick a random user from the server"))
+  .addSubcommand((subcommand) => subcommand.setName("random_user").setDescription("Pick a random user from the server"))
   .addSubcommand((subcommand) =>
     subcommand
-      .setName("random-number")
+      .setName("random_number")
       .setDescription("Generate a random number")
-      .addIntegerOption((option) =>
-        option.setName("min").setDescription("Minimum value (default: 1)").setMinValue(-1000000).setMaxValue(1000000)
-      )
-      .addIntegerOption((option) =>
-        option.setName("max").setDescription("Maximum value (default: 100)").setMinValue(-1000000).setMaxValue(1000000)
-      )
+      .addIntegerOption((option) => option.setName("min").setDescription("Minimum value (default: 1)"))
+      .addIntegerOption((option) => option.setName("max").setDescription("Maximum value (default: 100)"))
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName("choose")
-      .setDescription("Pick randomly from a list of options")
+      .setDescription("Let me choose for you")
       .addStringOption((option) =>
-        option
-          .setName("options")
-          .setDescription('Options separated by commas (e.g., "pizza, burgers, tacos")')
-          .setRequired(true)
-          .setMaxLength(500)
+        option.setName("options").setDescription("Options separated by commas").setRequired(true)
       )
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName("rate")
-      .setDescription("Rate something from 0 to 10")
-      .addStringOption((option) =>
-        option.setName("thing").setDescription("What do you want to rate?").setRequired(true).setMaxLength(100)
-      )
+      .setDescription("Rate something out of 10")
+      .addStringOption((option) => option.setName("thing").setDescription("What to rate").setRequired(true))
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName("ship")
-      .setDescription("Calculate compatibility between two users")
+      .setDescription("Ship two users together")
       .addUserOption((option) => option.setName("user1").setDescription("First user").setRequired(true))
       .addUserOption((option) => option.setName("user2").setDescription("Second user").setRequired(true))
   );

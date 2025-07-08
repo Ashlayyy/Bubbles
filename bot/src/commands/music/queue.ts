@@ -1,5 +1,6 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
+import { musicService } from "../../services/musicService.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
 
@@ -25,38 +26,19 @@ class QueueCommand extends GeneralCommand {
     }
 
     try {
-      const musicApiUrl = process.env.API_URL || "http://localhost:3001";
+      // Get current status and queue
+      const status = await musicService.getStatus(this.guild.id);
 
-      // Get current queue
-      const response = await fetch(`${musicApiUrl}/api/music/${this.guild.id}/queue`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${process.env.API_TOKEN}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
-      }
-
-      const result = (await response.json()) as any;
-
-      if (!result.success) {
-        return this.createGeneralError("Music Error", result.error || "Failed to get queue");
-      }
-
-      const queueData = result.data;
-
-      if (!queueData || queueData.length === 0) {
+      if (!status || status.queue.length === 0) {
         return {
           embeds: [
             new EmbedBuilder()
               .setTitle("🎵 Music Queue")
-              .setDescription("The queue is empty! Add songs with `/play`")
+              .setDescription("The queue is empty! Add songs with `/music add`")
               .setColor("#ffa500")
               .addFields({
                 name: "📱 Quick Start",
-                value: "Use `/play <song name>` to add music to the queue!",
+                value: "Use `/music add <song name>` to add music to the queue!",
                 inline: false,
               })
               .setTimestamp(),
@@ -65,30 +47,14 @@ class QueueCommand extends GeneralCommand {
         };
       }
 
-      // Get music status for current track info
-      const statusResponse = await fetch(`${musicApiUrl}/api/music/${this.guild.id}/status`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${process.env.API_TOKEN}`,
-        },
-      });
-
-      let currentTrack: any = null;
-      let isPlaying = false;
-      let isPaused = false;
-
-      if (statusResponse.ok) {
-        const statusResult = (await statusResponse.json()) as any;
-        if (statusResult.success) {
-          currentTrack = statusResult.data.currentTrack;
-          isPlaying = statusResult.data.isPlaying;
-          isPaused = statusResult.data.isPaused;
-        }
-      }
+      const queue = status.queue;
+      const currentTrack = status.currentTrack;
+      const isPlaying = status.isPlaying;
+      const isPaused = status.isPaused;
 
       // Pagination
       const tracksPerPage = 10;
-      const totalTracks = queueData.length;
+      const totalTracks = queue.length;
       const totalPages = Math.ceil(totalTracks / tracksPerPage);
 
       if (page > totalPages) {
@@ -97,21 +63,22 @@ class QueueCommand extends GeneralCommand {
 
       const startIndex = (page - 1) * tracksPerPage;
       const endIndex = startIndex + tracksPerPage;
-      const pageTracks = queueData.slice(startIndex, endIndex);
+      const pageTracks = queue.slice(startIndex, endIndex);
 
       // Calculate total queue duration
-      const totalDuration = queueData.reduce((sum: number, track: any) => sum + (Number(track.duration) || 0), 0);
+      const totalDuration = queue.reduce((sum, track) => sum + track.duration, 0);
 
       // Format queue tracks
       const queueText = pageTracks
-        .map((track: any, index: number) => {
+        .map((track, index) => {
           const queuePosition = startIndex + index + 1;
-          const duration = this.formatDuration(track.duration || 0);
-          const isCurrentTrack = currentTrack && track.title === currentTrack.title;
+          const duration = this.formatDuration(track.duration);
+          const isCurrentTrack = currentTrack && track.id === currentTrack.id;
           const prefix = isCurrentTrack ? "▶️" : `**${queuePosition}.**`;
 
           return (
-            `${prefix} ${track.title} - ${track.artist}\n` + `⏱️ ${duration} | 👤 ${track.requestedBy || "Unknown"}`
+            `${prefix} ${track.title} - ${track.artist}\n` +
+            `⏱️ ${duration} | 🎤 ${track.platform} | 👤 ${track.requestedBy || "Unknown"}`
           );
         })
         .join("\n\n");
@@ -126,7 +93,9 @@ class QueueCommand extends GeneralCommand {
           value:
             `**Total Tracks:** ${totalTracks}\n` +
             `**Total Duration:** ${this.formatDuration(totalDuration)}\n` +
-            `**Status:** ${isPlaying ? (isPaused ? "Paused ⏸️" : "Playing ▶️") : "Stopped ⏹️"}`,
+            `**Status:** ${isPlaying ? (isPaused ? "Paused ⏸️" : "Playing ▶️") : "Stopped ⏹️"}\n` +
+            `**Loop Mode:** ${status.loopMode === "none" ? "Off" : status.loopMode === "track" ? "Track 🔂" : "Queue 🔁"}\n` +
+            `**Volume:** ${status.volume}%`,
           inline: true,
         })
         .setFooter({
@@ -141,7 +110,7 @@ class QueueCommand extends GeneralCommand {
           name: "🎵 Now Playing",
           value:
             `**${currentTrack.title}** by **${currentTrack.artist}**\n` +
-            `👤 Requested by ${currentTrack.requestedBy || "Unknown"}`,
+            `🎤 ${currentTrack.platform} | 👤 Requested by ${currentTrack.requestedBy || "Unknown"}`,
           inline: true,
         });
 
@@ -149,6 +118,16 @@ class QueueCommand extends GeneralCommand {
         if (currentTrack.thumbnail) {
           embed.setThumbnail(currentTrack.thumbnail);
         }
+      }
+
+      // Add queue management hints
+      if (queue.length > 1) {
+        embed.addFields({
+          name: "🎛️ Queue Controls",
+          value:
+            "Use `/skip` to skip current track\nUse `/remove <position>` to remove a track\nUse `/clear` to clear the queue",
+          inline: false,
+        });
       }
 
       await this.logCommandUsage("queue", {
@@ -160,8 +139,8 @@ class QueueCommand extends GeneralCommand {
 
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
-      logger.error("Error executing queue command:", error);
-      return this.createGeneralError("Error", "An error occurred while fetching the queue. Please try again.");
+      logger.error("Error in queue command:", error);
+      return this.createGeneralError("Error", "Failed to get queue information.");
     }
   }
 
