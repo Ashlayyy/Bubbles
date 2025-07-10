@@ -126,6 +126,11 @@ export default class Client extends DiscordClient {
     try {
       logger.info("*** DISCORD.JS BOT: CONSTRUCTION ***");
 
+      // Debug environment variables
+      logger.info(`Environment check - DISABLE_QUEUES: ${process.env.DISABLE_QUEUES}`);
+      logger.info(`Environment check - DISABLE_API: ${process.env.DISABLE_API}`);
+      logger.info(`Environment check - NODE_ENV: ${process.env.NODE_ENV}`);
+
       this.devMode = isDevEnvironment();
       logger.info(`Loading in ${this.devMode ? "DEVELOPMENT" : "PRODUCTION"} MODE`);
 
@@ -192,7 +197,7 @@ export default class Client extends DiscordClient {
         logger.info(`Warming up cache for ${String(guildIds.length)} guilds...`);
         // Note: warmUp currently just logs, actual implementation pending
         for (const guildId of guildIds) {
-          cacheService.warmUp(guildId);
+          await cacheService.warmUp(guildId);
         }
       }
 
@@ -261,7 +266,7 @@ export default class Client extends DiscordClient {
       this.started = true;
 
       // Log cache statistics after startup
-      const stats = cacheService.getStats();
+      const stats = await cacheService.getStats();
       logger.info(
         `Cache service ready - Total keys: ${String(stats.totalKeys)}, Memory usage: ${String(stats.memoryUsage)} bytes`
       );
@@ -282,7 +287,7 @@ export default class Client extends DiscordClient {
       // Store reference for access throughout the application
       this.queueService = queueService;
 
-      logger.info("Unified Queue Service initialization completed");
+      logger.info("✅ Bot Queue Service initialization completed");
     } catch (error) {
       logger.error("Failed to initialize unified queue service:", error);
       logger.warn("Bot will continue with fallback mode for queue operations");

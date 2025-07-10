@@ -496,7 +496,7 @@ export default class PermissionManager {
 
     try {
       // Try cache first
-      const cached = cacheService.get(cacheKey);
+      const cached = await cacheService.get<any>(cacheKey);
       if (cached !== null) {
         return cached;
       }
@@ -528,7 +528,7 @@ export default class PermissionManager {
 
     try {
       // Try cache first
-      const cached = cacheService.get(cacheKey) as any[] | null;
+      const cached = await cacheService.get<any[]>(cacheKey);
       if (cached) {
         return cached;
       }
@@ -556,7 +556,7 @@ export default class PermissionManager {
 
     try {
       // Try cache first
-      const cached = cacheService.get(cacheKey) as boolean | null;
+      const cached = await cacheService.get<boolean>(cacheKey);
       if (cached !== null) {
         return cached;
       }

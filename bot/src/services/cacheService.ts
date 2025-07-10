@@ -1,3 +1,4 @@
+import { RedisConnectionFactory } from "../../../shared/src/utils/RedisConnectionFactory";
 import logger from "../logger.js";
 
 /**
@@ -34,212 +35,126 @@ export interface CacheStats {
  * Provides intelligent caching for API responses with TTL support
  */
 class CacheService {
-  private cache = new Map<string, CacheEntry<any>>();
+  private readonly redis = RedisConnectionFactory.getSharedConnection();
   private readonly defaultTTL: number;
-  private readonly maxSize: number;
   private readonly keyPrefix: string;
-  private stats = { hits: 0, misses: 0 };
 
   constructor(options: CacheOptions = {}) {
     this.defaultTTL = (options.defaultTTL ?? 5) * 60 * 1000;
-    this.maxSize = options.maxSize ?? 1000;
-    this.keyPrefix = options.keyPrefix ?? "bot-cache";
-
-    // Clean up expired entries every minute
-    setInterval(() => {
-      this.cleanup();
-    }, 60 * 1000);
+    this.keyPrefix = options.keyPrefix ?? "bubbles-bot";
   }
 
-  /**
-   * Get value from cache
-   */
-  get(key: string): any {
-    const fullKey = this.buildKey(key);
-    const entry = this.cache.get(fullKey);
-
-    if (!entry) {
-      this.stats.misses++;
-      return null;
-    }
-
-    // Check if expired
-    if (Date.now() - entry.timestamp > entry.ttl) {
-      this.cache.delete(fullKey);
-      this.stats.misses++;
-      return null;
-    }
-
-    this.stats.hits++;
-    return entry.data;
-  }
-
-  /**
-   * Set value in cache
-   */
-  set(key: string, value: any, ttl?: number): void {
-    const fullKey = this.buildKey(key);
-    const entry: CacheEntry<any> = {
-      data: value,
-      timestamp: Date.now(),
-      ttl: ttl ?? this.defaultTTL,
-    };
-
-    // If cache is full, remove oldest entry
-    if (this.cache.size >= this.maxSize) {
-      const oldestKey = this.cache.keys().next().value;
-      if (oldestKey) {
-        this.cache.delete(oldestKey);
-      }
-    }
-
-    this.cache.set(fullKey, entry);
-  }
-
-  /**
-   * Delete value from cache
-   */
-  delete(key: string): boolean {
-    const fullKey = this.buildKey(key);
-    return this.cache.delete(fullKey);
-  }
-
-  /**
-   * Clear all cache entries
-   */
-  clear(): void {
-    this.cache.clear();
-    this.stats.hits = 0;
-    this.stats.misses = 0;
-    logger.info("Cache cleared");
-  }
-
-  /**
-   * Check if key exists in cache
-   */
-  has(key: string): boolean {
-    const fullKey = this.buildKey(key);
-    const entry = this.cache.get(fullKey);
-
-    if (!entry) {
-      return false;
-    }
-
-    // Check if expired
-    if (Date.now() - entry.timestamp > entry.ttl) {
-      this.cache.delete(fullKey);
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Get cache statistics
-   */
-  getStats(): CacheStats {
-    const totalRequests = this.stats.hits + this.stats.misses;
-    const hitRatio = totalRequests > 0 ? this.stats.hits / totalRequests : 0;
-
-    return {
-      hits: this.stats.hits,
-      misses: this.stats.misses,
-      hitRatio: Math.round(hitRatio * 100) / 100,
-      totalKeys: this.cache.size,
-      memoryUsage: this.calculateMemoryUsage(),
-    };
-  }
-
-  /**
-   * Get or set value with async function
-   */
-  async getOrSet<T>(key: string, fetchFunction: () => Promise<T>, ttl?: number): Promise<T> {
-    const cached = this.get(key) as T | null;
-    if (cached !== null) {
-      return cached;
-    }
-
-    const value = await fetchFunction();
-    this.set(key, value, ttl);
-    return value;
-  }
-
-  /**
-   * Invalidate cache entries by pattern
-   */
-  invalidatePattern(pattern: string): number {
-    const regex = new RegExp(pattern);
-    let count = 0;
-
-    for (const key of this.cache.keys()) {
-      if (regex.test(key)) {
-        this.cache.delete(key);
-        count++;
-      }
-    }
-
-    logger.info(`Invalidated ${String(count)} cache entries matching pattern: ${pattern}`);
-    return count;
-  }
-
-  /**
-   * Warm up cache with common data
-   */
-  warmUp(guildId: string): void {
-    logger.info("Warming up cache for guild", { guildId });
-
-    // This could be implemented to pre-fetch common data
-    // For now, we'll just log the intent
-    logger.info("Cache warm-up completed for guild", { guildId });
-  }
-
-  /**
-   * Build full cache key with prefix
-   */
   private buildKey(key: string): string {
     return `${this.keyPrefix}:${key}`;
   }
 
-  /**
-   * Clean up expired entries
-   */
-  private cleanup(): void {
-    const now = Date.now();
-    let cleanedCount = 0;
-
-    for (const [key, entry] of this.cache.entries()) {
-      if (now - entry.timestamp > entry.ttl) {
-        this.cache.delete(key);
-        cleanedCount++;
+  async get<T = any>(key: string): Promise<T | null> {
+    const fullKey = this.buildKey(key);
+    try {
+      const value = await this.redis.get(fullKey);
+      if (value === null) {
+        logger.debug(`[CacheService] MISS for key: ${fullKey}`);
+        return null;
       }
-    }
-
-    if (cleanedCount > 0) {
-      logger.debug(`Cleaned up ${String(cleanedCount)} expired cache entries`);
+      logger.debug(`[CacheService] HIT for key: ${fullKey}`);
+      return JSON.parse(value) as T;
+    } catch (err) {
+      logger.error(`[CacheService] ERROR on GET for key: ${fullKey}`, err);
+      return null;
     }
   }
 
-  /**
-   * Calculate approximate memory usage
-   */
-  private calculateMemoryUsage(): number {
-    // Rough estimate of memory usage in bytes
-    let size = 0;
-    for (const [key, entry] of this.cache.entries()) {
-      size += key.length * 2; // Unicode chars are 2 bytes
-      size += JSON.stringify(entry.data).length * 2;
-      size += 16; // Approximate overhead per entry
+  async set(key: string, value: any, ttl?: number): Promise<void> {
+    const fullKey = this.buildKey(key);
+    try {
+      await this.redis.set(fullKey, JSON.stringify(value), "PX", ttl ?? this.defaultTTL);
+      logger.debug(`[CacheService] SET for key: ${fullKey} (ttl: ${ttl ?? this.defaultTTL}ms)`);
+    } catch (err) {
+      logger.error(`[CacheService] ERROR on SET for key: ${fullKey}`, err);
     }
-    return size;
+  }
+
+  async delete(key: string): Promise<boolean> {
+    const fullKey = this.buildKey(key);
+    try {
+      const result = await this.redis.del(fullKey);
+      logger.debug(`[CacheService] DEL for key: ${fullKey}`);
+      return result > 0;
+    } catch (err) {
+      logger.error(`[CacheService] ERROR on DEL for key: ${fullKey}`, err);
+      return false;
+    }
+  }
+
+  async has(key: string): Promise<boolean> {
+    const fullKey = this.buildKey(key);
+    try {
+      const exists = await this.redis.exists(fullKey);
+      return exists === 1;
+    } catch (err) {
+      logger.error(`[CacheService] ERROR on EXISTS for key: ${fullKey}`, err);
+      return false;
+    }
+  }
+
+  async getOrSet<T>(key: string, fetchFunction: () => Promise<T>, ttl?: number): Promise<T> {
+    const cached = await this.get<T>(key);
+    if (cached !== null) {
+      return cached;
+    }
+    const value = await fetchFunction();
+    await this.set(key, value, ttl);
+    return value;
+  }
+
+  async invalidatePattern(pattern: string): Promise<number> {
+    // Redis doesn't support direct pattern deletion, so we scan and delete
+    const scanPattern = `${this.keyPrefix}:${pattern.replace("*", "")}*`;
+    let cursor = "0";
+    let count = 0;
+    do {
+      const [nextCursor, keys] = await this.redis.scan(cursor, "MATCH", scanPattern, "COUNT", 100);
+      cursor = nextCursor;
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+        count += keys.length;
+      }
+    } while (cursor !== "0");
+    logger.info(`[CacheService] Invalidated ${count} cache entries matching pattern: ${pattern}`);
+    return count;
+  }
+
+  // Restored for compatibility: getStats, clear, warmUp
+  async getStats(): Promise<{ totalKeys: number; memoryUsage: number }> {
+    try {
+      const info = await this.redis.info("memory");
+      const regex = /used_memory:(\d+)/;
+      const match = regex.exec(info);
+      const memoryUsage = match ? parseInt(match[1], 10) : 0;
+      const keys = await this.redis.keys(`${this.keyPrefix}:*`);
+      return {
+        totalKeys: keys.length,
+        memoryUsage,
+      };
+    } catch (err) {
+      logger.error("[CacheService] ERROR on getStats", err);
+      return { totalKeys: 0, memoryUsage: 0 };
+    }
+  }
+
+  async clear(): Promise<void> {
+    await this.invalidatePattern("*");
+    logger.info("[CacheService] Cleared all cache entries");
+  }
+
+  async warmUp(guildId: string): Promise<void> {
+    logger.info(`[CacheService] Warm-up called for guild: ${guildId}`);
+    // No-op for Redis, but kept for compatibility
+    return;
   }
 }
 
-// Export singleton instance
-export const cacheService = new CacheService({
-  defaultTTL: 5 * 60 * 1000, // 5 minutes
-  maxSize: 1000,
-  keyPrefix: "bubbles-bot",
-});
+export const cacheService = new CacheService();
 
 // Export class for testing
 export { CacheService };

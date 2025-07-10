@@ -49,28 +49,16 @@ class CacheCommand extends DevCommand {
     return new EmbedBuilder().setColor(color).setTitle(title).setDescription(description).setTimestamp();
   }
 
-  private handleStats(): CommandResponse {
-    const stats = cacheService.getStats();
-
-    const efficiency = stats.hitRatio * 100; // Convert ratio to percentage
-    const efficiencyColor = efficiency >= 80 ? "🟢" : efficiency >= 60 ? "🟡" : "🔴";
-    const efficiencyStatus = efficiency >= 80 ? "Excellent" : efficiency >= 60 ? "Good" : "Needs Improvement";
+  private async handleStats(): Promise<CommandResponse> {
+    const stats = await cacheService.getStats();
 
     const embed = new EmbedBuilder()
-      .setColor(efficiency >= 80 ? 0x2ecc71 : efficiency >= 60 ? 0xf39c12 : 0xe74c3c)
+      .setColor(0x3498db)
       .setTitle("🚀 Cache Performance Statistics")
-      .setDescription(`${efficiencyColor} **Cache Status:** ${efficiencyStatus}`)
+      .setDescription("📊 **Redis-backed Cache Status:** Active")
       .addFields(
         {
-          name: "📊 Hit/Miss Statistics",
-          value:
-            `**Total Hits:** ${stats.hits.toLocaleString()}\n` +
-            `**Total Misses:** ${stats.misses.toLocaleString()}\n` +
-            `**Hit Rate:** ${(stats.hitRatio * 100).toFixed(2)}%`,
-          inline: true,
-        },
-        {
-          name: "💾 Memory Usage",
+          name: "💾 Cache Storage",
           value:
             `**Total Keys:** ${stats.totalKeys.toLocaleString()}\n` +
             `**Memory Usage:** ${(stats.memoryUsage / 1024 / 1024).toFixed(2)} MB`,
@@ -78,26 +66,21 @@ class CacheCommand extends DevCommand {
         },
         {
           name: "⚡ Performance Impact",
+          value: `**Cache Type:** Redis (Persistent)\n` + `**Process Shared:** Yes\n` + `**TTL Support:** Yes`,
+          inline: true,
+        },
+        {
+          name: "🔧 Cache Features",
           value:
-            `**DB Queries Avoided:** ${stats.hits.toLocaleString()}\n` +
-            `**Estimated Time Saved:** ${(stats.hits * 0.05).toFixed(2)}s\n` +
-            `**Load Reduction:** ${(stats.hitRatio * 100).toFixed(1)}%`,
+            "• JSON serialization\n" +
+            "• Automatic TTL management\n" +
+            "• Pattern-based invalidation\n" +
+            "• Cross-process sharing",
           inline: false,
         }
       )
       .setTimestamp()
-      .setFooter({ text: "Cache statistics reset on bot restart" });
-
-    if (stats.hitRatio * 100 < 60) {
-      embed.addFields({
-        name: "💡 Recommendations",
-        value:
-          "• Consider increasing cache TTL values\n" +
-          "• Check if cache keys are being invalidated too frequently\n" +
-          "• Review query patterns for optimization opportunities",
-        inline: false,
-      });
-    }
+      .setFooter({ text: "Redis cache - persistent across restarts" });
 
     return { embeds: [embed], ephemeral: true };
   }
@@ -108,7 +91,7 @@ class CacheCommand extends DevCommand {
 
     try {
       if (pattern) {
-        cacheService.invalidatePattern(pattern);
+        await cacheService.invalidatePattern(pattern);
 
         const embed = this.buildEmbed(
           0xf39c12,
@@ -158,7 +141,9 @@ class CacheCommand extends DevCommand {
     // Send initial embed (auto-deferred already) via follow-up in BaseCommand? to simplify we only return final embed after warmup.
 
     // Warm up cache for each guild
-    guildIds.forEach((guildId) => cacheService.warmUp(guildId));
+    for (const guildId of guildIds) {
+      await cacheService.warmUp(guildId);
+    }
 
     await Promise.resolve();
 

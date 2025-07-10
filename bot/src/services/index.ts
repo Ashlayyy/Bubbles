@@ -113,7 +113,7 @@ export function areAllApiServicesConfigured(): boolean {
 /**
  * Get detailed status of all API services
  */
-export function getApiServicesStatus(): {
+export async function getApiServicesStatus(): Promise<{
   configured: boolean;
   services: {
     name: string;
@@ -121,7 +121,7 @@ export function getApiServicesStatus(): {
   }[];
   cacheStats: any;
   metricsStats: any;
-} {
+}> {
   const services = [
     { name: "Giveaway API", service: giveawayApiService },
     { name: "Leveling API", service: levelingApiService },
@@ -141,7 +141,7 @@ export function getApiServicesStatus(): {
   return {
     configured: allConfigured,
     services: serviceStatuses,
-    cacheStats: cacheService.getStats(),
+    cacheStats: await cacheService.getStats(),
     metricsStats: metricsService.getMetricsSummary(),
   };
 }
@@ -153,7 +153,7 @@ export async function initializeServices(): Promise<void> {
   // Log initialization
   console.log("🚀 Initializing API services...");
 
-  const status = getApiServicesStatus();
+  const status = await getApiServicesStatus();
 
   if (status.configured) {
     console.log("✅ All API services configured successfully");

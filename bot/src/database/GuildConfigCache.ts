@@ -24,7 +24,7 @@ export class GuildConfigCacheManager {
    * Get guild config from cache
    */
   static async getGuildConfigCached(guildId: string): Promise<GuildConfig | null> {
-    return cacheService.get(`${this.CACHE_PREFIX}${guildId}`) as GuildConfig | null;
+    return await cacheService.get<GuildConfig>(`${this.CACHE_PREFIX}${guildId}`);
   }
 
   /**

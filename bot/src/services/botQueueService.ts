@@ -1,5 +1,6 @@
 import { bullMQRegistry } from "@shared/queue";
 import logger from "../logger.js";
+import { DeadLetterQueue } from "../queue/DeadLetterQueue.js";
 import type Client from "../structures/Client.js";
 
 export interface BotQueueJobData {
@@ -24,6 +25,7 @@ export interface BotQueueOptions {
 
 export class BotQueueService {
   private client: Client;
+  public deadLetterQueue: DeadLetterQueue;
   private readonly queueNames = {
     CRITICAL: "critical-operations",
     BOT_COMMANDS: "bot-commands",
@@ -35,25 +37,90 @@ export class BotQueueService {
 
   constructor(client: Client) {
     this.client = client;
+    this.deadLetterQueue = new DeadLetterQueue(client);
   }
 
   async initialize(): Promise<void> {
     logger.info("Initializing Bot Queue Service with BullMQ...");
 
+    // Skip queue initialization if explicitly disabled
+    if (process.env.DISABLE_QUEUES === "true") {
+      logger.info("⚠️ Queue system disabled via DISABLE_QUEUES environment variable");
+      logger.info("✅ Bot Queue Service initialized (queues disabled)");
+      return;
+    }
+
+    // Check if Redis is available before proceeding
+    if (!bullMQRegistry.isAvailable()) {
+      logger.warn("⚠️ Redis not available - Queue operations will be disabled");
+      logger.warn("💡 Install Redis or start Redis container to enable queue features");
+      logger.info("✅ Bot Queue Service initialized (Redis disabled)");
+      return;
+    }
+
     // Initialize all required queues
     Object.values(this.queueNames).forEach((queueName) => {
-      bullMQRegistry.getQueue(queueName);
+      const queue = bullMQRegistry.getQueue(queueName);
+      if (!queue) {
+        logger.warn(`Failed to create queue: ${queueName}`);
+      }
     });
 
+    // Set up failed job handling for dead letter queue integration
+    this.setupFailedJobHandling();
+
     logger.info("✅ Bot Queue Service initialized with BullMQ");
+  }
+
+  /**
+   * Set up failed job handling to integrate with DeadLetterQueue
+   */
+  private setupFailedJobHandling(): void {
+    if (!bullMQRegistry.isAvailable()) {
+      return;
+    }
+
+    Object.values(this.queueNames).forEach((queueName) => {
+      const queueEvents = bullMQRegistry.getQueueEvents(queueName);
+      if (queueEvents) {
+        queueEvents.on("failed", async ({ jobId, failedReason }: { jobId: string; failedReason: string }) => {
+          try {
+            // Get the failed job details
+            const queue = bullMQRegistry.getQueue(queueName);
+            const job = await queue.getJob(jobId);
+
+            if (job) {
+              // Create an Error object from the failure reason
+              const error = new Error(failedReason || "Unknown failure reason");
+
+              // Send to dead letter queue for analysis and tracking
+              this.deadLetterQueue.handleFailedJob(job, error);
+            }
+          } catch (error) {
+            logger.error(`Failed to process dead letter entry for job ${jobId}:`, error);
+          }
+        });
+      }
+    });
+
+    logger.info("✅ Dead letter queue integration set up for all queues");
   }
 
   /**
    * Add a job to the appropriate queue based on type
    */
   async addJob(jobData: BotQueueJobData, options: BotQueueOptions = {}): Promise<string> {
+    if (!bullMQRegistry.isAvailable()) {
+      logger.warn("Cannot add job - Redis not available");
+      throw new Error("Queue system unavailable - Redis not connected");
+    }
+
     const queueName = this.getQueueNameForJobType(jobData.type);
     const queue = bullMQRegistry.getQueue(queueName);
+
+    if (!queue) {
+      throw new Error(`Queue ${queueName} not available`);
+    }
 
     try {
       const job = await queue.add(jobData.type, jobData, {
@@ -115,7 +182,15 @@ export class BotQueueService {
    * Get queue metrics
    */
   async getQueueMetrics(queueName: string) {
+    if (!bullMQRegistry.isAvailable()) {
+      return { error: "Redis not available" };
+    }
+
     const queue = bullMQRegistry.getQueue(queueName);
+    if (!queue) {
+      return { error: "Queue not available" };
+    }
+
     return {
       waiting: await queue.getWaitingCount(),
       active: await queue.getActiveCount(),
@@ -129,6 +204,10 @@ export class BotQueueService {
    * Get metrics for all queues
    */
   async getAllQueueMetrics() {
+    if (!bullMQRegistry.isAvailable()) {
+      return { redis: { error: "Redis not available" } };
+    }
+
     const metrics: Record<string, any> = {};
 
     for (const queueName of Object.values(this.queueNames)) {
@@ -147,6 +226,14 @@ export class BotQueueService {
    * Get system health
    */
   async getSystemHealth() {
+    if (!bullMQRegistry.isAvailable()) {
+      return {
+        overall: false,
+        queues: { redis: { error: "Redis not available" } },
+        timestamp: Date.now(),
+      };
+    }
+
     const metrics = await this.getAllQueueMetrics();
     let overall = true;
 
@@ -168,7 +255,7 @@ export class BotQueueService {
    * Check if the service is ready
    */
   isReady(): boolean {
-    return true; // BullMQ handles connection health internally
+    return bullMQRegistry.isAvailable();
   }
 
   /**
@@ -176,6 +263,7 @@ export class BotQueueService {
    */
   async shutdown(): Promise<void> {
     logger.info("Shutting down Bot Queue Service...");
+    this.deadLetterQueue.shutdown();
     await bullMQRegistry.shutdown();
     logger.info("✅ Bot Queue Service shutdown complete");
   }

@@ -372,7 +372,7 @@ export default class LogManager {
 
     try {
       // Try cache first
-      const cached = cacheService.get(cacheKey) as LogSettings | null;
+      const cached = await cacheService.get<LogSettings>(cacheKey);
       if (cached) {
         return cached;
       }

@@ -298,7 +298,7 @@ export default class ModerationManager {
     const cacheKey = `moderation:history:${guildId}:${userId}:${String(limit)}`;
 
     // Try to get from cache first
-    const cached = cacheService.get(cacheKey) as ModerationCase[] | null;
+    const cached = await cacheService.get<ModerationCase[]>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -382,7 +382,7 @@ export default class ModerationManager {
     const cacheKey = `moderation:points:${guildId}:${userId}`;
 
     // Try to get from cache first
-    const cached = cacheService.get(cacheKey) as number | null;
+    const cached = await cacheService.get<number>(cacheKey);
     if (cached !== null) {
       return cached;
     }

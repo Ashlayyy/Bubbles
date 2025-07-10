@@ -371,7 +371,7 @@ async function startSetupWizard(client: Client, interaction: ChatInputCommandInt
             await showHelpInfo(buttonInteraction);
             break;
           case "automod_wizard_back":
-            await startSetupWizard(client, interaction);
+            await showMainMenu(buttonInteraction);
             break;
           default:
             if (buttonInteraction.customId.startsWith("preset_")) {
@@ -381,11 +381,25 @@ async function startSetupWizard(client: Client, interaction: ChatInputCommandInt
         }
       } catch (error) {
         logger.error("Error handling automod wizard interaction:", error);
-        if (!buttonInteraction.replied && !buttonInteraction.deferred) {
-          await buttonInteraction.reply({
-            content: "❌ An error occurred. Please try again.",
-            ephemeral: true,
-          });
+        try {
+          if (!buttonInteraction.replied && !buttonInteraction.deferred) {
+            await buttonInteraction.reply({
+              content: "❌ An error occurred. Please try again.",
+              ephemeral: true,
+            });
+          } else if (buttonInteraction.deferred) {
+            await buttonInteraction.editReply({
+              content: "❌ An error occurred. Please try again.",
+            });
+          } else if (buttonInteraction.replied) {
+            await buttonInteraction.followUp({
+              content: "❌ An error occurred. Please try again.",
+              ephemeral: true,
+            });
+          }
+        } catch (replyError) {
+          logger.error("Failed to send error message to user:", replyError);
+          // If we can't send an error message, just log it
         }
       }
     })();
@@ -400,6 +414,69 @@ async function startSetupWizard(client: Client, interaction: ChatInputCommandInt
     void interaction.editReply({ components: [disabledButtons] }).catch(() => {
       // Ignore errors if message was deleted
     });
+  });
+}
+
+async function showMainMenu(interaction: ButtonInteraction): Promise<void> {
+  const welcomeEmbed = new EmbedBuilder()
+    .setColor(0x3498db)
+    .setTitle("🧙‍♂️ AutoMod Setup Wizard")
+    .setDescription(
+      "Welcome to the **Auto-Moderation Setup Wizard!**\n\n" +
+        "This wizard will help you configure comprehensive auto-moderation for your server. " +
+        "We'll guide you through each step with clear explanations.\n\n" +
+        "**What we'll set up:**\n" +
+        "🔹 **Spam Protection** - Prevent message flooding\n" +
+        "🔹 **Content Filtering** - Block inappropriate words\n" +
+        "🔹 **Link Control** - Manage external links\n" +
+        "🔹 **Caps Control** - Reduce excessive CAPS\n" +
+        "🔹 **Invite Protection** - Control Discord invites\n\n" +
+        "**Estimated time:** 3-5 minutes"
+    )
+    .addFields(
+      {
+        name: "📋 What You'll Choose",
+        value:
+          "• Protection level (Light/Moderate/Strict)\n" +
+          "• Which channels to protect\n" +
+          "• Actions to take (Delete/Warn/Timeout)\n" +
+          "• Custom word filters\n" +
+          "• Allowed/blocked domains",
+        inline: true,
+      },
+      {
+        name: "🎯 Quick Start Options",
+        value:
+          "• **Preset Templates** - Pre-configured setups\n" +
+          "• **Custom Configuration** - Build your own\n" +
+          "• **Import Settings** - Copy from another server",
+        inline: true,
+      }
+    )
+    .setFooter({ text: "Choose how you'd like to proceed below" })
+    .setTimestamp();
+
+  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("automod_wizard_presets")
+      .setLabel("📦 Use Presets")
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji("📦"),
+    new ButtonBuilder()
+      .setCustomId("automod_wizard_custom")
+      .setLabel("⚙️ Custom Setup")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("⚙️"),
+    new ButtonBuilder()
+      .setCustomId("automod_wizard_help")
+      .setLabel("❓ Help & Info")
+      .setStyle(ButtonStyle.Success)
+      .setEmoji("❓")
+  );
+
+  await interaction.update({
+    embeds: [welcomeEmbed],
+    components: [buttons],
   });
 }
 

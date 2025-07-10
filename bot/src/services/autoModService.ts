@@ -107,7 +107,7 @@ export class AutoModService {
     try {
       // Use Redis cache service for better caching
       const cacheKey = `automod:rules:${guildId}`;
-      const cachedRules = cacheService.get(cacheKey) as AutoModRule[] | null;
+      const cachedRules = await cacheService.get<AutoModRule[]>(cacheKey);
 
       if (cachedRules) {
         // Update memory cache for backwards compatibility
@@ -148,7 +148,7 @@ export class AutoModService {
       }));
 
       // Cache in both Redis and memory
-      cacheService.set(cacheKey, rules);
+      await cacheService.set(cacheKey, rules);
       ruleCache.set(guildId, { rules, timestamp: Date.now() });
 
       return rules;

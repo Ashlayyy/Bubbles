@@ -56,6 +56,12 @@ export class WebSocketService extends EventEmitter {
   }
 
   public connect(): void {
+    // Skip WebSocket connection if API integration is disabled
+    if (process.env.DISABLE_API === "true") {
+      logger.info("API integration disabled via DISABLE_API environment variable");
+      return;
+    }
+
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       logger.warn("WebSocket is already connected");
       return;

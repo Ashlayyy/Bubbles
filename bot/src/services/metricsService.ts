@@ -214,8 +214,15 @@ class MetricsService {
   /**
    * Get cache statistics
    */
-  getCacheStats(): CacheStats {
-    return cacheService.getStats();
+  async getCacheStats(): Promise<CacheStats> {
+    const stats = await cacheService.getStats();
+    return {
+      totalKeys: stats.totalKeys,
+      memoryUsage: stats.memoryUsage,
+      hits: 0,
+      misses: 0,
+      hitRatio: 0,
+    };
   }
 
   /**
@@ -259,8 +266,8 @@ class MetricsService {
   /**
    * Get comprehensive metrics summary
    */
-  getMetricsSummary() {
-    const cacheStats = this.getCacheStats();
+  async getMetricsSummary() {
+    const cacheStats = await this.getCacheStats();
     const now = Date.now();
 
     return {
@@ -273,7 +280,7 @@ class MetricsService {
         averageResponseTime: this.apiMetrics.averageResponseTime,
         cacheHitRate:
           this.apiMetrics.totalCalls > 0 ? (this.apiMetrics.cacheHits / this.apiMetrics.totalCalls) * 100 : 0,
-        topEndpoints: this.getTopEndpoints(5),
+        topEndpoints: await this.getTopEndpoints(5),
       },
       commands: {
         totalExecutions: this.commandMetrics.totalExecutions,
@@ -282,10 +289,10 @@ class MetricsService {
             ? (this.commandMetrics.successfulExecutions / this.commandMetrics.totalExecutions) * 100
             : 0,
         averageExecutionTime: this.commandMetrics.averageExecutionTime,
-        topCommands: this.getTopCommands(5),
+        topCommands: await this.getTopCommands(5),
       },
       cache: {
-        hitRatio: cacheStats.hitRatio,
+        hitRatio: 0, // No longer available in new CacheStats
         totalKeys: cacheStats.totalKeys,
         memoryUsage: cacheStats.memoryUsage,
       },
@@ -344,7 +351,7 @@ class MetricsService {
   /**
    * Update health metrics
    */
-  private updateHealthMetrics() {
+  private async updateHealthMetrics() {
     const now = Date.now();
     this.serviceHealth.uptime = now - this.startTime;
     this.serviceHealth.lastHealthCheck = now;
@@ -357,7 +364,7 @@ class MetricsService {
 
     // Check cache health
     try {
-      const cacheStats = cacheService.getStats();
+      const cacheStats = await cacheService.getStats();
       this.serviceHealth.cacheHealth = cacheStats.totalKeys >= 0;
     } catch (error) {
       this.serviceHealth.cacheHealth = false;

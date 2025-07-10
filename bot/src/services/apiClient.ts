@@ -110,7 +110,7 @@ class ApiClient {
 
     // Try to get from cache first
     if (shouldCache) {
-      const cached = cacheService.get(cacheKey) as T;
+      const cached = await cacheService.get<T>(cacheKey);
       if (cached !== null) {
         logger.debug(`Cache hit for ${endpoint}`);
         return cached;

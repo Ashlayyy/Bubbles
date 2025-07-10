@@ -493,7 +493,6 @@ export const builder = new SlashCommandBuilder()
       .setName("create")
       .setDescription("Create a new advanced AutoMod rule")
       .addStringOption((option) => option.setName("name").setDescription("Name of the rule").setRequired(true))
-      .addStringOption((option) => option.setName("description").setDescription("Description of the rule"))
       .addStringOption((option) =>
         option
           .setName("type")
@@ -520,6 +519,7 @@ export const builder = new SlashCommandBuilder()
           .setDescription("Comma-separated actions (DELETE, WARN, TIMEOUT, KICK, BAN, NOTIFY, LOG)")
           .setRequired(true)
       )
+      .addStringOption((option) => option.setName("description").setDescription("Description of the rule"))
       .addStringOption((option) =>
         option
           .setName("sensitivity")

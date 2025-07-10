@@ -10,10 +10,12 @@ import {
   getVoiceConnection,
   joinVoiceChannel,
 } from "@discordjs/voice";
+import { RedisConnectionFactory } from "@shared/utils/RedisConnectionFactory";
 import type { GuildMember } from "discord.js";
-import Redis from "ioredis";
-import YouTube from "youtube-sr";
+import type { Redis } from "ioredis";
+import { YouTube } from "youtube-sr";
 import ytdl from "ytdl-core";
+
 import logger from "../logger.js";
 
 // Types
@@ -66,22 +68,17 @@ export interface PlaybackStatus {
 }
 
 class MusicService {
-  private redis: Redis;
+  private get redis(): Redis {
+    return RedisConnectionFactory.getSharedConnection();
+  }
+
   private audioPlayers = new Map<string, AudioPlayer>();
   private voiceConnections = new Map<string, VoiceConnection>();
   private queues = new Map<string, MusicQueue>();
   private currentResources = new Map<string, AudioResource>();
 
   constructor() {
-    this.redis = new Redis({
-      host: process.env.REDIS_HOST || "localhost",
-      port: parseInt(process.env.REDIS_PORT || "6379"),
-      password: process.env.REDIS_PASSWORD,
-      db: parseInt(process.env.REDIS_DB || "0"),
-      keyPrefix: "music:",
-    });
-
-    logger.info("MusicService: Initialized with API-key-free YouTube support");
+    logger.info("MusicService: Initialized with API-key-free YouTube support using shared Redis connection");
   }
 
   /**

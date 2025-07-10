@@ -58,18 +58,28 @@ class SetupCommand extends AdminCommand {
     switch (moduleName) {
       case "tickets":
         await startTicketWizard(this.client, this.interaction as ChatInputCommandInteraction);
+        break;
       case "automod":
         await startAutoModWizard(this.client, this.interaction as ChatInputCommandInteraction);
+        break;
       case "reports":
         await startReportWizard(this.client, this.interaction as ChatInputCommandInteraction);
+        break;
       case "logging":
         await startLoggingWizard(this.client, this.interaction as ChatInputCommandInteraction);
+        break;
       default:
         return {
           content: `❌ Unknown module: ${moduleName}`,
           ephemeral: true,
         };
     }
+
+    // Return success after starting the wizard
+    return {
+      content: "✅ Setup wizard started successfully!",
+      ephemeral: true,
+    };
   }
 
   // Disable auto-defer; the specific wizard will handle initial reply itself
