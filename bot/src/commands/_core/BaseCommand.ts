@@ -12,6 +12,7 @@ import type {
   User,
   VoiceChannel,
 } from "discord.js";
+import { MessageFlags } from "discord.js";
 
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
@@ -75,7 +76,7 @@ export abstract class BaseCommand {
       // Auto-defer if configured
       if (this.shouldAutoDefer() && !interaction.deferred && !interaction.replied) {
         await interaction.deferReply({
-          ephemeral: this.config.ephemeral ?? false,
+          flags: this.config.ephemeral ? MessageFlags.Ephemeral : undefined,
         });
       }
 
@@ -127,7 +128,7 @@ export abstract class BaseCommand {
     this.checkPermissions();
 
     // Owner-only validation
-    if (this.config.ownerOnly && this.context.user.id !== process.env.OWNER_ID) {
+    if (this.config.ownerOnly && !process.env.DEVELOPER_USER_IDS?.split(",").includes(this.context.user.id)) {
       throw new CommandError("This command is restricted to the bot owner.", "OWNER_ONLY");
     }
 
@@ -210,22 +211,29 @@ export abstract class BaseCommand {
   // Response sending
   protected async sendResponse(response: CommandResponse): Promise<void> {
     const interaction = this.context.interaction;
+    const isEphemeral = response.ephemeral ?? this.config.ephemeral;
 
-    const replyOptions = {
+    const baseOptions = {
       content: response.content,
       embeds: response.embeds,
       components: response.components,
       files: response.files,
-      ephemeral: response.ephemeral ?? this.config.ephemeral ?? false,
     };
 
     try {
       if (interaction.deferred) {
-        await interaction.editReply(replyOptions);
+        // editReply doesn't support ephemeral flag
+        await interaction.editReply(baseOptions);
       } else if (!interaction.replied) {
-        await interaction.reply(replyOptions);
+        await interaction.reply({
+          ...baseOptions,
+          flags: isEphemeral ? MessageFlags.Ephemeral : undefined,
+        });
       } else {
-        await interaction.followUp(replyOptions);
+        await interaction.followUp({
+          ...baseOptions,
+          flags: isEphemeral ? MessageFlags.Ephemeral : undefined,
+        });
       }
     } catch (error) {
       logger.error(`Failed to send response for command ${this.config.name}:`, error);

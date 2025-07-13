@@ -18,7 +18,7 @@ export const getQueueConfig = (): QueueConfig => {
 		redis: {
 			host: process.env.REDIS_HOST || 'localhost',
 			port: parseInt(process.env.REDIS_PORT || '6379'),
-			password: process.env.REDIS_PASSWORD,
+			password: process.env.REDIS_PASSWORD || undefined,
 			db: 0,
 		},
 		defaultJobOptions: {
@@ -41,7 +41,7 @@ export function createRedisConnection(): Redis {
 	})({
 		host: process.env.REDIS_HOST || 'localhost',
 		port: parseInt(process.env.REDIS_PORT || '6379', 10),
-		password: process.env.REDIS_PASSWORD,
+		password: process.env.REDIS_PASSWORD || undefined,
 		db: parseInt(process.env.REDIS_DB || '0', 10),
 		maxRetriesPerRequest: null, // Required for BullMQ compatibility - prevents deprecation warnings
 		enableReadyCheck: true,

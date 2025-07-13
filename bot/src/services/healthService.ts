@@ -248,13 +248,7 @@ class BotHealthService {
       () => {
         this.getHealthStatus()
           .then((health) => {
-            logger.info("Bot health status:", {
-              overall: health.overall,
-              discordPing: health.components.discord.ping,
-              guilds: health.components.discord.guilds,
-              uptime: Math.floor(health.metrics.uptime / 1000 / 60), // minutes
-              memoryUsage: Math.floor(health.metrics.memoryUsage.rss / 1024 / 1024), // MB
-            });
+            logger.info("Bot health status: " + JSON.stringify(health));
 
             // Send health status to API if WebSocket is connected
             if (this.client.wsService?.isConnected()) {

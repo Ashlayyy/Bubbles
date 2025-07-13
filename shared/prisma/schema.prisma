@@ -1918,3 +1918,34 @@ model GiveawayEntryAdvanced {
   @@unique([giveawayId, userId])
   @@index([giveawayId])
 }
+
+/// -------------------------
+/// Compliment Wheel System Models
+/// -------------------------
+
+model ComplimentWheel {
+  id                  String                @id @default(auto()) @map("_id") @db.ObjectId
+  guildId             String                @unique
+  messageId           String // The message ID to monitor for reactions
+  channelId           String // Channel where the message is located
+  complimentChannelId String // Channel where daily compliments are announced
+  emoji               String                @default("❤️") // The emoji to monitor for reactions
+  isActive            Boolean               @default(true)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  drawnUsers          ComplimentDrawnUser[]
+}
+
+model ComplimentDrawnUser {
+  id          String          @id @default(auto()) @map("_id") @db.ObjectId
+  wheelId     String          @db.ObjectId
+  wheel       ComplimentWheel @relation(fields: [wheelId], references: [id], onDelete: Cascade)
+  userId      String
+  username    String
+  drawnAt     DateTime        @default(now())
+  cycleNumber Int // Which cycle this user was drawn in
+
+  @@unique([wheelId, userId, cycleNumber])
+  @@index([wheelId])
+  @@index([userId])
+}

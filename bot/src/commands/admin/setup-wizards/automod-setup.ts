@@ -6,15 +6,12 @@ import {
   type ChatInputCommandInteraction,
   ComponentType,
   EmbedBuilder,
-  SlashCommandBuilder,
 } from "discord.js";
 
 import { AutoModRule } from "shared/src/database.js";
-import { prisma } from "../../database/index.js";
-import logger from "../../logger.js";
-import type Client from "../../structures/Client.js";
-import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { AdminCommand } from "../_core/specialized/AdminCommand.js";
+import { prisma } from "../../../database/index.js";
+import logger from "../../../logger.js";
+import type Client from "../../../structures/Client.js";
 
 interface AutoModPreset {
   name: string;
@@ -162,129 +159,7 @@ const AUTOMOD_PRESETS: AutoModPreset[] = [
   },
 ];
 
-/**
- * AutoMod Setup Command - Setup and configure automod features
- */
-export class AutoModSetupCommand extends AdminCommand {
-  constructor() {
-    const config: CommandConfig = {
-      name: "automod-setup",
-      description: "Setup and configure automod features",
-      category: "admin",
-      ephemeral: true,
-      guildOnly: true,
-    };
-
-    super(config);
-  }
-
-  protected async execute(): Promise<CommandResponse> {
-    // Validate admin permissions for server management
-    this.validateAdminPerms(["ManageGuild"]);
-
-    const action = this.getStringOption("action", true);
-
-    switch (action) {
-      case "quick-setup":
-        return await this.handleQuickSetup();
-      case "advanced-setup":
-        return await this.handleAdvancedSetup();
-      case "reset":
-        return await this.handleReset();
-      default:
-        throw new Error("Invalid action");
-    }
-  }
-
-  private async handleQuickSetup(): Promise<CommandResponse> {
-    try {
-      // Import AutoModService and use it statically
-      const { AutoModService } = await import("../../services/autoModService.js");
-      const result = await AutoModService.quickSetup(this.guild.id);
-
-      return this.createAdminSuccess(
-        "AutoMod Quick Setup Complete",
-        `AutoMod has been configured with default settings:\n${result.configuredRules.map((rule) => `• ${rule}`).join("\n")}`
-      );
-    } catch (error) {
-      throw new Error(`Failed to setup automod: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
-  }
-
-  private async handleAdvancedSetup(): Promise<CommandResponse> {
-    try {
-      // Get advanced configuration options
-      const antiSpam = this.getBooleanOption("anti-spam") ?? true;
-      const antiRaid = this.getBooleanOption("anti-raid") ?? true;
-      const wordFilter = this.getBooleanOption("word-filter") ?? true;
-      const linkFilter = this.getBooleanOption("link-filter") ?? false;
-
-      // Import AutoModService and use it statically
-      const { AutoModService } = await import("../../services/autoModService.js");
-      const result = await AutoModService.advancedSetup(this.guild.id, {
-        antiSpam,
-        antiRaid,
-        wordFilter,
-        linkFilter,
-      });
-
-      return this.createAdminSuccess(
-        "AutoMod Advanced Setup Complete",
-        `AutoMod has been configured with custom settings:\n${result.configuredRules.map((rule) => `• ${rule}`).join("\n")}`
-      );
-    } catch (error) {
-      throw new Error(`Failed to setup advanced automod: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
-  }
-
-  private async handleReset(): Promise<CommandResponse> {
-    try {
-      // Import AutoModService and use it statically
-      const { AutoModService } = await import("../../services/autoModService.js");
-      await AutoModService.resetConfig(this.guild.id);
-
-      return this.createAdminSuccess(
-        "AutoMod Configuration Reset",
-        "All automod settings have been reset to defaults."
-      );
-    } catch (error) {
-      throw new Error(`Failed to reset automod: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
-  }
-}
-
-// Export the command instance
-export default new AutoModSetupCommand();
-
-// Export the Discord command builder for registration
-export const builder = new SlashCommandBuilder()
-  .setName("automod-setup")
-  .setDescription("Setup and configure automod features")
-  .setDefaultMemberPermissions(0)
-  .addStringOption((option) =>
-    option
-      .setName("action")
-      .setDescription("What action to perform")
-      .setRequired(true)
-      .addChoices(
-        { name: "Quick Setup (Recommended)", value: "quick-setup" },
-        { name: "Advanced Setup", value: "advanced-setup" },
-        { name: "Reset Configuration", value: "reset" }
-      )
-  )
-  .addBooleanOption((option) =>
-    option.setName("anti-spam").setDescription("Enable anti-spam protection (advanced setup only)").setRequired(false)
-  )
-  .addBooleanOption((option) =>
-    option.setName("anti-raid").setDescription("Enable anti-raid protection (advanced setup only)").setRequired(false)
-  )
-  .addBooleanOption((option) =>
-    option.setName("word-filter").setDescription("Enable word filtering (advanced setup only)").setRequired(false)
-  )
-  .addBooleanOption((option) =>
-    option.setName("link-filter").setDescription("Enable link filtering (advanced setup only)").setRequired(false)
-  );
-
+// Export only the wizard function - no standalone command
 export { startSetupWizard };
 
 async function startSetupWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
@@ -344,11 +219,26 @@ async function startSetupWizard(client: Client, interaction: ChatInputCommandInt
       .setEmoji("❓")
   );
 
-  await interaction.reply({
-    embeds: [welcomeEmbed],
-    components: [buttons],
-    ephemeral: true,
-  });
+  // Check interaction state before replying
+  if (!interaction.replied && !interaction.deferred) {
+    await interaction.reply({
+      embeds: [welcomeEmbed],
+      components: [buttons],
+      ephemeral: true,
+    });
+  } else if (interaction.deferred) {
+    await interaction.editReply({
+      embeds: [welcomeEmbed],
+      components: [buttons],
+    });
+  } else {
+    // If already replied, send a follow-up
+    await interaction.followUp({
+      embeds: [welcomeEmbed],
+      components: [buttons],
+      ephemeral: true,
+    });
+  }
 
   // Set up collector for button interactions
   const collector = interaction.channel?.createMessageComponentCollector({
@@ -373,9 +263,22 @@ async function startSetupWizard(client: Client, interaction: ChatInputCommandInt
           case "automod_wizard_back":
             await showMainMenu(buttonInteraction);
             break;
+          case "custom_step1_protection":
+            await showProtectionSelection(buttonInteraction);
+            break;
+          case "custom_quick_basic":
+            await performQuickBasicSetup(buttonInteraction, client);
+            break;
           default:
             if (buttonInteraction.customId.startsWith("preset_")) {
               await handlePresetSelection(buttonInteraction, client);
+            } else if (buttonInteraction.customId.startsWith("protection_")) {
+              await handleProtectionSelection(buttonInteraction, client);
+            } else {
+              await buttonInteraction.reply({
+                content: "❌ Unknown button interaction. Please try again.",
+                ephemeral: true,
+              });
             }
             break;
         }
@@ -399,7 +302,6 @@ async function startSetupWizard(client: Client, interaction: ChatInputCommandInt
           }
         } catch (replyError) {
           logger.error("Failed to send error message to user:", replyError);
-          // If we can't send an error message, just log it
         }
       }
     })();
@@ -569,52 +471,36 @@ async function startCustomSetup(interaction: ButtonInteraction): Promise<void> {
 
 async function showHelpInfo(interaction: ButtonInteraction): Promise<void> {
   const helpEmbed = new EmbedBuilder()
-    .setColor(0x2ecc71)
+    .setColor(0x3498db)
     .setTitle("❓ AutoMod Help & Information")
-    .setDescription("Here's everything you need to know about auto-moderation and how it protects your server.")
+    .setDescription(
+      "Use `/setup automod` to configure auto-moderation for your server!\n\n" +
+        "**Quick Start Options:**\n" +
+        "• `/setup automod` - Interactive setup guide"
+    )
     .addFields(
       {
-        name: "🛡️ What is Auto-Moderation?",
+        name: "🛡️ Protection Types",
         value:
-          "Auto-moderation automatically detects and responds to rule violations without " +
-          "human intervention. It helps maintain a healthy community by:\n" +
-          "• Removing spam and inappropriate content\n" +
-          "• Warning users about violations\n" +
-          "• Taking action against repeat offenders\n" +
-          "• Logging all activities for review",
+          "• **Spam Protection** - Prevent message flooding\n" +
+          "• **Content Filtering** - Block inappropriate words\n" +
+          "• **Link Control** - Manage external links\n" +
+          "• **Caps Control** - Reduce excessive CAPS\n" +
+          "• **Invite Protection** - Control Discord invites",
         inline: false,
       },
       {
-        name: "📊 Protection Types Explained",
+        name: "⚡ Quick Setup",
         value:
-          "**🔹 Spam Protection:** Prevents message flooding and duplicate content\n" +
-          "**🔹 Word Filter:** Blocks inappropriate or custom-defined words\n" +
-          "**🔹 Link Control:** Manages external links and domains\n" +
-          "**🔹 Caps Control:** Reduces excessive CAPITAL LETTER usage\n" +
-          "**🔹 Invite Protection:** Controls Discord server invites\n" +
-          "**🔹 Mention Spam:** Prevents excessive @mentions",
-        inline: false,
-      },
-      {
-        name: "⚖️ Action Types",
-        value:
-          "**🗑️ Delete:** Remove the violating message\n" +
-          "**⚠️ Warn:** Send a warning to the user\n" +
-          "**⏱️ Timeout:** Temporarily restrict the user\n" +
-          "**👢 Kick:** Remove user from server\n" +
-          "**🔨 Ban:** Permanently ban the user",
-        inline: false,
-      },
-      {
-        name: "🎯 Sensitivity Levels",
-        value:
-          "**🟢 Low:** Relaxed - catches obvious violations\n" +
-          "**🟡 Medium:** Balanced - good for most servers\n" +
-          "**🔴 High:** Strict - very sensitive detection",
+          "• **Basic Protection** - Essential spam and caps protection\n" +
+          "• **Comprehensive Shield** - Advanced protection for active servers\n" +
+          "• **Family Friendly** - Strong content filtering\n" +
+          "• **Gaming Community** - Optimized for gaming servers",
         inline: false,
       }
     )
-    .setFooter({ text: "Need more help? Contact your server administrators" });
+    .setFooter({ text: "Choose a preset or build your own configuration" })
+    .setTimestamp();
 
   const backButton = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -982,4 +868,198 @@ async function _showStatus(_client: Client, interaction: ChatInputCommandInterac
       ],
     });
   }
+}
+
+async function showProtectionSelection(interaction: ButtonInteraction): Promise<void> {
+  const protectionEmbed = new EmbedBuilder()
+    .setColor(0x3498db)
+    .setTitle("🛡️ Choose Protection Types")
+    .setDescription(
+      "Select which types of protection you want to enable for your server.\n\n" +
+        "You can enable multiple types and configure them individually."
+    )
+    .addFields(
+      {
+        name: "🔹 Spam Protection",
+        value: "Prevents message flooding and duplicate content",
+        inline: true,
+      },
+      {
+        name: "🔹 Word Filter",
+        value: "Blocks inappropriate or custom-defined words",
+        inline: true,
+      },
+      {
+        name: "🔹 Link Control",
+        value: "Manages external links and domains",
+        inline: true,
+      },
+      {
+        name: "🔹 Caps Control",
+        value: "Reduces excessive CAPITAL LETTER usage",
+        inline: true,
+      },
+      {
+        name: "🔹 Invite Protection",
+        value: "Controls Discord server invites",
+        inline: true,
+      },
+      {
+        name: "🔹 Mention Spam",
+        value: "Prevents excessive @mentions",
+        inline: true,
+      }
+    );
+
+  const protectionButtons = [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("protection_spam").setLabel("Spam").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("protection_words").setLabel("Words").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("protection_links").setLabel("Links").setStyle(ButtonStyle.Secondary)
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("protection_caps").setLabel("Caps").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("protection_invites").setLabel("Invites").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("protection_mentions").setLabel("Mentions").setStyle(ButtonStyle.Secondary)
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("custom_next_step").setLabel("Continue →").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("automod_wizard_back").setLabel("← Back").setStyle(ButtonStyle.Secondary)
+    ),
+  ];
+
+  await interaction.update({
+    embeds: [protectionEmbed],
+    components: protectionButtons,
+  });
+}
+
+async function performQuickBasicSetup(interaction: ButtonInteraction, client: Client): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    // Create basic automod rules
+    const basicRules = [
+      {
+        name: "Anti-Spam Basic",
+        type: "spam",
+        sensitivity: "MEDIUM",
+        actions: ["DELETE"],
+        config: { maxMessages: 5, timeWindow: 10, duplicateThreshold: 3 },
+      },
+      {
+        name: "Caps Control",
+        type: "caps",
+        sensitivity: "MEDIUM",
+        actions: ["DELETE"],
+        config: { capsPercent: 70, minLength: 10 },
+      },
+    ];
+
+    let createdRules = 0;
+    for (const rule of basicRules) {
+      try {
+        await prisma.autoModRule.create({
+          data: {
+            guildId: interaction.guild.id,
+            name: rule.name,
+            type: rule.type,
+            sensitivity: rule.sensitivity,
+            triggers: rule.config,
+            actions: rule.actions,
+            enabled: true,
+            createdBy: interaction.user.id,
+          },
+        });
+        createdRules++;
+      } catch (error) {
+        logger.warn(`Failed to create auto-mod rule ${rule.name}:`, error);
+      }
+    }
+
+    // Notify API of automod setup
+    const customClient = client as any as Client;
+    if (customClient.queueService) {
+      try {
+        await customClient.queueService.processRequest({
+          type: "AUTOMOD_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            action: "QUICK_SETUP",
+            rulesCreated: createdRules,
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify API of automod setup:", error);
+      }
+    }
+
+    const successEmbed = new EmbedBuilder()
+      .setColor(0x2ecc71)
+      .setTitle("✅ Quick Basic Setup Complete!")
+      .setDescription(
+        `Successfully configured basic auto-moderation for your server!\n\n` +
+          `**Rules Created:** ${String(createdRules)}/${String(basicRules.length)}\n` +
+          `**Status:** Active and monitoring`
+      )
+      .addFields({
+        name: "📋 Applied Rules",
+        value: basicRules.map((rule, index) => `${String(index + 1)}. **${rule.name}** (${rule.type})`).join("\n"),
+        inline: false,
+      })
+      .addFields({
+        name: "⚙️ Next Steps",
+        value:
+          "• Use `/automod list` to view all rules\n" +
+          "• Use `/automod configure` to customize settings\n" +
+          "• Use `/automod test` to test rules with sample text",
+        inline: false,
+      })
+      .setTimestamp()
+      .setFooter({ text: "AutoMod is now protecting your server!" });
+
+    await interaction.editReply({ embeds: [successEmbed] });
+
+    // Log the configuration change
+    await client.logManager.log(interaction.guild.id, "AUTOMOD_CONFIG_CHANGE", {
+      userId: interaction.user.id,
+      metadata: {
+        action: "quick_setup",
+        rulesCreated: createdRules,
+      },
+    });
+  } catch (error) {
+    logger.error("Error performing quick basic setup:", error);
+    await interaction.editReply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xe74c3c)
+          .setTitle("❌ Setup Failed")
+          .setDescription("An error occurred while setting up auto-moderation. Please try again.")
+          .setTimestamp(),
+      ],
+    });
+  }
+}
+
+async function handleProtectionSelection(interaction: ButtonInteraction, client: Client): Promise<void> {
+  const protectionType = interaction.customId.replace("protection_", "");
+
+  await interaction.reply({
+    content: `✅ ${protectionType} protection selected! This feature will be implemented in the next step.`,
+    ephemeral: true,
+  });
+
+  // TODO: Implement full protection configuration flow
+  // For now, just acknowledge the selection
 }

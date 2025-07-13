@@ -8,6 +8,7 @@ import type {
   MessageContextMenuCommandInteraction,
   RESTGetAPIApplicationCommandsResult,
   RESTPostAPIApplicationCommandsJSONBody,
+  UserContextMenuCommandInteraction,
 } from "discord.js";
 import {
   ActionRowBuilder,
@@ -676,7 +677,7 @@ export default class Client extends DiscordClient {
 
   async runCommand(
     command: Command | BaseCommand,
-    interaction: ChatInputCommandInteraction | MessageContextMenuCommandInteraction
+    interaction: ChatInputCommandInteraction | MessageContextMenuCommandInteraction | UserContextMenuCommandInteraction
   ): Promise<void> {
     // Handle BaseCommand instances
     if (command instanceof BaseCommand) {

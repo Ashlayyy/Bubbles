@@ -1,13 +1,17 @@
 import { SlashCommandBuilder, type AutocompleteInteraction, type ChatInputCommandInteraction } from "discord.js";
 
+import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 import { startReportWizard } from "../_shared/report-setup.js";
-import { startSetupWizard as startAutoModWizard } from "./automod-setup.js";
-import { startLoggingWizard } from "./logging.js";
-import { startTicketWizard } from "./ticket-setup.js";
+import { startAppealsWizard } from "./setup-wizards/appeals-setup.js";
+import { startSetupWizard as startAutoModWizard } from "./setup-wizards/automod-setup.js";
+import { startLoggingWizard } from "./setup-wizards/logging-setup.js";
+import { startReactionRolesWizard } from "./setup-wizards/reactionroles-setup.js";
+import { startTicketWizard } from "./setup-wizards/ticket-setup.js";
+import { startWelcomeWizard } from "./setup-wizards/welcome-setup.js";
 
-const MODULE_CHOICES = ["tickets", "automod", "reports", "logging"] as const;
+const MODULE_CHOICES = ["tickets", "automod", "reports", "logging", "welcome", "appeals", "reactionroles"] as const;
 
 type SetupModule = (typeof MODULE_CHOICES)[number];
 
@@ -55,31 +59,52 @@ class SetupCommand extends AdminCommand {
 
     const moduleName = this.getStringOption("module", true) as SetupModule;
 
-    switch (moduleName) {
-      case "tickets":
-        await startTicketWizard(this.client, this.interaction as ChatInputCommandInteraction);
-        break;
-      case "automod":
-        await startAutoModWizard(this.client, this.interaction as ChatInputCommandInteraction);
-        break;
-      case "reports":
-        await startReportWizard(this.client, this.interaction as ChatInputCommandInteraction);
-        break;
-      case "logging":
-        await startLoggingWizard(this.client, this.interaction as ChatInputCommandInteraction);
-        break;
-      default:
+    try {
+      // Wizards handle their own reply/defer logic. Do NOT reply/defer here.
+      switch (moduleName) {
+        case "tickets":
+          await startTicketWizard(this.client, this.interaction as ChatInputCommandInteraction);
+          break;
+        case "automod":
+          await startAutoModWizard(this.client, this.interaction as ChatInputCommandInteraction);
+          break;
+        case "reports":
+          await startReportWizard(this.client, this.interaction as ChatInputCommandInteraction);
+          break;
+        case "logging":
+          await startLoggingWizard(this.client, this.interaction as ChatInputCommandInteraction);
+          break;
+        case "welcome":
+          await startWelcomeWizard(this.client, this.interaction as ChatInputCommandInteraction);
+          break;
+        case "appeals":
+          await startAppealsWizard(this.client, this.interaction as ChatInputCommandInteraction);
+          break;
+        case "reactionroles":
+          await startReactionRolesWizard(this.client, this.interaction as ChatInputCommandInteraction);
+          break;
+        default:
+          // Only reply if the module is unknown (wizard not called)
+          return {
+            content: `❌ Unknown module: ${moduleName}`,
+            ephemeral: true,
+          };
+      }
+
+      // Do not reply here; wizard already handled the interaction
+      return {};
+    } catch (error) {
+      logger.error(`Error starting ${moduleName} setup wizard:`, error);
+      // Only reply if the wizard threw before replying
+      if (!this.interaction.replied && !this.interaction.deferred) {
         return {
-          content: `❌ Unknown module: ${moduleName}`,
+          content: `❌ Failed to start ${moduleName} setup wizard. Please try again.`,
           ephemeral: true,
         };
+      }
+      // If already replied/deferred, do nothing
+      return {};
     }
-
-    // Return success after starting the wizard
-    return {
-      content: "✅ Setup wizard started successfully!",
-      ephemeral: true,
-    };
   }
 
   // Disable auto-defer; the specific wizard will handle initial reply itself

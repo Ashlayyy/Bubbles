@@ -57,8 +57,6 @@ export const descriptions: Record<string, string> = {
  * Now uses advanced caching for optimal performance.
  */
 export async function getGuildConfig(guildId: string): Promise<GuildConfig> {
-  logger.verbose("DB.getGuildConfig()", { guildId });
-
   try {
     // Use the new cache service with getOrSet pattern for atomic operation
     const config = await GuildConfigCacheManager.getOrSetGuildConfig(guildId, async (): Promise<GuildConfig> => {

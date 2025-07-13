@@ -1,6 +1,5 @@
 import {
   ActionRowBuilder,
-  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
@@ -231,10 +230,13 @@ async function createTicket(client: Client, interaction: ChatInputCommandInterac
     const config = await getGuildConfig(interaction.guild.id);
     await ticketChannel.send({
       content: config.ticketOnCallRoleId
-        ? `<@${interaction.user.id}> Welcome to your support ticket!\n||<@&${String(config.ticketOnCallRoleId)}>||`
+        ? `<@${interaction.user.id}> Welcome to your support ticket!\n<@&${String(config.ticketOnCallRoleId)}>`
         : `<@${interaction.user.id}> Welcome to your support ticket!`,
       embeds: [ticketEmbed],
       components: [controlRow],
+      allowedMentions: config.ticketOnCallRoleId
+        ? { users: [interaction.user.id], roles: [String(config.ticketOnCallRoleId)] }
+        : { users: [interaction.user.id] },
     });
 
     // Send confirmation to user
@@ -782,69 +784,81 @@ async function getTicketInfo(client: Client, interaction: ChatInputCommandIntera
 }
 
 async function generateTranscript(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) return;
-
-  await interaction.deferReply({ ephemeral: true });
-
-  const ticketId = interaction.options.getString("ticket-id");
-  const format = interaction.options.getString("format") as "html" | "txt" | "both" | null;
-  const theme = interaction.options.getString("theme") as "light" | "dark" | null;
-
-  let ticket: DbTicket | null;
-
-  if (ticketId) {
-    // Look up by ID or number
-    const isNumeric = /^\d+$/.test(ticketId);
-    if (isNumeric) {
-      const ticketNumber = parseInt(ticketId);
-      ticket = await prisma.ticket.findFirst({
-        where: { guildId: interaction.guild.id, ticketNumber },
-      });
-    } else {
-      ticket = await prisma.ticket.findFirst({
-        where: { guildId: interaction.guild.id, id: ticketId },
-      });
-    }
-  } else {
-    // Auto-detect from current channel
-    ticket = await detectCurrentTicket(interaction);
-  }
-
-  if (!ticket) {
-    await interaction.editReply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("❌ Ticket Not Found")
-          .setDescription("Could not find the specified ticket.")
-          .setTimestamp(),
-      ],
-    });
-    return;
-  }
+  const ticketId = interaction.options.getString("ticket_id", true);
 
   try {
-    // Import transcript generator
-    const { generateTicketTranscript } = await import("../../functions/discord/ticketTranscript.js");
-
-    const result = await generateTicketTranscript(interaction.guild, ticket.id, {
-      format: format ?? "html",
-      theme: theme ?? "light",
-      includeAttachments: true,
-      includeEmbeds: true,
+    const ticket = await prisma.ticket.findFirst({
+      where: {
+        guildId: interaction.guild!.id,
+        id: ticketId,
+      },
     });
 
-    const files: AttachmentBuilder[] = [];
-    if (result.html) files.push(result.html);
-    if (result.txt) files.push(result.txt);
+    if (!ticket) {
+      await interaction.reply({
+        content: `❌ Ticket with ID \`${ticketId}\` not found.`,
+        ephemeral: true,
+      });
+      return;
+    }
 
-    await interaction.editReply({
-      embeds: [result.embed],
-      files,
-    });
+    const channel = interaction.guild!.channels.cache.get(ticket.channelId);
+    if (!channel?.isTextBased()) {
+      await interaction.reply({ content: "❌ Ticket channel no longer exists.", ephemeral: true });
+      return;
+    }
+
+    // Fetch messages and create transcript
+    const messages = await channel.messages.fetch({ limit: 100 });
+    const transcript = Array.from(messages.values())
+      .reverse()
+      .map((msg) => `[${msg.createdAt.toISOString()}] ${msg.author.tag}: ${msg.content}`)
+      .join("\n");
+
+    const embed = new EmbedBuilder()
+      .setColor(0x3498db)
+      .setTitle("📋 Ticket Transcript")
+      .setDescription(`Transcript for ticket **${ticketId}**`)
+      .addFields(
+        { name: "Ticket ID", value: ticket.id, inline: true },
+        { name: "Opened By", value: `<@${ticket.userId}>`, inline: true },
+        { name: "Status", value: ticket.status, inline: true },
+        { name: "Created", value: `<t:${Math.floor(new Date(ticket.createdAt).getTime() / 1000)}:F>`, inline: true }
+      )
+      .setTimestamp();
+
+    if (ticket.closedAt) {
+      embed.addFields(
+        { name: "Closed", value: `<t:${Math.floor(ticket.closedAt.getTime() / 1000)}:F>`, inline: true },
+        { name: "Closed By", value: ticket.closedBy ? `<@${ticket.closedBy}>` : "Unknown", inline: true }
+      );
+    }
+
+    // Send transcript as file if it's too long
+    if (transcript.length > 1000) {
+      const buffer = Buffer.from(transcript, "utf8");
+      await interaction.reply({
+        embeds: [embed],
+        files: [
+          {
+            attachment: buffer,
+            name: `transcript-${ticketId}.txt`,
+          },
+        ],
+        ephemeral: true,
+      });
+    } else {
+      embed.addFields({
+        name: "📝 Messages",
+        value: transcript || "No messages found",
+        inline: false,
+      });
+
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
   } catch (error) {
     logger.error("Error generating transcript:", error);
-    await interaction.editReply({
+    await interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setColor(0xe74c3c)
@@ -854,14 +868,6 @@ async function generateTranscript(client: Client, interaction: ChatInputCommandI
       ],
     });
   }
-}
-
-async function addUserToTicket(_client: Client, _interaction: ChatInputCommandInteraction): Promise<void> {
-  // TODO: Implement add user to ticket functionality
-}
-
-async function removeUserFromTicket(_client: Client, _interaction: ChatInputCommandInteraction): Promise<void> {
-  // TODO: Implement remove user from ticket functionality
 }
 
 // Ticket-related setting keys from GuildConfig
@@ -910,8 +916,12 @@ export class TicketCommand extends AdminCommand {
 
     try {
       switch (subcommand) {
+        case "create":
+          return await this.handleCreate();
         case "close":
           return await this.handleClose();
+        case "claim":
+          return await this.handleClaim();
         case "add":
           return await this.handleAdd();
         case "remove":
@@ -920,6 +930,8 @@ export class TicketCommand extends AdminCommand {
           return await this.handleList();
         case "transcript":
           return await this.handleTranscript();
+        case "info":
+          return await this.handleInfo();
         default:
           return {
             content: "❌ Unknown subcommand",
@@ -930,6 +942,283 @@ export class TicketCommand extends AdminCommand {
       logger.error("Error in ticket command:", error);
       return {
         content: `❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleCreate(): Promise<CommandResponse> {
+    const category = this.getStringOption("category", true);
+    const title = this.getStringOption("title", true);
+    const description = this.getStringOption("description");
+
+    try {
+      // Check if user already has an open ticket
+      const existingTicket = await prisma.ticket.findFirst({
+        where: {
+          guildId: this.guild.id,
+          userId: this.user.id,
+          status: { in: ["OPEN", "PENDING"] },
+        },
+      });
+
+      if (existingTicket) {
+        return {
+          content: `❌ You already have an open ticket: #${existingTicket.ticketNumber}\n<#${existingTicket.channelId}>`,
+          ephemeral: true,
+        };
+      }
+
+      // Get next ticket number
+      const lastTicket = await prisma.ticket.findFirst({
+        where: { guildId: this.guild.id },
+        orderBy: { ticketNumber: "desc" },
+      });
+      const ticketNumber = (lastTicket?.ticketNumber ?? 0) + 1;
+
+      // Find or create tickets category
+      let ticketsCategory = this.guild.channels.cache.find(
+        (channel) => channel.type === ChannelType.GuildCategory && channel.name.toLowerCase().includes("ticket")
+      ) as CategoryChannel | undefined;
+
+      ticketsCategory ??= await this.guild.channels.create({
+        name: "🎫│Support Tickets",
+        type: ChannelType.GuildCategory,
+        permissionOverwrites: [
+          {
+            id: this.guild.roles.everyone.id,
+            deny: [PermissionFlagsBits.ViewChannel],
+          },
+        ],
+      });
+
+      // Create ticket channel with enhanced naming
+      const sanitizedUsername = sanitizeUsername(this.user.username);
+      const ticketChannel = await this.guild.channels.create({
+        name: `ticket-${ticketNumber.toString().padStart(4, "0")}-${sanitizedUsername}`,
+        type: ChannelType.GuildText,
+        parent: ticketsCategory.id,
+        topic: `${category.toUpperCase()} | ${title} | Created by ${this.user.tag}`,
+        permissionOverwrites: [
+          {
+            id: this.guild.roles.everyone.id,
+            deny: [PermissionFlagsBits.ViewChannel],
+          },
+          {
+            id: this.user.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ReadMessageHistory,
+              PermissionFlagsBits.AttachFiles,
+              PermissionFlagsBits.EmbedLinks,
+            ],
+          },
+          ...(this.client.user
+            ? [
+                {
+                  id: this.client.user.id,
+                  allow: [
+                    PermissionFlagsBits.ViewChannel,
+                    PermissionFlagsBits.SendMessages,
+                    PermissionFlagsBits.ManageMessages,
+                    PermissionFlagsBits.ReadMessageHistory,
+                  ],
+                },
+              ]
+            : []),
+        ],
+      });
+
+      // Create ticket in database
+      const ticket = await prisma.ticket.create({
+        data: {
+          ticketNumber,
+          guildId: this.guild.id,
+          userId: this.user.id,
+          channelId: ticketChannel.id,
+          category: category.toUpperCase(),
+          title,
+          description,
+        },
+      });
+
+      // Create ticket embed and control panel
+      const ticketEmbed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle(`🎫 Ticket #${ticketNumber.toString().padStart(4, "0")}`)
+        .setDescription(description || "No description provided")
+        .addFields(
+          { name: "👤 Created by", value: `<@${this.user.id}>`, inline: true },
+          { name: "📋 Category", value: category.toUpperCase(), inline: true },
+          { name: "📅 Created", value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+        )
+        .setTimestamp();
+
+      const closeButton = new ButtonBuilder()
+        .setCustomId("ticket_close")
+        .setLabel("Close Ticket")
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji("🔒");
+
+      const claimButton = new ButtonBuilder()
+        .setCustomId("ticket_claim")
+        .setLabel("Claim Ticket")
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji("👋");
+
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(closeButton, claimButton);
+
+      await ticketChannel.send({
+        embeds: [ticketEmbed],
+        components: [row],
+      });
+
+      // Log ticket creation
+      await this.client.logManager.log(this.guild.id, "TICKET_CREATE", {
+        userId: this.user.id,
+        metadata: {
+          ticketId: ticket.id,
+          channelId: ticketChannel.id,
+          category,
+          title,
+        },
+      });
+
+      return {
+        content: `✅ Ticket created successfully: <#${ticketChannel.id}>`,
+        ephemeral: true,
+      };
+    } catch (error) {
+      logger.error("Error creating ticket:", error);
+      return {
+        content: `❌ Failed to create ticket: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleClaim(): Promise<CommandResponse> {
+    const channel = this.interaction.channel as TextChannel;
+
+    try {
+      // Check if this is a ticket channel
+      const ticket = await prisma.ticket.findFirst({
+        where: {
+          guildId: this.guild.id,
+          channelId: channel.id,
+          status: "OPEN",
+        },
+      });
+
+      if (!ticket) {
+        return {
+          content: "❌ This is not an active ticket channel.",
+          ephemeral: true,
+        };
+      }
+
+      // Check if already claimed
+      if (ticket.assignedTo) {
+        const assignee = await this.guild.members.fetch(ticket.assignedTo).catch(() => null);
+        if (assignee) {
+          return {
+            content: `❌ This ticket is already claimed by ${assignee}.`,
+            ephemeral: true,
+          };
+        }
+      }
+
+      // Claim the ticket
+      await prisma.ticket.update({
+        where: { id: ticket.id },
+        data: {
+          assignedTo: this.user.id,
+          status: "PENDING",
+        },
+      });
+
+      const embed = new EmbedBuilder()
+        .setColor(0x2ecc71)
+        .setTitle("✅ Ticket Claimed")
+        .setDescription(`${this.user} has claimed this ticket and will assist you.`)
+        .setTimestamp();
+
+      await channel.send({ embeds: [embed] });
+
+      // Log ticket claim
+      await this.client.logManager.log(this.guild.id, "TICKET_CLAIM", {
+        userId: this.user.id,
+        metadata: {
+          ticketId: ticket.id,
+          channelId: channel.id,
+        },
+      });
+
+      return {
+        content: "✅ Successfully claimed the ticket.",
+        ephemeral: true,
+      };
+    } catch (error) {
+      logger.error("Error claiming ticket:", error);
+      return {
+        content: `❌ Failed to claim ticket: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ephemeral: true,
+      };
+    }
+  }
+
+  private async handleInfo(): Promise<CommandResponse> {
+    const channel = this.interaction.channel as TextChannel;
+
+    try {
+      // Check if this is a ticket channel
+      const ticket = await prisma.ticket.findFirst({
+        where: {
+          guildId: this.guild.id,
+          channelId: channel.id,
+        },
+      });
+
+      if (!ticket) {
+        return {
+          content: "❌ This is not a ticket channel.",
+          ephemeral: true,
+        };
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle(`🎫 Ticket #${ticket.ticketNumber.toString().padStart(4, "0")}`)
+        .setDescription(ticket.description || "No description provided")
+        .addFields(
+          { name: "👤 Created by", value: `<@${ticket.userId}>`, inline: true },
+          { name: "📋 Category", value: ticket.category, inline: true },
+          {
+            name: "📅 Created",
+            value: `<t:${Math.floor(new Date(ticket.createdAt).getTime() / 1000)}:F>`,
+            inline: true,
+          },
+          { name: "📊 Status", value: ticket.status, inline: true }
+        )
+        .setTimestamp();
+
+      if (ticket.assignedTo) {
+        embed.addFields({ name: "👮 Assigned to", value: `<@${ticket.assignedTo}>`, inline: true });
+      }
+
+      if (ticket.closedAt) {
+        embed.addFields(
+          { name: "🔒 Closed", value: `<t:${Math.floor(ticket.closedAt.getTime() / 1000)}:F>`, inline: true },
+          { name: "👮 Closed by", value: ticket.closedBy ? `<@${ticket.closedBy}>` : "Unknown", inline: true }
+        );
+      }
+
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
+      logger.error("Error getting ticket info:", error);
+      return {
+        content: `❌ Failed to get ticket info: ${error instanceof Error ? error.message : "Unknown error"}`,
         ephemeral: true,
       };
     }
@@ -1329,9 +1618,26 @@ export const builder = new SlashCommandBuilder()
   .setDescription("ADMIN ONLY: Manage support tickets")
   .addSubcommand((sub) =>
     sub
+      .setName("create")
+      .setDescription("Create a new support ticket")
+      .addStringOption((opt) => opt.setName("category").setDescription("Category of the ticket").setRequired(true))
+      .addStringOption((opt) => opt.setName("title").setDescription("Title of the ticket").setRequired(true))
+      .addStringOption((opt) => opt.setName("description").setDescription("Description of the ticket (optional)"))
+  )
+  .addSubcommand((sub) =>
+    sub
       .setName("close")
       .setDescription("Close the current ticket")
       .addStringOption((opt) => opt.setName("reason").setDescription("Reason for closing the ticket"))
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("claim")
+      .setDescription("Claim the current ticket")
+      .addIntegerOption((opt) => opt.setName("ticket").setDescription("Ticket number to claim (optional)"))
+      .addBooleanOption((opt) =>
+        opt.setName("silent").setDescription("Whether to send a notification in the channel (optional)")
+      )
   )
   .addSubcommand((sub) =>
     sub
@@ -1353,4 +1659,5 @@ export const builder = new SlashCommandBuilder()
       .addStringOption((opt) =>
         opt.setName("ticket_id").setDescription("ID of the ticket to get transcript for").setRequired(true)
       )
-  );
+  )
+  .addSubcommand((sub) => sub.setName("info").setDescription("Get information about the current ticket"));

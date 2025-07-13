@@ -6,18 +6,14 @@ import {
   ChannelType,
   ComponentType,
   EmbedBuilder,
-  SlashCommandBuilder,
   type ButtonInteraction,
   type ChannelSelectMenuInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
 
-import logger from "../../logger.js";
-import type Client from "../../structures/Client.js";
-import { ALL_LOG_TYPES, LOG_CATEGORIES, STANDARD_LOG_TYPES } from "../../structures/LogManager.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
-import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { AdminCommand } from "../_core/specialized/AdminCommand.js";
+import logger from "../../../logger.js";
+import type Client from "../../../structures/Client.js";
+import { ALL_LOG_TYPES, LOG_CATEGORIES, STANDARD_LOG_TYPES } from "../../../structures/LogManager.js";
 
 // Helper type & accessor for optional queue service
 interface QueueService {
@@ -159,135 +155,7 @@ const LOGGING_PRESETS: LoggingPreset[] = [
   },
 ];
 
-export const builder = new SlashCommandBuilder()
-  .setName("logging")
-  .setDescription("🗂️ Comprehensive server logging configuration")
-  .addSubcommand((sub) => sub.setName("setup").setDescription("🧙‍♂️ Launch the interactive logging setup wizard"))
-  .addSubcommand((sub) =>
-    sub
-      .setName("preset")
-      .setDescription("📦 Apply a logging preset configuration")
-      .addStringOption((opt) =>
-        opt
-          .setName("type")
-          .setDescription("Preset type")
-          .setRequired(true)
-          .addChoices(
-            { name: "📝 Essential Logging", value: "essential" },
-            { name: "📊 Comprehensive Logging", value: "comprehensive" },
-            { name: "🔒 Security Focused", value: "security" },
-            { name: "👥 Community Server", value: "community" }
-          )
-      )
-  )
-  .addSubcommand((sub) => sub.setName("status").setDescription("📊 View current logging configuration"))
-  .addSubcommand((sub) => sub.setName("channels").setDescription("📍 Configure log channels for specific categories"))
-  .addSubcommand((sub) =>
-    sub
-      .setName("toggle")
-      .setDescription("🔄 Enable/disable specific log categories")
-      .addStringOption((opt) => {
-        opt.setName("category").setDescription("Log category to toggle").setRequired(true);
-        Object.keys(LOG_CATEGORIES).forEach((category) => {
-          opt.addChoices({ name: category, value: category });
-        });
-        return opt;
-      })
-      .addBooleanOption((opt) => opt.setName("enabled").setDescription("Enable or disable").setRequired(true))
-  )
-  .addSubcommand((sub) => sub.setName("advanced").setDescription("⚙️ Advanced logging configuration and management"))
-  .addSubcommand((sub) =>
-    sub
-      .setName("bind")
-      .setDescription("🔗 Bind a specific channel to log categories")
-      .addChannelOption((opt) =>
-        opt.setName("channel").setDescription("Channel to bind categories to").setRequired(true)
-      )
-      .addStringOption((opt) =>
-        opt
-          .setName("categories")
-          .setDescription("Comma-separated list of categories (e.g., MESSAGE,MEMBER)")
-          .setRequired(true)
-      )
-  );
-
-class LoggingCommand extends AdminCommand {
-  constructor() {
-    const config: CommandConfig = {
-      name: "logging",
-      description: "🗂️ Comprehensive server logging configuration",
-      category: "admin",
-      permissions: {
-        level: PermissionLevel.ADMIN,
-      },
-      guildOnly: true,
-    };
-
-    super(config);
-  }
-
-  /**
-   * Disable the BaseCommand automatic defer behaviour so each sub-command
-   * inside this LoggingCommand can control deferral on its own. Most helper
-   * functions already call `interaction.deferReply()` where necessary, and
-   * the automatic deferral was leading to InteractionAlreadyReplied errors.
-   */
-  protected shouldAutoDefer(): boolean {
-    return false;
-  }
-
-  protected async execute(): Promise<CommandResponse> {
-    if (!this.interaction.guild || !this.interaction.isChatInputCommand()) {
-      return {};
-    }
-
-    const subcommand = this.interaction.options.getSubcommand();
-
-    try {
-      switch (subcommand) {
-        case "setup":
-          await startLoggingWizard(this.client, this.interaction);
-          break;
-        case "preset":
-          await applyLoggingPreset(this.client, this.interaction);
-          break;
-        case "status":
-          await showLoggingStatus(this.client, this.interaction);
-          break;
-        case "channels":
-          await configureChannels(this.client, this.interaction);
-          break;
-        case "toggle":
-          await toggleCategory(this.client, this.interaction);
-          break;
-        case "advanced":
-          await showAdvancedOptions(this.client, this.interaction);
-          break;
-        case "bind":
-          await handleChannelBinding(this.client, this.interaction);
-          break;
-      }
-    } catch (error) {
-      logger.error("Error in logging command:", error);
-      await this.interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xe74c3c)
-            .setTitle("❌ Error")
-            .setDescription("Failed to execute logging command. Please try again.")
-            .setTimestamp(),
-        ],
-        ephemeral: true,
-      });
-    }
-
-    return {};
-  }
-}
-
-export default new LoggingCommand();
-
-// Re-export the wizard so other modules (e.g., /setup) can invoke it
+// Export only the wizard function - no standalone command
 export { startLoggingWizard };
 
 async function startLoggingWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
@@ -297,35 +165,34 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
     .setDescription(
       "Welcome to the **Server Logging Setup Wizard!**\n\n" +
         "This wizard will help you configure comprehensive logging for your server. " +
-        "We'll guide you through each step to ensure you capture the right events.\n\n" +
+        "We'll guide you through each step with clear explanations.\n\n" +
         "**What we'll set up:**\n" +
-        "🔹 **Message Logging** - Track edits, deletions, and bulk operations\n" +
-        "🔹 **Member Activity** - Joins, leaves, roles, and profile changes\n" +
-        "🔹 **Moderation Events** - Bans, kicks, timeouts, and warnings\n" +
-        "🔹 **Server Changes** - Settings, channels, roles, and permissions\n" +
-        "🔹 **Voice Activity** - Channel joins, leaves, and server actions\n\n" +
-        "**Estimated time:** 2-4 minutes"
+        "🔹 **Event Categories** - Choose what to track\n" +
+        "🔹 **Channel Routing** - Where to send logs\n" +
+        "🔹 **Volume Control** - Manage high-volume events\n" +
+        "🔹 **Custom Settings** - Fine-tune your setup\n\n" +
+        "**Estimated time:** 2-3 minutes"
     )
     .addFields(
       {
-        name: "📋 What You'll Configure",
+        name: "📋 What You'll Choose",
         value:
-          "• **Log Categories** - Choose what types of events to track\n" +
-          "• **Channel Routing** - Set where different logs are sent\n" +
-          "• **Volume Level** - Exclude high-spam events if desired\n" +
-          "• **Permissions** - Ensure proper channel access",
+          "• Which event categories to log\n" +
+          "• Channel assignments for different log types\n" +
+          "• High-volume event filtering\n" +
+          "• Custom log formats and settings",
         inline: true,
       },
       {
-        name: "🎯 Setup Options",
+        name: "🎯 Quick Start Options",
         value:
-          "• **Quick Presets** - Pre-configured templates\n" +
-          "• **Custom Setup** - Build your own configuration\n" +
-          "• **Import Settings** - Copy from another server",
+          "• **Preset Templates** - Pre-configured setups\n" +
+          "• **Custom Configuration** - Build your own\n" +
+          "• **Quick Setup** - Essential logging only",
         inline: true,
       }
     )
-    .setFooter({ text: "Choose your preferred setup method below" })
+    .setFooter({ text: "Choose how you'd like to proceed below" })
     .setTimestamp();
 
   const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -340,22 +207,42 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
       .setStyle(ButtonStyle.Secondary)
       .setEmoji("⚙️"),
     new ButtonBuilder()
-      .setCustomId("logging_wizard_help")
-      .setLabel("❓ Help & Guide")
+      .setCustomId("logging_quick_setup")
+      .setLabel("⚡ Quick Setup")
       .setStyle(ButtonStyle.Success)
+      .setEmoji("⚡"),
+    new ButtonBuilder()
+      .setCustomId("logging_wizard_help")
+      .setLabel("❓ Help & Info")
+      .setStyle(ButtonStyle.Secondary)
       .setEmoji("❓")
   );
 
-  await interaction.reply({
-    embeds: [welcomeEmbed],
-    components: [buttons],
-    ephemeral: true,
-  });
+  // Check interaction state before replying
+  if (!interaction.replied && !interaction.deferred) {
+    await interaction.reply({
+      embeds: [welcomeEmbed],
+      components: [buttons],
+      ephemeral: true,
+    });
+  } else if (interaction.deferred) {
+    await interaction.editReply({
+      embeds: [welcomeEmbed],
+      components: [buttons],
+    });
+  } else {
+    // If already replied, send a follow-up
+    await interaction.followUp({
+      embeds: [welcomeEmbed],
+      components: [buttons],
+      ephemeral: true,
+    });
+  }
 
   // Set up collector for button interactions
   const collector = interaction.channel?.createMessageComponentCollector({
     componentType: ComponentType.Button,
-    time: 600000, // 10 minutes
+    time: 300000, // 5 minutes
     filter: (i) => i.user.id === interaction.user.id,
   });
 
@@ -373,35 +260,63 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
             await showLoggingHelp(buttonInteraction);
             break;
           case "logging_wizard_back":
-            await startLoggingWizard(client, interaction);
+            await showMainMenu(buttonInteraction);
+            break;
+          case "logging_quick_setup":
+            await performQuickSetup(buttonInteraction, client);
+            break;
+          case "logging_step1_categories":
+            await showCategorySelection(buttonInteraction);
+            break;
+          case "logging_next_step":
+            await handleNextStep(buttonInteraction, client);
             break;
           default:
             if (buttonInteraction.customId.startsWith("preset_")) {
               await handlePresetSelection(buttonInteraction, client);
-            } else if (buttonInteraction.customId.startsWith("logging_")) {
-              await handleLoggingAction(buttonInteraction, client);
+            } else if (buttonInteraction.customId.startsWith("cat_")) {
+              await handleCategoryToggle(buttonInteraction, client);
+            } else {
+              await buttonInteraction.reply({
+                content: "❌ Unknown button interaction. Please try again.",
+                ephemeral: true,
+              });
             }
             break;
         }
       } catch (error) {
         logger.error("Error handling logging wizard interaction:", error);
-        if (!buttonInteraction.replied && !buttonInteraction.deferred) {
-          await buttonInteraction.reply({
-            content: "❌ An error occurred. Please try again.",
-            ephemeral: true,
-          });
+        try {
+          if (!buttonInteraction.replied && !buttonInteraction.deferred) {
+            await buttonInteraction.reply({
+              content: "❌ An error occurred. Please try again.",
+              ephemeral: true,
+            });
+          } else if (buttonInteraction.deferred) {
+            await buttonInteraction.editReply({
+              content: "❌ An error occurred. Please try again.",
+            });
+          } else if (buttonInteraction.replied) {
+            await buttonInteraction.followUp({
+              content: "❌ An error occurred. Please try again.",
+              ephemeral: true,
+            });
+          }
+        } catch (replyError) {
+          logger.error("Failed to send error message to user:", replyError);
         }
       }
     })();
   });
 
   collector?.on("end", () => {
+    // Disable buttons after timeout
     const disabledButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
       ...buttons.components.map((button) => ButtonBuilder.from(button).setDisabled(true))
     );
 
-    void interaction.editReply({ components: [disabledButtons] }).catch((error: unknown) => {
-      logger.error("Failed to disable buttons:", error);
+    void interaction.editReply({ components: [disabledButtons] }).catch(() => {
+      // Ignore errors if message was deleted
     });
   });
 }
@@ -498,56 +413,38 @@ async function startCustomSetup(interaction: ButtonInteraction): Promise<void> {
 
 async function showLoggingHelp(interaction: ButtonInteraction): Promise<void> {
   const helpEmbed = new EmbedBuilder()
-    .setColor(0x2ecc71)
+    .setColor(0x3498db)
     .setTitle("❓ Logging Help & Information")
-    .setDescription("Complete guide to server logging and what each category tracks.")
+    .setDescription(
+      "Use `/setup logging` to configure logging for your server!\n\n" +
+        "**Quick Start Options:**\n" +
+        "• `/setup logging` - Interactive setup guide\n" +
+        "• `/logging` - Manual configuration\n" +
+        "• `/logging status` - View current settings"
+    )
     .addFields(
       {
-        name: "📊 What is Server Logging?",
+        name: "📋 Log Categories",
         value:
-          "Server logging automatically tracks and records various events that happen in your server. " +
-          "This helps with moderation, security, and understanding your community's activity patterns.",
+          "• **Message Logging** - Track edits, deletions, and bulk operations\n" +
+          "• **Member Activity** - Joins, leaves, roles, and profile changes\n" +
+          "• **Moderation Events** - Bans, kicks, timeouts, and warnings\n" +
+          "• **Server Changes** - Settings, channels, roles, and permissions\n" +
+          "• **Voice Activity** - Channel joins, leaves, and server actions",
         inline: false,
       },
       {
-        name: "📋 Log Categories Explained",
+        name: "⚡ Quick Setup",
         value:
-          "**📝 MESSAGE** - Message edits, deletions, bulk operations\n" +
-          "**👥 MEMBER** - Joins, leaves, role changes, profile updates\n" +
-          "**🛡️ MODERATION** - Bans, kicks, timeouts, warnings, cases\n" +
-          "**🏢 SERVER** - Server settings, channels, roles, permissions\n" +
-          "**🎤 VOICE** - Voice channel activity and moderation\n" +
-          "**🎭 ROLE** - Role creation, deletion, permission changes\n" +
-          "**📺 CHANNEL** - Channel management and modifications\n" +
-          "**🔗 INVITE** - Invite creation and usage tracking",
-        inline: false,
-      },
-      {
-        name: "⚠️ High-Volume Events",
-        value:
-          "Some events generate many logs and can spam channels:\n" +
-          "• **Message Creation** - Every sent message\n" +
-          "• **Voice Self-Actions** - Users muting/unmuting themselves\n" +
-          "• **Presence Changes** - Online/offline status updates\n" +
-          "• **Reaction Events** - Adding/removing reactions\n\n" +
-          "**Recommendation:** Start without these, add later if needed.",
-        inline: false,
-      },
-      {
-        name: "🎯 Channel Strategy",
-        value:
-          "**Single Channel:** Simple but can become crowded\n" +
-          "**Category-based:** Different channels for different log types\n" +
-          "**Priority-based:** Separate critical vs. informational logs\n\n" +
-          "**Most Common Setup:**\n" +
-          "• `#member-log` - User activity\n" +
-          "• `#message-log` - Chat moderation\n" +
-          "• `#mod-log` - Staff actions\n" +
-          "• `#server-log` - Administrative changes",
+          "• **Essential Logging** - Basic logging for small servers\n" +
+          "• **Comprehensive Logging** - Complete logging for active servers\n" +
+          "• **Security Focused** - Enhanced security logging\n" +
+          "• **Community Server** - Optimized for large communities",
         inline: false,
       }
     )
-    .setFooter({ text: "Use the buttons below to get started!" });
+    .setFooter({ text: "Choose a preset or build your own configuration" })
+    .setTimestamp();
 
   const helpButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("logging_wizard_presets").setLabel("📦 View Presets").setStyle(ButtonStyle.Primary),
@@ -1678,4 +1575,90 @@ async function handleChannelBinding(client: Client, interaction: ChatInputComman
       content: "❌ Failed to configure log channel. Please try again.",
     });
   }
+}
+
+async function showMainMenu(interaction: ButtonInteraction): Promise<void> {
+  const welcomeEmbed = new EmbedBuilder()
+    .setColor(0x3498db)
+    .setTitle("🗂️ Logging Setup Wizard")
+    .setDescription(
+      "Welcome to the **Server Logging Setup Wizard!**\n\n" +
+        "This wizard will help you configure comprehensive logging for your server. " +
+        "We'll guide you through each step with clear explanations.\n\n" +
+        "**What we'll set up:**\n" +
+        "🔹 **Event Categories** - Choose what to track\n" +
+        "🔹 **Channel Routing** - Where to send logs\n" +
+        "🔹 **Volume Control** - Manage high-volume events\n" +
+        "🔹 **Custom Settings** - Fine-tune your setup\n\n" +
+        "**Estimated time:** 2-3 minutes"
+    )
+    .addFields(
+      {
+        name: "📋 What You'll Choose",
+        value:
+          "• Which event categories to log\n" +
+          "• Channel assignments for different log types\n" +
+          "• High-volume event filtering\n" +
+          "• Custom log formats and settings",
+        inline: true,
+      },
+      {
+        name: "🎯 Quick Start Options",
+        value:
+          "• **Preset Templates** - Pre-configured setups\n" +
+          "• **Custom Configuration** - Build your own\n" +
+          "• **Quick Setup** - Essential logging only",
+        inline: true,
+      }
+    )
+    .setFooter({ text: "Choose how you'd like to proceed below" })
+    .setTimestamp();
+
+  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("logging_wizard_presets")
+      .setLabel("📦 Use Presets")
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji("📦"),
+    new ButtonBuilder()
+      .setCustomId("logging_wizard_custom")
+      .setLabel("⚙️ Custom Setup")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("⚙️"),
+    new ButtonBuilder()
+      .setCustomId("logging_quick_setup")
+      .setLabel("⚡ Quick Setup")
+      .setStyle(ButtonStyle.Success)
+      .setEmoji("⚡"),
+    new ButtonBuilder()
+      .setCustomId("logging_wizard_help")
+      .setLabel("❓ Help & Info")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("❓")
+  );
+
+  await interaction.update({
+    embeds: [welcomeEmbed],
+    components: [buttons],
+  });
+}
+
+async function handleNextStep(interaction: ButtonInteraction, client: Client): Promise<void> {
+  await interaction.reply({
+    content: "✅ Category selection complete! The next step will be implemented soon.",
+    ephemeral: true,
+  });
+
+  // TODO: Implement the next step in the custom setup flow
+}
+
+async function handleCategoryToggle(interaction: ButtonInteraction, client: Client): Promise<void> {
+  const category = interaction.customId.replace("cat_", "");
+
+  await interaction.reply({
+    content: `✅ ${category} category selected! This feature will be implemented in the next step.`,
+    ephemeral: true,
+  });
+
+  // TODO: Implement category toggle functionality
 }

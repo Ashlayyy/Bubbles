@@ -38,7 +38,7 @@ export class CommandLoader {
       }
 
       // Skip helper directories
-      if (category === "_core" || category === "_shared") {
+      if (category === "_core" || category === "_shared" || category === "setup-wizards") {
         logger.debug(`Skipping helper directory: ${category}`);
         return;
       }

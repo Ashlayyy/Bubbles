@@ -17,13 +17,13 @@ export class RedisConnectionFactory {
 			this.sharedConnection = new Redis({
 				host: process.env.REDIS_HOST || 'localhost',
 				port: parseInt(process.env.REDIS_PORT || '6379'),
-				password: process.env.REDIS_PASSWORD,
+				password: process.env.REDIS_PASSWORD || undefined, // Use undefined instead of empty string to avoid NOAUTH errors
 				db: parseInt(process.env.REDIS_DB || '0'),
 				maxRetriesPerRequest: null, // Required for BullMQ compatibility
 				enableReadyCheck: true,
-				connectTimeout: 10_000,
-				commandTimeout: 10_000,
-				enableOfflineQueue: false,
+				connectTimeout: 30_000,
+				commandTimeout: 30_000,
+				enableOfflineQueue: true,
 				lazyConnect: true,
 				keepAlive: 30000,
 				family: 4, // Force IPv4 for WSL compatibility

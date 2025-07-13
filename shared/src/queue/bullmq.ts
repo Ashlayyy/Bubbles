@@ -10,14 +10,45 @@ export interface BullMQConfig {
 
 // Add detailed logging for ioredis events
 function attachRedisLogging(connection: any, label: string) {
+	let reconnectAttempts = 0;
+	let backoff = 1000;
+	const maxBackoff = 30000;
+
 	connection.on('connect', () => {
+		reconnectAttempts = 0;
+		backoff = 1000;
 		console.log(`[${label}] Redis event: connect`);
 	});
 	connection.on('ready', () => {
+		reconnectAttempts = 0;
+		backoff = 1000;
 		console.log(`[${label}] Redis event: ready`);
 	});
 	connection.on('error', (err: Error) => {
 		console.error(`[${label}] Redis event: error`, err);
+		if (
+			err.message.includes('Command timed out') ||
+			err.message.includes('Connection is closed')
+		) {
+			reconnectAttempts++;
+			setTimeout(() => {
+				if (typeof connection.connect === 'function') {
+					console.warn(
+						`[${label}] Attempting to reconnect to Redis (attempt ${reconnectAttempts})...`
+					);
+					connection.connect().catch((e: any) => {
+						console.error(`[${label}] Reconnect failed:`, e);
+					});
+				}
+			}, backoff);
+			backoff = Math.min(backoff * 2, maxBackoff);
+			if (reconnectAttempts >= 5) {
+				console.error(
+					`[${label}] Max reconnect attempts reached. Queue system may be degraded.`
+				);
+				// Optionally emit an event or call a callback here
+			}
+		}
 	});
 	connection.on('close', () => {
 		console.warn(`[${label}] Redis event: close`);
@@ -33,17 +64,21 @@ function attachRedisLogging(connection: any, label: string) {
 /**
  * Create a Redis connection for BullMQ that auto-reconnects with sensible defaults.
  */
+// Global max attempts
+const maxConnectionAttempts = 5;
+const CONNECTION_ATTEMPTS = Symbol('connectionAttempts');
+
 export function createBullMQConnection(options?: Partial<RedisOptions>) {
 	const connection = new IORedis({
 		host: process.env.REDIS_HOST || 'localhost',
 		port: parseInt(process.env.REDIS_PORT || '6379', 10),
-		password: process.env.REDIS_PASSWORD || undefined,
+		password: process.env.REDIS_PASSWORD || undefined, // Use undefined instead of empty string to avoid NOAUTH errors
 		db: 0,
 		maxRetriesPerRequest: null, // Required by BullMQ v5+ to avoid deprecation warnings
 		enableReadyCheck: true,
 		connectTimeout: 60_000, // Increased for better reliability
 		commandTimeout: 60_000, // Timeout for regular commands
-		enableOfflineQueue: false,
+		enableOfflineQueue: true,
 		lazyConnect: true,
 		keepAlive: 30000,
 		family: 4, // Force IPv4 for WSL compatibility
@@ -53,16 +88,18 @@ export function createBullMQConnection(options?: Partial<RedisOptions>) {
 
 	attachRedisLogging(connection, 'BullMQ');
 
-	let connectionAttempts = 0;
-	const maxConnectionAttempts = 5;
+	(connection as any)[CONNECTION_ATTEMPTS] = 0;
 
 	connection.on('error', (err: Error) => {
-		connectionAttempts++;
+		(connection as any)[CONNECTION_ATTEMPTS] =
+			((connection as any)[CONNECTION_ATTEMPTS] || 0) + 1;
 		console.warn(
-			`[BullMQ] Redis error (attempt ${connectionAttempts}/${maxConnectionAttempts}): ${err.message}`
+			`[BullMQ] Redis error (attempt ${
+				(connection as any)[CONNECTION_ATTEMPTS]
+			}/${maxConnectionAttempts}): ${err.message}`
 		);
 
-		if (connectionAttempts >= maxConnectionAttempts) {
+		if ((connection as any)[CONNECTION_ATTEMPTS] >= maxConnectionAttempts) {
 			console.error(
 				'[BullMQ] Max Redis connection attempts reached. Queue system will be disabled.'
 			);
@@ -75,7 +112,7 @@ export function createBullMQConnection(options?: Partial<RedisOptions>) {
 	});
 
 	connection.on('connect', () => {
-		connectionAttempts = 0; // Reset on successful connection
+		(connection as any)[CONNECTION_ATTEMPTS] = 0; // Reset on successful connection
 		console.log('[BullMQ] Redis connected successfully');
 	});
 
@@ -94,13 +131,13 @@ export function createBullMQEventsConnection(options?: Partial<RedisOptions>) {
 	const connection = new IORedis({
 		host: process.env.REDIS_HOST || 'localhost',
 		port: parseInt(process.env.REDIS_PORT || '6379', 10),
-		password: process.env.REDIS_PASSWORD || undefined,
+		password: process.env.REDIS_PASSWORD || undefined, // Use undefined instead of empty string to avoid NOAUTH errors
 		db: 0,
 		maxRetriesPerRequest: null, // Required by BullMQ v5+ to avoid deprecation warnings
 		enableReadyCheck: true,
-		connectTimeout: 10_000,
+		connectTimeout: 30_000,
 		commandTimeout: 0, // No timeout for blocking commands used by QueueEvents
-		enableOfflineQueue: false,
+		enableOfflineQueue: true,
 		lazyConnect: true,
 		keepAlive: 30000,
 		family: 4, // Force IPv4 for WSL compatibility
@@ -110,16 +147,18 @@ export function createBullMQEventsConnection(options?: Partial<RedisOptions>) {
 
 	attachRedisLogging(connection, 'BullMQ Events');
 
-	let connectionAttempts = 0;
-	const maxConnectionAttempts = 5;
+	(connection as any)[CONNECTION_ATTEMPTS] = 0;
 
 	connection.on('error', (err: Error) => {
-		connectionAttempts++;
+		(connection as any)[CONNECTION_ATTEMPTS] =
+			((connection as any)[CONNECTION_ATTEMPTS] || 0) + 1;
 		console.warn(
-			`[BullMQ Events] Redis error (attempt ${connectionAttempts}/${maxConnectionAttempts}): ${err.message}`
+			`[BullMQ Events] Redis error (attempt ${
+				(connection as any)[CONNECTION_ATTEMPTS]
+			}/${maxConnectionAttempts}): ${err.message}`
 		);
 
-		if (connectionAttempts >= maxConnectionAttempts) {
+		if ((connection as any)[CONNECTION_ATTEMPTS] >= maxConnectionAttempts) {
 			console.error(
 				'[BullMQ Events] Max Redis connection attempts reached. QueueEvents will be disabled.'
 			);
@@ -132,7 +171,7 @@ export function createBullMQEventsConnection(options?: Partial<RedisOptions>) {
 	});
 
 	connection.on('connect', () => {
-		connectionAttempts = 0; // Reset on successful connection
+		(connection as any)[CONNECTION_ATTEMPTS] = 0; // Reset on successful connection
 		console.log('[BullMQ Events] Redis connected successfully');
 	});
 
@@ -155,13 +194,31 @@ export class BullMQRegistry {
 	private eventsConnection: any;
 	private isRedisAvailable = false;
 	private initialized = false;
+	private connectionAttempts = 0;
+	private maxConnectionAttempts = 5;
+	private lastError: Error | null = null;
 
 	constructor() {
 		// Don't initialize connections in constructor - do it lazily
+		console.log('[BullMQ] Registry initialized');
 	}
 
 	private initializeConnections(): void {
-		if (this.initialized) return;
+		if (this.initialized) {
+			console.log('[BullMQ] Connections already initialized');
+			return;
+		}
+
+		console.log('[BullMQ] Initializing connections...');
+		console.log('[BullMQ] Environment check:');
+		console.log('  - REDIS_HOST:', process.env.REDIS_HOST || 'localhost');
+		console.log('  - REDIS_PORT:', process.env.REDIS_PORT || '6379');
+		console.log(
+			'  - REDIS_PASSWORD:',
+			process.env.REDIS_PASSWORD ? '[SET]' : '[NOT SET]'
+		);
+		console.log('  - DISABLE_QUEUES:', process.env.DISABLE_QUEUES);
+		console.log('  - NODE_ENV:', process.env.NODE_ENV);
 
 		// Skip Redis connection if queues are explicitly disabled
 		if (process.env.DISABLE_QUEUES === 'true') {
@@ -174,6 +231,7 @@ export class BullMQRegistry {
 		}
 
 		// Initialize connections
+		console.log('[BullMQ] Creating Redis connections...');
 		this.connection = createBullMQConnection();
 		this.eventsConnection = createBullMQEventsConnection();
 
@@ -184,37 +242,77 @@ export class BullMQRegistry {
 
 	private async testRedisConnection(): Promise<void> {
 		try {
+			console.log('[BullMQ] Testing Redis connections...');
+			console.log('[BullMQ] Main connection status:', this.connection.status);
+			console.log(
+				'[BullMQ] Events connection status:',
+				this.eventsConnection.status
+			);
+
 			// Give the connections a moment to establish, then connect
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
 			// Test main connection
+			console.log('[BullMQ] Testing main connection...');
 			if (
 				this.connection.status !== 'ready' &&
 				this.connection.status !== 'connecting'
 			) {
+				console.log('[BullMQ] Connecting main connection...');
 				await this.connection.connect();
 			}
 			await this.connection.ping();
+			console.log('[BullMQ] Main connection ping successful');
 
 			// Test events connection
+			console.log('[BullMQ] Testing events connection...');
 			if (
 				this.eventsConnection.status !== 'ready' &&
 				this.eventsConnection.status !== 'connecting'
 			) {
+				console.log('[BullMQ] Connecting events connection...');
 				await this.eventsConnection.connect();
 			}
 			await this.eventsConnection.ping();
+			console.log('[BullMQ] Events connection ping successful');
 
 			this.isRedisAvailable = true;
+			this.connectionAttempts = 0;
+			this.lastError = null;
 			console.log('[BullMQ] Redis connection tests successful (main + events)');
 		} catch (error) {
+			this.connectionAttempts++;
+			this.lastError = error as Error;
 			this.isRedisAvailable = false;
-			console.warn(
-				'[BullMQ] Redis not available. Queue operations will be disabled.'
+
+			console.error('[BullMQ] Redis connection test failed:', error);
+			console.error(
+				'[BullMQ] Connection attempts:',
+				this.connectionAttempts,
+				'/',
+				this.maxConnectionAttempts
 			);
-			console.warn(
-				'[BullMQ] To enable queues, ensure Redis is running on localhost:6379'
+			console.error(
+				'[BullMQ] Main connection status:',
+				this.connection?.status
 			);
+			console.error(
+				'[BullMQ] Events connection status:',
+				this.eventsConnection?.status
+			);
+
+			if (this.connectionAttempts >= this.maxConnectionAttempts) {
+				console.error(
+					'[BullMQ] Max connection attempts reached. Queue system will be disabled.'
+				);
+			} else {
+				console.warn(
+					'[BullMQ] Redis not available. Queue operations will be disabled.'
+				);
+				console.warn(
+					'[BullMQ] To enable queues, ensure Redis is running on localhost:6379'
+				);
+			}
 		}
 	}
 
@@ -253,10 +351,31 @@ export class BullMQRegistry {
 	}
 
 	/**
+	 * Get detailed connection status for debugging
+	 */
+	public getConnectionStatus(): any {
+		return {
+			isAvailable: this.isRedisAvailable,
+			initialized: this.initialized,
+			connectionAttempts: this.connectionAttempts,
+			maxConnectionAttempts: this.maxConnectionAttempts,
+			lastError: this.lastError?.message || null,
+			mainConnectionStatus: this.connection?.status || 'not created',
+			eventsConnectionStatus: this.eventsConnection?.status || 'not created',
+			queueCount: this.queues.size,
+			eventsCount: this.events.size,
+		};
+	}
+
+	/**
 	 * Return (and lazily create) a Queue instance for the given name.
 	 */
 	getQueue(name: string, opts: Partial<BullMQConfig> = {}): any {
 		this.initializeConnections();
+
+		console.log(`[BullMQ] Getting queue: ${name}`);
+		console.log(`[BullMQ] Redis available: ${this.isRedisAvailable}`);
+		console.log(`[BullMQ] Connection status:`, this.getConnectionStatus());
 
 		if (!this.isRedisAvailable) {
 			console.warn(
@@ -265,7 +384,10 @@ export class BullMQRegistry {
 			return null;
 		}
 
-		if (this.queues.has(name)) return this.queues.get(name)!;
+		if (this.queues.has(name)) {
+			console.log(`[BullMQ] Returning existing queue: ${name}`);
+			return this.queues.get(name)!;
+		}
 
 		const queue = new Queue(name, {
 			connection: this.connection,
@@ -277,6 +399,7 @@ export class BullMQRegistry {
 					type: 'exponential',
 					delay: 2_000,
 				},
+				timeout: 10000, // 10 seconds timeout for all jobs
 				...(opts.defaultJobOptions || {}),
 			},
 		});
