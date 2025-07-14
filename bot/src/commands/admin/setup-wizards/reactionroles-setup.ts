@@ -7,8 +7,5 @@ export async function startReactionRolesWizard(
   client: Client,
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
-  // Delegate to the new Discord-native wizard
-  // Cast interaction to the expected type for handleMessageCreate
-  // (GuildChatInputCommandInteraction is a superset of ChatInputCommandInteraction)
   await handleMessageCreate(client, interaction as any);
 }

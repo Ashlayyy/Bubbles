@@ -2,7 +2,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   type ButtonInteraction,
-  ButtonStyle,
   type ChatInputCommandInteraction,
   ComponentType,
   EmbedBuilder,
@@ -12,6 +11,16 @@ import { AutoModRule } from "shared/src/database.js";
 import { prisma } from "../../../database/index.js";
 import logger from "../../../logger.js";
 import type Client from "../../../structures/Client.js";
+import {
+  WIZARD_COLORS,
+  WIZARD_EMOJIS,
+  createBackButton,
+  createButtonRow,
+  createHelpButton,
+  createPresetButton,
+  createPresetButtons,
+  createQuickSetupButton,
+} from "./WizardComponents.js";
 
 interface AutoModPreset {
   name: string;
@@ -164,8 +173,8 @@ export { startSetupWizard };
 
 async function startSetupWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   const welcomeEmbed = new EmbedBuilder()
-    .setColor(0x3498db)
-    .setTitle("🧙‍♂️ AutoMod Setup Wizard")
+    .setColor(WIZARD_COLORS.PRIMARY)
+    .setTitle(`${WIZARD_EMOJIS.AUTOMOD} AutoMod Setup Wizard`)
     .setDescription(
       "Welcome to the **Auto-Moderation Setup Wizard!**\n\n" +
         "This wizard will help you configure comprehensive auto-moderation for your server. " +
@@ -201,22 +210,10 @@ async function startSetupWizard(client: Client, interaction: ChatInputCommandInt
     .setFooter({ text: "Choose how you'd like to proceed below" })
     .setTimestamp();
 
-  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("automod_wizard_presets")
-      .setLabel("📦 Use Presets")
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji("📦"),
-    new ButtonBuilder()
-      .setCustomId("automod_wizard_custom")
-      .setLabel("⚙️ Custom Setup")
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji("⚙️"),
-    new ButtonBuilder()
-      .setCustomId("automod_wizard_help")
-      .setLabel("❓ Help & Info")
-      .setStyle(ButtonStyle.Success)
-      .setEmoji("❓")
+  const buttons = createButtonRow(
+    createPresetButton("automod_wizard_presets", "Use Presets", "📦"),
+    createPresetButton("automod_wizard_custom", "Custom Setup", "⚙️"),
+    createHelpButton("automod_wizard_help", "Help & Info")
   );
 
   // Check interaction state before replying
@@ -263,17 +260,9 @@ async function startSetupWizard(client: Client, interaction: ChatInputCommandInt
           case "automod_wizard_back":
             await showMainMenu(buttonInteraction);
             break;
-          case "custom_step1_protection":
-            await showProtectionSelection(buttonInteraction);
-            break;
-          case "custom_quick_basic":
-            await performQuickBasicSetup(buttonInteraction, client);
-            break;
           default:
             if (buttonInteraction.customId.startsWith("preset_")) {
               await handlePresetSelection(buttonInteraction, client);
-            } else if (buttonInteraction.customId.startsWith("protection_")) {
-              await handleProtectionSelection(buttonInteraction, client);
             } else {
               await buttonInteraction.reply({
                 content: "❌ Unknown button interaction. Please try again.",
@@ -321,8 +310,8 @@ async function startSetupWizard(client: Client, interaction: ChatInputCommandInt
 
 async function showMainMenu(interaction: ButtonInteraction): Promise<void> {
   const welcomeEmbed = new EmbedBuilder()
-    .setColor(0x3498db)
-    .setTitle("🧙‍♂️ AutoMod Setup Wizard")
+    .setColor(WIZARD_COLORS.PRIMARY)
+    .setTitle(`${WIZARD_EMOJIS.AUTOMOD} AutoMod Setup Wizard`)
     .setDescription(
       "Welcome to the **Auto-Moderation Setup Wizard!**\n\n" +
         "This wizard will help you configure comprehensive auto-moderation for your server. " +
@@ -358,22 +347,10 @@ async function showMainMenu(interaction: ButtonInteraction): Promise<void> {
     .setFooter({ text: "Choose how you'd like to proceed below" })
     .setTimestamp();
 
-  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("automod_wizard_presets")
-      .setLabel("📦 Use Presets")
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji("📦"),
-    new ButtonBuilder()
-      .setCustomId("automod_wizard_custom")
-      .setLabel("⚙️ Custom Setup")
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji("⚙️"),
-    new ButtonBuilder()
-      .setCustomId("automod_wizard_help")
-      .setLabel("❓ Help & Info")
-      .setStyle(ButtonStyle.Success)
-      .setEmoji("❓")
+  const buttons = createButtonRow(
+    createPresetButton("automod_wizard_presets", "Use Presets", "📦"),
+    createPresetButton("automod_wizard_custom", "Custom Setup", "⚙️"),
+    createHelpButton("automod_wizard_help", "Help & Info")
   );
 
   await interaction.update({
@@ -384,7 +361,7 @@ async function showMainMenu(interaction: ButtonInteraction): Promise<void> {
 
 async function showPresetSelection(interaction: ButtonInteraction): Promise<void> {
   const presetEmbed = new EmbedBuilder()
-    .setColor(0x9b59b6)
+    .setColor(WIZARD_COLORS.INFO)
     .setTitle("📦 AutoMod Presets")
     .setDescription(
       "Choose a preset configuration that matches your server type. " +
@@ -400,19 +377,30 @@ async function showPresetSelection(interaction: ButtonInteraction): Promise<void
     });
   });
 
-  const presetButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("preset_basic").setLabel("🛡️ Basic").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("preset_comprehensive").setLabel("🔰 Comprehensive").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("preset_family").setLabel("👨‍👩‍👧‍👦 Family").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("preset_gaming").setLabel("🎮 Gaming").setStyle(ButtonStyle.Success)
-  );
+  const presetButtons = createPresetButtons([
+    {
+      id: "preset_basic",
+      label: "🛡️ Basic",
+      emoji: "🛡️",
+    },
+    {
+      id: "preset_comprehensive",
+      label: "🔰 Comprehensive",
+      emoji: "🔰",
+    },
+    {
+      id: "preset_family",
+      label: "👨‍👩‍👧‍👦 Family",
+      emoji: "👨‍👩‍👧‍👦",
+    },
+    {
+      id: "preset_gaming",
+      label: "🎮 Gaming",
+      emoji: "🎮",
+    },
+  ]);
 
-  const backButton = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("automod_wizard_back")
-      .setLabel("← Back to Main Menu")
-      .setStyle(ButtonStyle.Secondary)
-  );
+  const backButton = createButtonRow(createBackButton("automod_wizard_back"));
 
   await interaction.update({
     embeds: [presetEmbed],
@@ -422,7 +410,7 @@ async function showPresetSelection(interaction: ButtonInteraction): Promise<void
 
 async function startCustomSetup(interaction: ButtonInteraction): Promise<void> {
   const customEmbed = new EmbedBuilder()
-    .setColor(0xf39c12)
+    .setColor(WIZARD_COLORS.WARNING)
     .setTitle("⚙️ Custom AutoMod Setup")
     .setDescription(
       "Let's build a custom auto-moderation configuration for your server!\n\n" +
@@ -451,16 +439,9 @@ async function startCustomSetup(interaction: ButtonInteraction): Promise<void> {
       }
     );
 
-  const setupButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("custom_step1_protection")
-      .setLabel("1️⃣ Choose Protections")
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId("custom_quick_basic")
-      .setLabel("⚡ Quick Basic Setup")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("automod_wizard_back").setLabel("← Back").setStyle(ButtonStyle.Secondary)
+  const setupButtons = createButtonRow(
+    createQuickSetupButton("custom_quick_basic", "Quick Basic Setup"),
+    createBackButton("automod_wizard_back")
   );
 
   await interaction.update({
@@ -471,7 +452,7 @@ async function startCustomSetup(interaction: ButtonInteraction): Promise<void> {
 
 async function showHelpInfo(interaction: ButtonInteraction): Promise<void> {
   const helpEmbed = new EmbedBuilder()
-    .setColor(0x3498db)
+    .setColor(WIZARD_COLORS.PRIMARY)
     .setTitle("❓ AutoMod Help & Information")
     .setDescription(
       "Use `/setup automod` to configure auto-moderation for your server!\n\n" +
@@ -502,12 +483,7 @@ async function showHelpInfo(interaction: ButtonInteraction): Promise<void> {
     .setFooter({ text: "Choose a preset or build your own configuration" })
     .setTimestamp();
 
-  const backButton = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("automod_wizard_back")
-      .setLabel("← Back to Main Menu")
-      .setStyle(ButtonStyle.Secondary)
-  );
+  const backButton = createButtonRow(createBackButton("automod_wizard_back"));
 
   await interaction.update({
     embeds: [helpEmbed],
@@ -581,7 +557,7 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
     }
 
     const successEmbed = new EmbedBuilder()
-      .setColor(0x2ecc71)
+      .setColor(WIZARD_COLORS.SUCCESS)
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied`)
       .setDescription(
         `Successfully applied the **${preset.name}** preset configuration!\n\n` +
@@ -622,7 +598,7 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
     await interaction.editReply({
       embeds: [
         new EmbedBuilder()
-          .setColor(0xe74c3c)
+          .setColor(WIZARD_COLORS.DANGER)
           .setTitle("❌ Failed to Apply Preset")
           .setDescription("An error occurred while applying the preset configuration. Please try again.")
           .setTimestamp(),
@@ -717,7 +693,7 @@ async function _applyPreset(client: Client, interaction: ChatInputCommandInterac
     }
 
     const successEmbed = new EmbedBuilder()
-      .setColor(0x2ecc71)
+      .setColor(WIZARD_COLORS.SUCCESS)
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied`)
       .setDescription(
         `Successfully applied the **${preset.name}** preset configuration!\n\n` +
@@ -762,7 +738,7 @@ async function _applyPreset(client: Client, interaction: ChatInputCommandInterac
     await interaction.editReply({
       embeds: [
         new EmbedBuilder()
-          .setColor(0xe74c3c)
+          .setColor(WIZARD_COLORS.DANGER)
           .setTitle("❌ Failed to Apply Preset")
           .setDescription("An error occurred while applying the preset configuration. Please try again.")
           .setTimestamp(),
@@ -801,7 +777,7 @@ async function _showStatus(_client: Client, interaction: ChatInputCommandInterac
     const recentActivity = 0; // TODO: Implement when AutoModAction table is available
 
     const statusEmbed = new EmbedBuilder()
-      .setColor(enabledRules.length > 0 ? 0x2ecc71 : 0x95a5a6)
+      .setColor(enabledRules.length > 0 ? WIZARD_COLORS.SUCCESS : WIZARD_COLORS.NEUTRAL)
       .setTitle("📊 AutoMod Status")
       .setDescription(
         enabledRules.length > 0
@@ -861,205 +837,11 @@ async function _showStatus(_client: Client, interaction: ChatInputCommandInterac
     await interaction.editReply({
       embeds: [
         new EmbedBuilder()
-          .setColor(0xe74c3c)
+          .setColor(WIZARD_COLORS.DANGER)
           .setTitle("❌ Error")
           .setDescription("Failed to fetch auto-moderation status. Please try again.")
           .setTimestamp(),
       ],
     });
   }
-}
-
-async function showProtectionSelection(interaction: ButtonInteraction): Promise<void> {
-  const protectionEmbed = new EmbedBuilder()
-    .setColor(0x3498db)
-    .setTitle("🛡️ Choose Protection Types")
-    .setDescription(
-      "Select which types of protection you want to enable for your server.\n\n" +
-        "You can enable multiple types and configure them individually."
-    )
-    .addFields(
-      {
-        name: "🔹 Spam Protection",
-        value: "Prevents message flooding and duplicate content",
-        inline: true,
-      },
-      {
-        name: "🔹 Word Filter",
-        value: "Blocks inappropriate or custom-defined words",
-        inline: true,
-      },
-      {
-        name: "🔹 Link Control",
-        value: "Manages external links and domains",
-        inline: true,
-      },
-      {
-        name: "🔹 Caps Control",
-        value: "Reduces excessive CAPITAL LETTER usage",
-        inline: true,
-      },
-      {
-        name: "🔹 Invite Protection",
-        value: "Controls Discord server invites",
-        inline: true,
-      },
-      {
-        name: "🔹 Mention Spam",
-        value: "Prevents excessive @mentions",
-        inline: true,
-      }
-    );
-
-  const protectionButtons = [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId("protection_spam").setLabel("Spam").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("protection_words").setLabel("Words").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("protection_links").setLabel("Links").setStyle(ButtonStyle.Secondary)
-    ),
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId("protection_caps").setLabel("Caps").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("protection_invites").setLabel("Invites").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("protection_mentions").setLabel("Mentions").setStyle(ButtonStyle.Secondary)
-    ),
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId("custom_next_step").setLabel("Continue →").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("automod_wizard_back").setLabel("← Back").setStyle(ButtonStyle.Secondary)
-    ),
-  ];
-
-  await interaction.update({
-    embeds: [protectionEmbed],
-    components: protectionButtons,
-  });
-}
-
-async function performQuickBasicSetup(interaction: ButtonInteraction, client: Client): Promise<void> {
-  if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
-    return;
-  }
-
-  await interaction.deferReply({ ephemeral: true });
-
-  try {
-    // Create basic automod rules
-    const basicRules = [
-      {
-        name: "Anti-Spam Basic",
-        type: "spam",
-        sensitivity: "MEDIUM",
-        actions: ["DELETE"],
-        config: { maxMessages: 5, timeWindow: 10, duplicateThreshold: 3 },
-      },
-      {
-        name: "Caps Control",
-        type: "caps",
-        sensitivity: "MEDIUM",
-        actions: ["DELETE"],
-        config: { capsPercent: 70, minLength: 10 },
-      },
-    ];
-
-    let createdRules = 0;
-    for (const rule of basicRules) {
-      try {
-        await prisma.autoModRule.create({
-          data: {
-            guildId: interaction.guild.id,
-            name: rule.name,
-            type: rule.type,
-            sensitivity: rule.sensitivity,
-            triggers: rule.config,
-            actions: rule.actions,
-            enabled: true,
-            createdBy: interaction.user.id,
-          },
-        });
-        createdRules++;
-      } catch (error) {
-        logger.warn(`Failed to create auto-mod rule ${rule.name}:`, error);
-      }
-    }
-
-    // Notify API of automod setup
-    const customClient = client as any as Client;
-    if (customClient.queueService) {
-      try {
-        await customClient.queueService.processRequest({
-          type: "AUTOMOD_UPDATE",
-          data: {
-            guildId: interaction.guild.id,
-            action: "QUICK_SETUP",
-            rulesCreated: createdRules,
-            updatedBy: interaction.user.id,
-          },
-          source: "rest",
-          userId: interaction.user.id,
-          guildId: interaction.guild.id,
-          requiresReliability: true,
-        });
-      } catch (error) {
-        console.warn("Failed to notify API of automod setup:", error);
-      }
-    }
-
-    const successEmbed = new EmbedBuilder()
-      .setColor(0x2ecc71)
-      .setTitle("✅ Quick Basic Setup Complete!")
-      .setDescription(
-        `Successfully configured basic auto-moderation for your server!\n\n` +
-          `**Rules Created:** ${String(createdRules)}/${String(basicRules.length)}\n` +
-          `**Status:** Active and monitoring`
-      )
-      .addFields({
-        name: "📋 Applied Rules",
-        value: basicRules.map((rule, index) => `${String(index + 1)}. **${rule.name}** (${rule.type})`).join("\n"),
-        inline: false,
-      })
-      .addFields({
-        name: "⚙️ Next Steps",
-        value:
-          "• Use `/automod list` to view all rules\n" +
-          "• Use `/automod configure` to customize settings\n" +
-          "• Use `/automod test` to test rules with sample text",
-        inline: false,
-      })
-      .setTimestamp()
-      .setFooter({ text: "AutoMod is now protecting your server!" });
-
-    await interaction.editReply({ embeds: [successEmbed] });
-
-    // Log the configuration change
-    await client.logManager.log(interaction.guild.id, "AUTOMOD_CONFIG_CHANGE", {
-      userId: interaction.user.id,
-      metadata: {
-        action: "quick_setup",
-        rulesCreated: createdRules,
-      },
-    });
-  } catch (error) {
-    logger.error("Error performing quick basic setup:", error);
-    await interaction.editReply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("❌ Setup Failed")
-          .setDescription("An error occurred while setting up auto-moderation. Please try again.")
-          .setTimestamp(),
-      ],
-    });
-  }
-}
-
-async function handleProtectionSelection(interaction: ButtonInteraction, client: Client): Promise<void> {
-  const protectionType = interaction.customId.replace("protection_", "");
-
-  await interaction.reply({
-    content: `✅ ${protectionType} protection selected! This feature will be implemented in the next step.`,
-    ephemeral: true,
-  });
-
-  // TODO: Implement full protection configuration flow
-  // For now, just acknowledge the selection
 }

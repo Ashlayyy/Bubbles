@@ -611,6 +611,43 @@ export default class LogManager {
       return messageColors[logType as keyof typeof messageColors] || 0x3498db; // Default blue
     }
 
+    // Member-specific colors
+    if (category === "MEMBER" && logType) {
+      const memberColors = {
+        MEMBER_JOIN: 0x2ecc71, // Green - join
+        MEMBER_LEAVE: 0x95a5a6, // Gray - leave
+        MEMBER_BAN: 0xe74c3c, // Red - ban
+        MEMBER_UNBAN: 0x27ae60, // Green - unban
+        MEMBER_KICK: 0xe67e22, // Orange - kick
+        MEMBER_TIMEOUT: 0xf1c40f, // Yellow - timeout
+        MEMBER_TIMEOUT_REMOVE: 0x3498db, // Blue - timeout removed
+        MEMBER_UPDATE: 0x9b59b6, // Purple - member update
+      };
+      return memberColors[logType as keyof typeof memberColors] || 0x2ecc71;
+    }
+
+    // Role-specific colors
+    if (category === "ROLE" && logType) {
+      const roleColors = {
+        ROLE_CREATE: 0x1abc9c, // Teal - role created
+        ROLE_DELETE: 0xe74c3c, // Red - role deleted
+        ROLE_UPDATE: 0xf39c12, // Gold - role updated
+        MEMBER_ROLE_ADD: 0x2ecc71, // Green - role added
+        MEMBER_ROLE_REMOVE: 0xe67e22, // Orange - role removed
+      };
+      return roleColors[logType as keyof typeof roleColors] || 0x9b59b6;
+    }
+
+    // Channel-specific colors
+    if (category === "CHANNEL" && logType) {
+      const channelColors = {
+        CHANNEL_CREATE: 0x1abc9c, // Teal - channel created
+        CHANNEL_DELETE: 0xe74c3c, // Red - channel deleted
+        CHANNEL_UPDATE: 0xf39c12, // Gold - channel updated
+      };
+      return channelColors[logType as keyof typeof channelColors] || 0xe67e22;
+    }
+
     const colors = {
       MESSAGE: 0x3498db, // Blue - information (fallback)
       MEMBER: 0x2ecc71, // Green - positive/joins
@@ -929,6 +966,91 @@ export default class LogManager {
       });
     }
 
+    // --- MEMBER_UPDATE: Added/Removed Roles as Mentions ---
+    if (logType === "MEMBER_UPDATE" && logEntry.metadata) {
+      const metadata = logEntry.metadata as Record<string, any>;
+      if (Array.isArray(metadata.addedRoles) && metadata.addedRoles.length > 0) {
+        const addedMentions = metadata.addedRoles.map((role: any) => `<@&${role.id}>`).join(", ");
+        embed.addFields({
+          name: "➕ Roles Added",
+          value: addedMentions,
+          inline: false,
+        });
+      }
+      if (Array.isArray(metadata.removedRoles) && metadata.removedRoles.length > 0) {
+        const removedMentions = metadata.removedRoles.map((role: any) => `<@&${role.id}>`).join(", ");
+        embed.addFields({
+          name: "➖ Roles Removed",
+          value: removedMentions,
+          inline: false,
+        });
+      }
+      // Username change
+      if (
+        metadata.changes &&
+        Array.isArray(metadata.changes) &&
+        metadata.changes.includes("username") &&
+        logEntry.before &&
+        logEntry.after
+      ) {
+        const before = JSON.parse(logEntry.before as string);
+        const after = JSON.parse(logEntry.after as string);
+        embed.addFields({
+          name: "📝 Username Changed",
+          value: `Before: **${before.username ?? "Unknown"}**\nAfter: **${after.username ?? "Unknown"}**`,
+          inline: false,
+        });
+      }
+      // Nickname change
+      if (
+        metadata.changes &&
+        Array.isArray(metadata.changes) &&
+        metadata.changes.includes("nickname") &&
+        logEntry.before &&
+        logEntry.after
+      ) {
+        const before = JSON.parse(logEntry.before as string);
+        const after = JSON.parse(logEntry.after as string);
+        embed.addFields({
+          name: "🏷️ Nickname Changed",
+          value: `Before: **${before.nickname ?? "None"}**\nAfter: **${after.nickname ?? "None"}**`,
+          inline: false,
+        });
+      }
+      // Avatar change
+      if (
+        metadata.changes &&
+        Array.isArray(metadata.changes) &&
+        metadata.changes.includes("avatar") &&
+        logEntry.before &&
+        logEntry.after
+      ) {
+        const before = JSON.parse(logEntry.before as string);
+        const after = JSON.parse(logEntry.after as string);
+        embed.addFields({
+          name: "🖼️ Avatar Changed",
+          value: `[Before Avatar](https://cdn.discordapp.com/avatars/${logEntry.userId}/${before.avatar}.png) → [After Avatar](https://cdn.discordapp.com/avatars/${logEntry.userId}/${after.avatar}.png)`,
+          inline: false,
+        });
+      }
+      // Timeout change
+      if (
+        metadata.changes &&
+        Array.isArray(metadata.changes) &&
+        metadata.changes.includes("timeout") &&
+        logEntry.before &&
+        logEntry.after
+      ) {
+        const before = JSON.parse(logEntry.before as string);
+        const after = JSON.parse(logEntry.after as string);
+        embed.addFields({
+          name: "⏰ Timeout Changed",
+          value: `Before: **${before.communicationDisabledUntil ?? "None"}**\nAfter: **${after.communicationDisabledUntil ?? "None"}**`,
+          inline: false,
+        });
+      }
+    }
+
     // Case information for moderation actions
     if (logEntry.caseId) {
       embed.addFields({
@@ -983,7 +1105,7 @@ export default class LogManager {
         if (before) {
           const beforeContent = before.length > 500 ? `${before.substring(0, 500)}...` : before;
           embed.addFields({
-            name: "📜 Before",
+            name: "📜 Before Content",
             value: `\`\`\`${beforeContent}\`\`\``,
             inline: false,
           });
@@ -992,10 +1114,38 @@ export default class LogManager {
         if (after) {
           const afterContent = after.length > 500 ? `${after.substring(0, 500)}...` : after;
           embed.addFields({
-            name: "📝 After",
+            name: "📝 After Content",
             value: `\`\`\`${afterContent}\`\`\``,
             inline: false,
           });
+        }
+      }
+      // Role update diff
+      if (logType === "ROLE_UPDATE" && logEntry.before && logEntry.after) {
+        const before = typeof logEntry.before === "string" ? JSON.parse(logEntry.before) : logEntry.before;
+        const after = typeof logEntry.after === "string" ? JSON.parse(logEntry.after) : logEntry.after;
+        for (const key of Object.keys(before)) {
+          if (before[key] !== after[key]) {
+            embed.addFields({
+              name: `🔄 ${key.charAt(0).toUpperCase() + key.slice(1)} Changed`,
+              value: `Before: **${before[key]}**\nAfter: **${after[key]}**`,
+              inline: false,
+            });
+          }
+        }
+      }
+      // Channel update diff
+      if (logType === "CHANNEL_UPDATE" && logEntry.before && logEntry.after) {
+        const before = typeof logEntry.before === "string" ? JSON.parse(logEntry.before) : logEntry.before;
+        const after = typeof logEntry.after === "string" ? JSON.parse(logEntry.after) : logEntry.after;
+        for (const key of Object.keys(before)) {
+          if (before[key] !== after[key]) {
+            embed.addFields({
+              name: `🔄 ${key.charAt(0).toUpperCase() + key.slice(1)} Changed`,
+              value: `Before: **${before[key]}**\nAfter: **${after[key]}**`,
+              inline: false,
+            });
+          }
         }
       }
     }

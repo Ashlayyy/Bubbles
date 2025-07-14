@@ -1,7 +1,5 @@
 import {
-  ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
   ChannelSelectMenuBuilder,
   ChannelType,
   EmbedBuilder,
@@ -15,6 +13,17 @@ import {
 import { getGuildConfig, updateGuildConfig } from "../../../database/GuildConfig.js";
 import logger from "../../../logger.js";
 import type Client from "../../../structures/Client.js";
+import {
+  BUTTON_STYLES,
+  WIZARD_COLORS,
+  WIZARD_EMOJIS,
+  createButtonRow,
+  createChannelSelect,
+  createChannelSelectRow,
+  createRoleSelect,
+  createRoleSelectRow,
+  createToggleButton,
+} from "./WizardComponents.js";
 
 // Export only the wizard function - no standalone command
 export { startWelcomeWizard };
@@ -46,8 +55,8 @@ async function startWelcomeWizard(client: Client, interaction: ChatInputCommandI
   }
 
   const wizardEmbed = new EmbedBuilder()
-    .setColor(0x3498db)
-    .setTitle("👋 Welcome System Setup Wizard")
+    .setColor(WIZARD_COLORS.PRIMARY)
+    .setTitle(`${WIZARD_EMOJIS.WELCOME} Welcome System Setup Wizard`)
     .setDescription(
       "Welcome to the **Welcome System Setup Wizard**!\n\n" +
         "This wizard will help you configure welcome and goodbye messages for your server.\n\n" +
@@ -82,48 +91,36 @@ async function startWelcomeWizard(client: Client, interaction: ChatInputCommandI
     .setTimestamp();
 
   // Welcome channel select menu
-  const welcomeChannelSelect = new ChannelSelectMenuBuilder()
-    .setCustomId("welcome_channel_select")
-    .setPlaceholder("Select welcome channel")
-    .addChannelTypes(ChannelType.GuildText)
-    .setMinValues(1)
-    .setMaxValues(1);
+  const welcomeChannelSelect = createChannelSelect("welcome_channel_select", "Select welcome channel", 1, 1);
 
   // Goodbye channel select menu
-  const goodbyeChannelSelect = new ChannelSelectMenuBuilder()
-    .setCustomId("goodbye_channel_select")
-    .setPlaceholder("Select goodbye channel (optional)")
-    .addChannelTypes(ChannelType.GuildText)
-    .setMinValues(0)
-    .setMaxValues(1);
+  const goodbyeChannelSelect = createChannelSelect("goodbye_channel_select", "Select goodbye channel (optional)", 0, 1);
 
   // Auto-role select menu
-  const autoRoleSelect = new RoleSelectMenuBuilder()
-    .setCustomId("welcome_auto_role_select")
-    .setPlaceholder("Select auto-roles (optional)")
-    .setMinValues(0)
-    .setMaxValues(5);
+  const autoRoleSelect = createRoleSelect("welcome_auto_role_select", "Select auto-roles (optional)", 0, 5);
 
-  const enableWelcomeButton = new ButtonBuilder()
-    .setCustomId(config.welcomeEnabled ? "welcome_disable" : "welcome_enable")
-    .setLabel(config.welcomeEnabled ? "Disable Welcome" : "Enable Welcome")
-    .setStyle(config.welcomeEnabled ? ButtonStyle.Danger : ButtonStyle.Success);
+  const enableWelcomeButton = createToggleButton(
+    config.welcomeEnabled,
+    config.welcomeEnabled ? "welcome_disable" : "welcome_enable",
+    "Welcome"
+  );
 
-  const enableGoodbyeButton = new ButtonBuilder()
-    .setCustomId(config.goodbyeEnabled ? "goodbye_disable" : "goodbye_enable")
-    .setLabel(config.goodbyeEnabled ? "Disable Goodbye" : "Enable Goodbye")
-    .setStyle(config.goodbyeEnabled ? ButtonStyle.Danger : ButtonStyle.Success);
+  const enableGoodbyeButton = createToggleButton(
+    config.goodbyeEnabled,
+    config.goodbyeEnabled ? "goodbye_disable" : "goodbye_enable",
+    "Goodbye"
+  );
 
   const testButton = new ButtonBuilder()
     .setCustomId("welcome_test")
     .setLabel("Test Messages")
-    .setStyle(ButtonStyle.Primary);
+    .setStyle(BUTTON_STYLES.PRIMARY);
 
   const components = [
-    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(welcomeChannelSelect),
-    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(goodbyeChannelSelect),
-    new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(autoRoleSelect),
-    new ActionRowBuilder<ButtonBuilder>().addComponents(enableWelcomeButton, enableGoodbyeButton, testButton),
+    createChannelSelectRow(welcomeChannelSelect),
+    createChannelSelectRow(goodbyeChannelSelect),
+    createRoleSelectRow(autoRoleSelect),
+    createButtonRow(enableWelcomeButton, enableGoodbyeButton, testButton),
   ];
 
   // Check interaction state before replying
@@ -205,16 +202,10 @@ async function startWelcomeWizard(client: Client, interaction: ChatInputCommandI
   collector?.on("end", () => {
     // Disable components after timeout
     const disabledComponents = [
-      new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
-        ChannelSelectMenuBuilder.from(welcomeChannelSelect).setDisabled(true)
-      ),
-      new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
-        ChannelSelectMenuBuilder.from(goodbyeChannelSelect).setDisabled(true)
-      ),
-      new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
-        RoleSelectMenuBuilder.from(autoRoleSelect).setDisabled(true)
-      ),
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
+      createChannelSelectRow(ChannelSelectMenuBuilder.from(welcomeChannelSelect).setDisabled(true)),
+      createChannelSelectRow(ChannelSelectMenuBuilder.from(goodbyeChannelSelect).setDisabled(true)),
+      createRoleSelectRow(RoleSelectMenuBuilder.from(autoRoleSelect).setDisabled(true)),
+      createButtonRow(
         ButtonBuilder.from(enableWelcomeButton).setDisabled(true),
         ButtonBuilder.from(enableGoodbyeButton).setDisabled(true),
         ButtonBuilder.from(testButton).setDisabled(true)

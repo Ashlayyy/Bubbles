@@ -401,9 +401,14 @@ async function handleSetupAutocomplete(interaction: AutocompleteInteraction) {
     return;
   }
 
-  const MODULE_CHOICES = ["tickets", "automod", "reports"];
+  const MODULE_CHOICES = ["tickets", "automod", "reports", "logging", "welcome", "appeals", "reactionroles"];
   const value = String(focusedOption.value).toLowerCase();
   let matched = MODULE_CHOICES.filter((m) => m.includes(value)).slice(0, 25);
-  if (matched.length === 0) matched = MODULE_CHOICES;
+
+  // Discord requires 1-25 choices; fallback to full list if none matched
+  if (matched.length === 0) {
+    matched = MODULE_CHOICES.slice(0, 25);
+  }
+
   await interaction.respond(matched.map((m) => ({ name: m, value: m })));
 }

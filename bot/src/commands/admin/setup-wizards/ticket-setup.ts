@@ -14,6 +14,15 @@ import {
 import { getGuildConfig, updateGuildConfig } from "../../../database/GuildConfig.js";
 import logger from "../../../logger.js";
 import type Client from "../../../structures/Client.js";
+import {
+  BUTTON_STYLES,
+  WIZARD_COLORS,
+  WIZARD_EMOJIS,
+  createButtonRow,
+  createChannelSelect,
+  createChannelSelectRow,
+  createToggleButton,
+} from "./WizardComponents.js";
 
 export async function startTicketWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) {
@@ -27,8 +36,8 @@ export async function startTicketWizard(client: Client, interaction: ChatInputCo
   const config = await getGuildConfig(interaction.guild.id);
 
   const wizardEmbed = new EmbedBuilder()
-    .setColor(0x3498db)
-    .setTitle("🎫 Ticket Setup Wizard")
+    .setColor(WIZARD_COLORS.PRIMARY)
+    .setTitle(`${WIZARD_EMOJIS.TICKETS} Ticket Setup Wizard`)
     .setDescription(
       "Welcome to the **Ticket System Setup Wizard**!\n\n" +
         "Follow the steps below to configure tickets for your server.\n\n" +
@@ -58,27 +67,20 @@ export async function startTicketWizard(client: Client, interaction: ChatInputCo
     .setTimestamp();
 
   // Channel select menu
-  const channelSelect = new ChannelSelectMenuBuilder()
-    .setCustomId("ticket_channel_select")
-    .setPlaceholder("Select ticket channel")
-    .addChannelTypes(ChannelType.GuildText)
-    .setMinValues(1)
-    .setMaxValues(1);
+  const channelSelect = createChannelSelect("ticket_channel_select", "Select ticket channel", 1, 1);
 
-  const threadButton = new ButtonBuilder()
-    .setCustomId(config.useTicketThreads ? "ticket_disable_threads" : "ticket_enable_threads")
-    .setLabel(config.useTicketThreads ? "Disable Threads" : "Enable Threads")
-    .setStyle(ButtonStyle.Secondary);
+  const threadButton = createToggleButton(
+    config.useTicketThreads,
+    config.useTicketThreads ? "ticket_disable_threads" : "ticket_enable_threads",
+    "Threads"
+  );
 
   const panelButton = new ButtonBuilder()
     .setCustomId("ticket_create_panel")
     .setLabel("Create Panel")
-    .setStyle(ButtonStyle.Success);
+    .setStyle(BUTTON_STYLES.SUCCESS);
 
-  const components = [
-    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(channelSelect),
-    new ActionRowBuilder<ButtonBuilder>().addComponents(threadButton, panelButton),
-  ];
+  const components = [createChannelSelectRow(channelSelect), createButtonRow(threadButton, panelButton)];
 
   // Check interaction state before replying
   if (!interaction.replied && !interaction.deferred) {
@@ -215,10 +217,13 @@ async function applyTicketChannel(
       }
     }
 
-    await interaction.reply({
-      content: `✅ Ticket channel set to <#${channel.id}>`,
-      ephemeral: true,
-    });
+    const embed = new EmbedBuilder()
+      .setColor(WIZARD_COLORS.SUCCESS)
+      .setTitle("✅ Ticket Channel Set")
+      .setDescription(`Ticket channel has been set to <#${channelId}>`)
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (error) {
     logger.error("Error updating ticket channel:", error);
     await interaction.reply({

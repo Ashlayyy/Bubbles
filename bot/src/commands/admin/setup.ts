@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, type AutocompleteInteraction, type ChatInputCommandInteraction } from "discord.js";
+import { SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
 
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
@@ -26,31 +26,6 @@ class SetupCommand extends AdminCommand {
     };
 
     super(config);
-  }
-
-  // Autocomplete for the `module` option
-  public async autocomplete(interaction: AutocompleteInteraction): Promise<void> {
-    try {
-      const focusedOption = interaction.options.getFocused(true);
-      if (focusedOption.name !== "module") {
-        await interaction.respond([]);
-        return;
-      }
-
-      const value = String(focusedOption.value).toLowerCase();
-      let matched = MODULE_CHOICES.filter((m) => m.includes(value)).slice(0, 25);
-
-      // Discord requires 1-25 choices; fallback to full list if none matched
-      if (matched.length === 0) {
-        matched = MODULE_CHOICES.slice(0, 25);
-      }
-
-      console.debug("/setup autocomplete", { value, matched });
-
-      await interaction.respond(matched.map((m) => ({ name: m, value: m })));
-    } catch (err) {
-      console.error("Autocomplete error:", err);
-    }
   }
 
   protected async execute(): Promise<CommandResponse | undefined> {

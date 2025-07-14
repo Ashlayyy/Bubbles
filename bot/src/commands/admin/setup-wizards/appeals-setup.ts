@@ -1,17 +1,28 @@
 import {
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
   ChannelSelectMenuBuilder,
   ChannelType,
   EmbedBuilder,
+  PermissionFlagsBits,
   type ButtonInteraction,
   type ChannelSelectMenuInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
 
+import { prisma } from "../../../database/index.js";
 import logger from "../../../logger.js";
 import type Client from "../../../structures/Client.js";
+import {
+  WIZARD_COLORS,
+  WIZARD_EMOJIS,
+  createButtonRow,
+  createChannelSelect,
+  createChannelSelectRow,
+  createHelpButton,
+  createTestButton,
+  createToggleButton,
+} from "./WizardComponents.js";
 
 // Export only the wizard function - no standalone command
 export { startAppealsWizard };
@@ -25,71 +36,66 @@ async function startAppealsWizard(client: Client, interaction: ChatInputCommandI
     return;
   }
 
-  // Get appeal settings through ModerationManager
-  const appealSettings = await client.moderationManager.getAppealsSettings(interaction.guild.id);
+  // Load current settings
+  let appealsChannelId: string | null = null;
+  let appealsEnabled = false;
+
+  try {
+    const appealSettings = await prisma.appealSettings.findUnique({
+      where: { guildId: interaction.guild.id },
+      select: { appealChannelId: true, discordBotEnabled: true },
+    });
+
+    appealsChannelId = appealSettings?.appealChannelId || null;
+    appealsEnabled = appealSettings?.discordBotEnabled || false;
+  } catch (error) {
+    logger.error("Error loading appeals settings:", error);
+    // Continue with default values
+  }
 
   const wizardEmbed = new EmbedBuilder()
-    .setColor(0x3498db)
-    .setTitle("⚖️ Appeals System Setup Wizard")
+    .setColor(WIZARD_COLORS.PRIMARY)
+    .setTitle(`${WIZARD_EMOJIS.APPEALS} Appeals System Setup`)
     .setDescription(
       "Welcome to the **Appeals System Setup Wizard**!\n\n" +
-        "This wizard will help you configure the appeals system for your server.\n\n" +
-        "• **Appeals Channel** – Where users can submit appeals for bans/mutes\n" +
-        "• **Enable/Disable** – Turn the appeals system on or off\n" +
-        "• **Custom Messages** – Set personalized appeal messages\n" +
-        "• **Auto-Response** – Configure automatic responses to appeals"
+        "Configure the appeals system to allow users to appeal moderation actions.\n\n" +
+        "• **Appeals Channel** – Where appeal submissions will be posted\n" +
+        "• **System Toggle** – Enable or disable the appeals system\n" +
+        "• **Test System** – Verify everything is working correctly"
     )
     .addFields(
       {
         name: "Current Settings",
         value:
-          `• Appeals Channel: ${"appealChannelId" in appealSettings && appealSettings.appealChannelId ? `<#${appealSettings.appealChannelId}>` : "Not set"}` +
-          `\n• Appeals Enabled: ${appealSettings.discordBotEnabled ? "✅ Yes" : "❌ No"}` +
-          `\n• Web Form: ${appealSettings.webFormEnabled ? "✅ Yes" : "❌ No"}` +
-          `\n• Cooldown: ${appealSettings.appealCooldown / 3600} hours` +
-          `\n• Max Appeals: ${appealSettings.maxAppealsPerUser} per user`,
+          `• Status: ${appealsEnabled ? "✅ Enabled" : "❌ Disabled"}` +
+          `\n• Channel: ${appealsChannelId ? `<#${appealsChannelId}>` : "Not set"}`,
         inline: false,
       },
       {
         name: "Instructions",
         value:
           "1. Select an appeals channel (dropdown below)\n" +
-          "2. Enable or disable the appeals system\n" +
-          "3. Configure custom messages\n" +
-          "4. Set up auto-response settings",
+          "2. Enable/disable the system\n" +
+          "3. Test the system to ensure it's working",
         inline: false,
       }
     )
     .setFooter({ text: "This wizard will stay active for 5 minutes." })
     .setTimestamp();
 
-  // Appeals channel select menu
-  const appealsChannelSelect = new ChannelSelectMenuBuilder()
-    .setCustomId("appeals_channel_select")
-    .setPlaceholder("Select appeals channel")
-    .addChannelTypes(ChannelType.GuildText)
-    .setMinValues(1)
-    .setMaxValues(1);
+  // Channel select menu
+  const channelSelect = createChannelSelect("appeals_channel_select", "Select appeals channel", 1, 1);
 
-  const enableAppealsButton = new ButtonBuilder()
-    .setCustomId(appealSettings.discordBotEnabled ? "appeals_disable" : "appeals_enable")
-    .setLabel(appealSettings.discordBotEnabled ? "Disable Appeals" : "Enable Appeals")
-    .setStyle(appealSettings.discordBotEnabled ? ButtonStyle.Danger : ButtonStyle.Success);
+  const toggleButton = createToggleButton(
+    appealsEnabled,
+    appealsEnabled ? "appeals_disable" : "appeals_enable",
+    "Appeals System"
+  );
 
-  const webFormButton = new ButtonBuilder()
-    .setCustomId(appealSettings.webFormEnabled ? "appeals_web_disable" : "appeals_web_enable")
-    .setLabel(appealSettings.webFormEnabled ? "Disable Web Form" : "Enable Web Form")
-    .setStyle(appealSettings.webFormEnabled ? ButtonStyle.Danger : ButtonStyle.Secondary);
+  const testButton = createTestButton("appeals_test", "Test Appeals");
+  const helpButton = createHelpButton("appeals_help", "Help & Info");
 
-  const testButton = new ButtonBuilder()
-    .setCustomId("appeals_test")
-    .setLabel("Test Appeals")
-    .setStyle(ButtonStyle.Primary);
-
-  const components = [
-    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(appealsChannelSelect),
-    new ActionRowBuilder<ButtonBuilder>().addComponents(enableAppealsButton, webFormButton, testButton),
-  ];
+  const components = [createChannelSelectRow(channelSelect), createButtonRow(toggleButton, testButton, helpButton)];
 
   // Check interaction state before replying
   if (!interaction.replied && !interaction.deferred) {
@@ -110,12 +116,13 @@ async function startAppealsWizard(client: Client, interaction: ChatInputCommandI
     void (async () => {
       try {
         if (interactionComponent.isChannelSelectMenu() && interactionComponent.customId === "appeals_channel_select") {
-          const selectedChannelId = interactionComponent.values[0];
+          const menu = interactionComponent;
+          const selectedChannelId = menu.values[0];
           if (!selectedChannelId) {
-            await interactionComponent.reply({ content: "❌ No channel selected.", ephemeral: true });
+            await menu.reply({ content: "❌ No channel selected.", ephemeral: true });
             return;
           }
-          await applyAppealsChannel(client, interactionComponent, selectedChannelId);
+          await applyAppealsChannel(client, menu, selectedChannelId);
         } else if (interactionComponent.isButton()) {
           const btn = interactionComponent;
           switch (btn.customId) {
@@ -125,14 +132,11 @@ async function startAppealsWizard(client: Client, interaction: ChatInputCommandI
             case "appeals_disable":
               await applyAppealsEnabled(client, btn, false);
               break;
-            case "appeals_web_enable":
-              await applyWebFormEnabled(client, btn, true);
-              break;
-            case "appeals_web_disable":
-              await applyWebFormEnabled(client, btn, false);
-              break;
             case "appeals_test":
               await handleTestAppeals(client, btn);
+              break;
+            case "appeals_help":
+              await showAppealsHelp(btn);
               break;
             default:
               await btn.reply({
@@ -159,12 +163,12 @@ async function startAppealsWizard(client: Client, interaction: ChatInputCommandI
     // Disable components after timeout
     const disabledComponents = [
       new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
-        ChannelSelectMenuBuilder.from(appealsChannelSelect).setDisabled(true)
+        ChannelSelectMenuBuilder.from(channelSelect).setDisabled(true)
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        ButtonBuilder.from(enableAppealsButton).setDisabled(true),
-        ButtonBuilder.from(webFormButton).setDisabled(true),
-        ButtonBuilder.from(testButton).setDisabled(true)
+        ButtonBuilder.from(toggleButton).setDisabled(true),
+        ButtonBuilder.from(testButton).setDisabled(true),
+        ButtonBuilder.from(helpButton).setDisabled(true)
       ),
     ];
 
@@ -184,46 +188,49 @@ async function applyAppealsChannel(
     return;
   }
 
+  const channel = interaction.guild.channels.cache.get(channelId);
+  if (!channel || channel.type !== ChannelType.GuildText) {
+    await interaction.reply({ content: "❌ Please select a text channel.", ephemeral: true });
+    return;
+  }
+
+  const botMember = interaction.guild.members.me;
+  if (!botMember) {
+    await interaction.reply({ content: "❌ Bot user not found in guild.", ephemeral: true });
+    return;
+  }
+
+  const perms = channel.permissionsFor(botMember);
+  if (!perms.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) {
+    await interaction.reply({
+      content: `❌ I need **View Channel**, **Send Messages**, and **Embed Links** in <#${channel.id}> to work properly.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
   try {
-    await client.moderationManager.configureAppealsSettings(interaction.guild.id, {
-      appealChannelId: channelId,
+    await prisma.appealSettings.upsert({
+      where: { guildId: interaction.guild.id },
+      update: { appealChannelId: channel.id },
+      create: {
+        guildId: interaction.guild.id,
+        appealChannelId: channel.id,
+        discordBotEnabled: false,
+      },
     });
 
     const embed = new EmbedBuilder()
-      .setColor(0x2ecc71)
+      .setColor(WIZARD_COLORS.SUCCESS)
       .setTitle("✅ Appeals Channel Set")
-      .setDescription(`Appeals will now be sent to <#${channelId}>`)
+      .setDescription(`Appeals channel has been set to <#${channelId}>`)
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed], ephemeral: true });
-
-    // Notify queue service if available
-    const customClient = client;
-    if (customClient.queueService) {
-      try {
-        await customClient.queueService.processRequest({
-          type: "CONFIG_UPDATE",
-          data: {
-            guildId: interaction.guild.id,
-            section: "APPEALS_SYSTEM",
-            setting: "appealChannelId",
-            value: channelId,
-            action: "SET_APPEALS_CHANNEL",
-            updatedBy: interaction.user.id,
-          },
-          source: "rest",
-          userId: interaction.user.id,
-          guildId: interaction.guild.id,
-          requiresReliability: true,
-        });
-      } catch (queueError) {
-        logger.warn("Failed to notify queue service of appeals channel update:", queueError);
-      }
-    }
   } catch (error) {
-    logger.error("Error setting appeals channel:", error);
+    logger.error("Error updating appeals channel:", error);
     await interaction.reply({
-      content: "❌ Failed to set appeals channel. Please try again.",
+      content: "❌ Failed to update appeals channel. Please try again.",
       ephemeral: true,
     });
   }
@@ -236,96 +243,27 @@ async function applyAppealsEnabled(client: Client, interaction: ButtonInteractio
   }
 
   try {
-    await client.moderationManager.configureAppealsSettings(interaction.guild.id, {
-      enabled: enabled,
+    await prisma.appealSettings.upsert({
+      where: { guildId: interaction.guild.id },
+      update: { discordBotEnabled: enabled },
+      create: {
+        guildId: interaction.guild.id,
+        appealChannelId: null,
+        discordBotEnabled: enabled,
+      },
     });
 
     const embed = new EmbedBuilder()
-      .setColor(enabled ? 0x2ecc71 : 0xe74c3c)
+      .setColor(enabled ? WIZARD_COLORS.SUCCESS : WIZARD_COLORS.DANGER)
       .setTitle(`✅ Appeals System ${enabled ? "Enabled" : "Disabled"}`)
-      .setDescription(`The appeals system is now ${enabled ? "enabled" : "disabled"}`)
+      .setDescription(`The appeals system has been ${enabled ? "enabled" : "disabled"}`)
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed], ephemeral: true });
-
-    // Notify queue service if available
-    const customClient = client;
-    if (customClient.queueService) {
-      try {
-        await customClient.queueService.processRequest({
-          type: "CONFIG_UPDATE",
-          data: {
-            guildId: interaction.guild.id,
-            section: "APPEALS_SYSTEM",
-            setting: "discordBotEnabled",
-            value: enabled,
-            action: "TOGGLE_APPEALS",
-            updatedBy: interaction.user.id,
-          },
-          source: "rest",
-          userId: interaction.user.id,
-          guildId: interaction.guild.id,
-          requiresReliability: true,
-        });
-      } catch (queueError) {
-        logger.warn("Failed to notify queue service of appeals toggle:", queueError);
-      }
-    }
   } catch (error) {
-    logger.error("Error toggling appeals system:", error);
+    logger.error("Error updating appeals enabled setting:", error);
     await interaction.reply({
-      content: "❌ Failed to toggle appeals system. Please try again.",
-      ephemeral: true,
-    });
-  }
-}
-
-async function applyWebFormEnabled(client: Client, interaction: ButtonInteraction, enabled: boolean): Promise<void> {
-  if (!interaction.guild) {
-    await interaction.reply({ content: "❌ Guild unavailable.", ephemeral: true });
-    return;
-  }
-
-  try {
-    await client.moderationManager.configureAppealsSettings(interaction.guild.id, {
-      webFormUrl: enabled ? "https://appeals.example.com" : undefined,
-    });
-
-    const embed = new EmbedBuilder()
-      .setColor(enabled ? 0x2ecc71 : 0xe74c3c)
-      .setTitle(`✅ Web Form ${enabled ? "Enabled" : "Disabled"}`)
-      .setDescription(`Web form appeals are now ${enabled ? "enabled" : "disabled"}`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-
-    // Notify queue service if available
-    const customClient = client;
-    if (customClient.queueService) {
-      try {
-        await customClient.queueService.processRequest({
-          type: "CONFIG_UPDATE",
-          data: {
-            guildId: interaction.guild.id,
-            section: "APPEALS_SYSTEM",
-            setting: "webFormEnabled",
-            value: enabled,
-            action: "TOGGLE_WEB_FORM",
-            updatedBy: interaction.user.id,
-          },
-          source: "rest",
-          userId: interaction.user.id,
-          guildId: interaction.guild.id,
-          requiresReliability: true,
-        });
-      } catch (queueError) {
-        logger.warn("Failed to notify queue service of web form toggle:", queueError);
-      }
-    }
-  } catch (error) {
-    logger.error("Error toggling web form:", error);
-    await interaction.reply({
-      content: "❌ Failed to toggle web form. Please try again.",
+      content: "❌ Failed to update appeals system setting. Please try again.",
       ephemeral: true,
     });
   }
@@ -338,53 +276,97 @@ async function handleTestAppeals(client: Client, interaction: ButtonInteraction)
   }
 
   try {
-    const appealSettings = await client.moderationManager.getAppealsSettings(interaction.guild.id);
+    const settings = await prisma.appealSettings.findUnique({
+      where: { guildId: interaction.guild.id },
+    });
 
-    const embed = new EmbedBuilder()
-      .setColor(0x3498db)
-      .setTitle("🧪 Test Appeals")
-      .setDescription("Test appeal has been sent to the configured channel.")
-      .addFields(
-        {
-          name: "Appeals Channel",
-          value:
-            "appealChannelId" in appealSettings && appealSettings.appealChannelId
-              ? `<#${appealSettings.appealChannelId}>`
-              : "Not set",
-          inline: true,
-        },
-        { name: "Appeals Enabled", value: appealSettings.discordBotEnabled ? "✅ Yes" : "❌ No", inline: true },
-        { name: "Web Form", value: appealSettings.webFormEnabled ? "✅ Yes" : "❌ No", inline: true }
-      )
+    if (!settings?.discordBotEnabled) {
+      await interaction.reply({
+        content: "❌ Please enable the appeals system before testing.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (!settings.appealChannelId) {
+      await interaction.reply({
+        content: "❌ Please set an appeals channel before testing.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const channel = interaction.guild.channels.cache.get(settings.appealChannelId);
+    if (!channel?.isTextBased()) {
+      await interaction.reply({
+        content: "❌ The appeals channel is no longer available.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const testEmbed = new EmbedBuilder()
+      .setColor(WIZARD_COLORS.INFO)
+      .setTitle("🧪 Appeals System Test")
+      .setDescription("This is a test message to verify the appeals system is working correctly.")
+      .addFields({
+        name: "Test Details",
+        value: "• Appeals channel: Working\n• Embed permissions: Working\n• System status: Active",
+        inline: false,
+      })
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await channel.send({ embeds: [testEmbed] });
 
-    // Send test appeal to channel if configured
-    if ("appealChannelId" in appealSettings && appealSettings.appealChannelId && appealSettings.discordBotEnabled) {
-      const appealsChannel = interaction.guild.channels.cache.get(appealSettings.appealChannelId);
-      if (appealsChannel?.isTextBased()) {
-        await appealsChannel.send({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xf39c12)
-              .setTitle("⚖️ Test Appeal")
-              .setDescription(`This is a test appeal from ${interaction.user}`)
-              .addFields(
-                { name: "User", value: interaction.user.toString(), inline: true },
-                { name: "Type", value: "Test Appeal", inline: true },
-                { name: "Status", value: "Pending Review", inline: true }
-              )
-              .setTimestamp(),
-          ],
-        });
-      }
-    }
+    const successEmbed = new EmbedBuilder()
+      .setColor(WIZARD_COLORS.SUCCESS)
+      .setTitle("✅ Test Successful")
+      .setDescription("Test message sent to appeals channel. The appeals system is working correctly!")
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [successEmbed], ephemeral: true });
   } catch (error) {
-    logger.error("Error testing appeals:", error);
+    logger.error("Error testing appeals system:", error);
     await interaction.reply({
-      content: "❌ Failed to send test appeal. Please try again.",
+      content: "❌ Failed to send test message. Please check my permissions in the appeals channel.",
       ephemeral: true,
     });
   }
+}
+
+async function showAppealsHelp(interaction: ButtonInteraction): Promise<void> {
+  const helpEmbed = new EmbedBuilder()
+    .setColor(WIZARD_COLORS.INFO)
+    .setTitle("❓ Appeals System Help")
+    .setDescription("Learn how the appeals system works and how to configure it.")
+    .addFields(
+      {
+        name: "What is the Appeals System?",
+        value:
+          "The appeals system allows users to appeal moderation actions taken against them. Users can submit appeals through a form, and moderators can review and respond to them.",
+        inline: false,
+      },
+      {
+        name: "How to Set Up",
+        value:
+          "1. Select an appeals channel where appeals will be posted\n2. Enable the appeals system\n3. Test the system to ensure it's working\n4. Configure appeal forms and settings as needed",
+        inline: false,
+      },
+      {
+        name: "Required Permissions",
+        value:
+          "The bot needs these permissions in the appeals channel:\n• View Channel\n• Send Messages\n• Embed Links",
+        inline: false,
+      },
+      {
+        name: "Next Steps",
+        value:
+          "After setup, you can:\n• Configure appeal forms\n• Set up auto-responses\n• Create appeal categories\n• Set up appeal review workflows",
+        inline: false,
+      }
+    )
+    .setFooter({ text: "Use the buttons below to continue setup" })
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [helpEmbed], ephemeral: true });
 }

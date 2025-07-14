@@ -14,6 +14,14 @@ import {
 import logger from "../../../logger.js";
 import type Client from "../../../structures/Client.js";
 import { ALL_LOG_TYPES, LOG_CATEGORIES, STANDARD_LOG_TYPES } from "../../../structures/LogManager.js";
+import {
+  WIZARD_COLORS,
+  WIZARD_EMOJIS,
+  createButtonRow,
+  createHelpButton,
+  createPresetButton,
+  createQuickSetupButton,
+} from "./WizardComponents.js";
 
 // Helper type & accessor for optional queue service
 interface QueueService {
@@ -160,8 +168,8 @@ export { startLoggingWizard };
 
 async function startLoggingWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   const welcomeEmbed = new EmbedBuilder()
-    .setColor(0x3498db)
-    .setTitle("🗂️ Logging Setup Wizard")
+    .setColor(WIZARD_COLORS.PRIMARY)
+    .setTitle(`${WIZARD_EMOJIS.LOGGING} Logging Setup Wizard`)
     .setDescription(
       "Welcome to the **Server Logging Setup Wizard!**\n\n" +
         "This wizard will help you configure comprehensive logging for your server. " +
@@ -195,27 +203,11 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
     .setFooter({ text: "Choose how you'd like to proceed below" })
     .setTimestamp();
 
-  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("logging_wizard_presets")
-      .setLabel("📦 Use Presets")
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji("📦"),
-    new ButtonBuilder()
-      .setCustomId("logging_wizard_custom")
-      .setLabel("⚙️ Custom Setup")
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji("⚙️"),
-    new ButtonBuilder()
-      .setCustomId("logging_quick_setup")
-      .setLabel("⚡ Quick Setup")
-      .setStyle(ButtonStyle.Success)
-      .setEmoji("⚡"),
-    new ButtonBuilder()
-      .setCustomId("logging_wizard_help")
-      .setLabel("❓ Help & Info")
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji("❓")
+  const buttons = createButtonRow(
+    createPresetButton("logging_wizard_presets", "Use Presets", "📦"),
+    createPresetButton("logging_wizard_custom", "Custom Setup", "⚙️"),
+    createQuickSetupButton("logging_quick_setup", "Quick Setup"),
+    createHelpButton("logging_wizard_help", "Help & Info")
   );
 
   // Check interaction state before replying
@@ -508,7 +500,7 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
     }
 
     const successEmbed = new EmbedBuilder()
-      .setColor(0x2ecc71)
+      .setColor(WIZARD_COLORS.SUCCESS)
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied!`)
       .setDescription(
         `Successfully configured logging with the **${preset.name}** preset.\n\n` +
@@ -613,7 +605,7 @@ async function performQuickSetup(interaction: ButtonInteraction, client: Client)
     await client.logManager.enableLogTypes(interaction.guild.id, STANDARD_LOG_TYPES);
 
     const successEmbed = new EmbedBuilder()
-      .setColor(0x2ecc71)
+      .setColor(WIZARD_COLORS.SUCCESS)
       .setTitle("⚡ Quick Setup Complete!")
       .setDescription(
         "Successfully enabled standard logging configuration.\n\n" +
@@ -683,7 +675,7 @@ async function applyLoggingPreset(client: Client, interaction: ChatInputCommandI
     }
 
     const successEmbed = new EmbedBuilder()
-      .setColor(0x2ecc71)
+      .setColor(WIZARD_COLORS.SUCCESS)
       .setTitle(`✅ ${preset.emoji} ${preset.name} Applied!`)
       .setDescription(
         `Successfully applied the **${preset.name}** logging preset.\n\n` +
@@ -1062,7 +1054,7 @@ async function handleChannelSelection(interaction: ChannelSelectMenuInteraction,
 
     // Create success embed
     const successEmbed = new EmbedBuilder()
-      .setColor(0x2ecc71)
+      .setColor(WIZARD_COLORS.SUCCESS)
       .setTitle("✅ Log Channel Configured!")
       .setDescription(`**${category}** logs will now be sent to <#${selectedChannel.id}>`)
       .addFields(
@@ -1156,7 +1148,7 @@ async function handleAllChannelSelection(interaction: ChannelSelectMenuInteracti
 
     // Create success embed
     const successEmbed = new EmbedBuilder()
-      .setColor(0x2ecc71)
+      .setColor(WIZARD_COLORS.SUCCESS)
       .setTitle("✅ All-in-One Log Channel Configured!")
       .setDescription(`**All log categories** will now be sent to <#${selectedChannel.id}>`)
       .addFields(
@@ -1454,7 +1446,7 @@ async function showAdvancedOptions(_client: Client, interaction: ChatInputComman
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
         .setCustomId("advanced_bulk_ops")
-        .setLabel("📦 Bulk Operations")
+        .setLabel("�� Bulk Operations")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId("advanced_ignore_lists")
@@ -1532,7 +1524,7 @@ async function handleChannelBinding(client: Client, interaction: ChatInputComman
 
     // Create success embed
     const successEmbed = new EmbedBuilder()
-      .setColor(0x2ecc71)
+      .setColor(WIZARD_COLORS.SUCCESS)
       .setTitle("✅ Log Channel Configured!")
       .setDescription(`**${category}** logs will now be sent to <#${channel.id}>`)
       .addFields(
