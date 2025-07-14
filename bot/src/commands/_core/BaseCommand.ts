@@ -62,7 +62,7 @@ export abstract class BaseCommand {
   // Can return either a Promise or direct value for flexibility
   protected abstract execute(
     ...args: any[]
-  ): Promise<CommandResult | CommandResponse> | CommandResult | CommandResponse;
+  ): Promise<CommandResult | CommandResponse | undefined> | CommandResult | CommandResponse | undefined;
 
   // Main execution method called by the command handler
   async run(client: Client, interaction: CommandInteraction): Promise<void> {
@@ -83,8 +83,10 @@ export abstract class BaseCommand {
       // Execute the command (handle both sync and async)
       const result = await Promise.resolve(this.execute());
 
-      // Handle the result
-      await this.handleResult(result);
+      // Handle the result (undefined means no response should be sent)
+      if (result !== undefined) {
+        await this.handleResult(result);
+      }
     } catch (error) {
       await this.handleError(error as Error);
     }
@@ -236,21 +238,35 @@ export abstract class BaseCommand {
         });
       }
     } catch (error) {
-      logger.error(`Failed to send response for command ${this.config.name}:`, error);
+      logger.error(`Failed to send response for command ${this.config.name}: ${error}`);
 
-      // Try to send a simple error message
+      // Try to send a more specific error message
       try {
-        const errorMessage = {
-          content: "❌ An error occurred while processing your command.",
+        let errorMessage = "❌ An error occurred while processing your command.";
+
+        if (error instanceof Error) {
+          if (error.message.includes("Missing Permissions")) {
+            errorMessage = "❌ I don't have the required permissions to perform this action.";
+          } else if (error.message.includes("Unknown Message")) {
+            errorMessage = "❌ The message was deleted or I can't access it.";
+          } else if (error.message.includes("Invalid Form Body")) {
+            errorMessage = "❌ Invalid input provided. Please check your selection.";
+          } else if (error.message.includes("Cannot send an empty message")) {
+            errorMessage = "❌ The response was empty. Please try again.";
+          }
+        }
+
+        const errorResponse = {
+          content: errorMessage,
           ephemeral: true,
         };
 
         if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply(errorMessage);
+          await interaction.reply(errorResponse);
         } else if (interaction.deferred) {
-          await interaction.editReply(errorMessage);
+          await interaction.editReply(errorResponse);
         } else {
-          await interaction.followUp(errorMessage);
+          await interaction.followUp(errorResponse);
         }
       } catch (secondaryError) {
         logger.error(`Failed to send error message for command ${this.config.name}:`, secondaryError);

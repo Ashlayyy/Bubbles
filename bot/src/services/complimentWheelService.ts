@@ -254,6 +254,12 @@ export class ComplimentWheelService {
         await this.redis.hset(participantsKey, drawnUser.userId, JSON.stringify(participant));
       }
 
+      // Also check for any new reactions that haven't been processed yet
+      const newReactionsCount = await this.repopulateFromReactions(guildId);
+      if (newReactionsCount > 0) {
+        logger.info(`Added ${newReactionsCount} new participants from reactions during wheel reset`);
+      }
+
       // Increment cycle number
       const cycleKey = this.getCycleKey(guildId);
       await this.redis.incr(cycleKey);
@@ -364,22 +370,100 @@ export class ComplimentWheelService {
         return;
       }
 
-      // Send compliment message
-      // Dutch: Persoon van de dag! with mention in description
+      // Send compliment message with ping in content
       const embed = {
         title: `🎉 Persoon van de dag!`,
         description: `<@${winner.userId}> is de persoon van de dag!\n*Geef zoveel complimenten als je wilt, zolang ze maar over <@${winner.userId}> gaan!*`,
         color: 0x00bfff,
+        timestamp: new Date().toISOString(),
       };
-      await channel.send({ embeds: [embed] });
+      await channel.send({
+        content: `<@${winner.userId}>`,
+        embeds: [embed],
+        allowedMentions: {
+          users: [winner.userId],
+        },
+      });
 
       // Update last draw time
       const lastDrawKey = this.getLastDrawKey(guildId);
       await this.redis.set(lastDrawKey, Date.now().toString());
 
-      logger.info(`Sent daily compliment to ${winner.username} in guild ${guildId}`);
+      logger.info(`Sent daily compliment to ${winner.username} (${winner.userId}) in guild ${guildId}`);
     } catch (error) {
       logger.error("Error sending daily compliment:", error);
+    }
+  }
+
+  /**
+   * Repopulate wheel from reactions on the original message
+   */
+  async repopulateFromReactions(guildId: string): Promise<number> {
+    try {
+      const config = await this.getWheelConfig(guildId);
+      if (!config) {
+        logger.warn(`No active compliment wheel found for guild ${guildId}`);
+        return 0;
+      }
+
+      const guild = await this.client.guilds.fetch(guildId).catch(() => null);
+      if (!guild) {
+        logger.warn(`Guild ${guildId} not found for repopulation`);
+        return 0;
+      }
+
+      const channel = await guild.channels.fetch(config.channelId).catch(() => null);
+      if (!channel?.isTextBased()) {
+        logger.warn(`Wheel channel ${config.channelId} not found or not text-based`);
+        return 0;
+      }
+
+      const message = await channel.messages.fetch(config.messageId).catch(() => null);
+      if (!message) {
+        logger.warn(`Wheel message ${config.messageId} not found`);
+        return 0;
+      }
+
+      // Get the reaction for the configured emoji
+      const reaction = message.reactions.cache.get(config.emoji);
+      if (!reaction) {
+        logger.debug(`No reaction found for emoji ${config.emoji} on message ${config.messageId}`);
+        return 0;
+      }
+
+      // Fetch all users who reacted (excluding bots)
+      const users = await reaction.users.fetch();
+      let addedCount = 0;
+
+      for (const [userId, user] of users) {
+        if (user.bot) continue;
+
+        // Check if user is still a member of the guild
+        try {
+          await guild.members.fetch(userId);
+        } catch {
+          logger.debug(`User ${userId} is no longer a member of guild ${guildId}, skipping`);
+          continue;
+        }
+
+        // Add user to wheel if not already present
+        const participants = await this.getParticipants(guildId);
+        const isAlreadyParticipant = participants.some((p) => p.userId === userId);
+
+        if (!isAlreadyParticipant) {
+          await this.addParticipant(guildId, userId, user.username || "Unknown User");
+          addedCount++;
+        }
+      }
+
+      if (addedCount > 0) {
+        logger.info(`Repopulated wheel for guild ${guildId} with ${addedCount} new participants from reactions`);
+      }
+
+      return addedCount;
+    } catch (error) {
+      logger.error("Error repopulating wheel from reactions:", error);
+      return 0;
     }
   }
 
@@ -388,26 +472,36 @@ export class ComplimentWheelService {
    */
   async performTestRound(guildId: string): Promise<{ winnerId: string; participantCount: number } | null> {
     try {
+      logger.debug(`Starting test round for guild ${guildId}`);
+
       const config = await this.getWheelConfig(guildId);
       if (!config) {
+        logger.debug(`No wheel config found for guild ${guildId}`);
         return null;
       }
 
       const participants = await this.getParticipants(guildId);
       if (participants.length === 0) {
+        logger.debug(`No participants found for guild ${guildId}`);
         return null;
       }
 
+      logger.debug(`Found ${participants.length} participants for test round`);
+
       // Draw a winner without removing them from the wheel (for testing)
       const winner = participants[Math.floor(Math.random() * participants.length)];
+      logger.debug(`Selected winner: ${winner.username} (${winner.userId})`);
 
       // Send test compliment message (Dutch embed)
       const guild = await this.client.guilds.fetch(guildId).catch(() => null);
       if (!guild) {
+        logger.debug(`Guild ${guildId} not found`);
         return null;
       }
+
       const channel = await guild.channels.fetch(config.complimentChannelId).catch(() => null);
       if (!channel?.isTextBased()) {
+        logger.debug(`Compliment channel ${config.complimentChannelId} not found or not text-based`);
         return null;
       }
       const testEmbed = {
@@ -415,8 +509,16 @@ export class ComplimentWheelService {
         description: `<@${winner.userId}> is de persoon van de dag!\n*Geef zoveel complimenten als je wilt, zolang ze maar over <@${winner.userId}> gaan!*`,
         color: 0x00bfff,
         footer: { text: "Test Compliment" },
+        timestamp: new Date().toISOString(),
       };
-      await channel.send({ embeds: [testEmbed] });
+      logger.debug(`Attempting to send test embed to channel ${config.complimentChannelId}`);
+      await channel.send({
+        content: `<@${winner.userId}>`,
+        embeds: [testEmbed],
+        allowedMentions: {
+          users: [winner.userId],
+        },
+      });
 
       logger.info(`Performed test round for guild ${guildId}, winner: ${winner.username}`);
       return {
@@ -424,7 +526,12 @@ export class ComplimentWheelService {
         participantCount: participants.length,
       };
     } catch (error) {
-      logger.error("Error performing test round:", error);
+      logger.error(`Error performing test round: ${error}`);
+      logger.error("Error details:", {
+        guildId,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+      });
       return null;
     }
   }

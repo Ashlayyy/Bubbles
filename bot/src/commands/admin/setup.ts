@@ -53,7 +53,7 @@ class SetupCommand extends AdminCommand {
     }
   }
 
-  protected async execute(): Promise<CommandResponse> {
+  protected async execute(): Promise<CommandResponse | undefined> {
     // Ensure the user has guild management perms
     this.validateAdminPerms(["ManageGuild"]);
 
@@ -84,26 +84,41 @@ class SetupCommand extends AdminCommand {
           await startReactionRolesWizard(this.client, this.interaction as ChatInputCommandInteraction);
           break;
         default:
-          // Only reply if the module is unknown (wizard not called)
           return {
             content: `❌ Unknown module: ${moduleName}`,
             ephemeral: true,
           };
       }
 
-      // Do not reply here; wizard already handled the interaction
-      return {};
+      // Return undefined to prevent the command framework from sending a response
+      // since the wizards handle their own responses
+      return undefined;
     } catch (error) {
       logger.error(`Error starting ${moduleName} setup wizard:`, error);
-      // Only reply if the wizard threw before replying
+
+      // Provide more specific error messages
+      let errorMessage = `❌ Failed to start ${moduleName} setup wizard. Please try again.`;
+
+      if (error instanceof Error) {
+        if (error.message.includes("Missing Permissions")) {
+          errorMessage = `❌ I don't have the required permissions to set up ${moduleName}.`;
+        } else if (error.message.includes("Unknown Channel")) {
+          errorMessage = `❌ One of the channels specified for ${moduleName} setup no longer exists.`;
+        } else if (error.message.includes("Unknown Role")) {
+          errorMessage = `❌ One of the roles specified for ${moduleName} setup no longer exists.`;
+        }
+      }
+
+      // If the interaction is not replied or deferred, return an error message
       if (!this.interaction.replied && !this.interaction.deferred) {
         return {
-          content: `❌ Failed to start ${moduleName} setup wizard. Please try again.`,
+          content: errorMessage,
           ephemeral: true,
         };
       }
-      // If already replied/deferred, do nothing
-      return {};
+
+      // Return undefined to prevent double responses
+      return undefined;
     }
   }
 

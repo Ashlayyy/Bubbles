@@ -49,6 +49,19 @@ async function findMessageById(guild: Guild, messageId: string): Promise<Message
   return null;
 }
 
+// Defensive reply utility
+async function safeReply(interaction: GuildChatInputCommandInteraction, options: any) {
+  if (interaction.replied || interaction.deferred) {
+    try {
+      await interaction.editReply(options);
+    } catch {
+      await interaction.followUp({ ...options, ephemeral: true });
+    }
+  } else {
+    await interaction.reply(options);
+  }
+}
+
 // Message Group Handlers
 async function handleMessageCreate(client: Client, interaction: GuildChatInputCommandInteraction) {
   const state = {
@@ -87,13 +100,13 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
       value: rolesText,
     });
 
-    await interaction.editReply({
+    await safeReply(interaction, {
       embeds: [state.embed],
       components: generateComponents(),
     });
   };
 
-  await interaction.reply({
+  await safeReply(interaction, {
     content:
       "🎨 **Reaction Role Message Builder**\nCreate a beautiful reaction role message with custom embed styling.",
     embeds: [state.embed],
@@ -186,29 +199,48 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
               .catch(() => null);
 
             if (colorInteraction?.isStringSelectMenu()) {
-              if (colorInteraction.values[0] === "custom") {
-                const modal = new ModalBuilder().setCustomId("custom_color_modal").setTitle("Custom Color");
-                const input = new TextInputBuilder()
-                  .setCustomId("hex_color")
-                  .setLabel("Hex Color Code (e.g., #FF0000)")
-                  .setStyle(TextInputStyle.Short)
-                  .setRequired(true);
-                modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+              try {
+                if (colorInteraction.values[0] === "custom") {
+                  const modal = new ModalBuilder().setCustomId("custom_color_modal").setTitle("Custom Color");
+                  const input = new TextInputBuilder()
+                    .setCustomId("hex_color")
+                    .setLabel("Hex Color Code (e.g., #FF0000)")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true);
+                  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
 
-                await colorInteraction.showModal(modal);
-                const colorSubmitted = await colorInteraction.awaitModalSubmit({ time: 60000 }).catch(() => null);
-                if (colorSubmitted) {
-                  await colorSubmitted.deferUpdate();
-                  const color = colorSubmitted.fields.getTextInputValue("hex_color");
-                  if (/^#?[0-9A-F]{6}$/i.test(color)) {
-                    const colorValue = color.startsWith("#") ? color : `#${color}`;
-                    state.embed.setColor(colorValue as `#${string}`);
+                  await colorInteraction.showModal(modal);
+                  const colorSubmitted = await colorInteraction.awaitModalSubmit({ time: 60000 }).catch(() => null);
+                  if (colorSubmitted) {
+                    await colorSubmitted.deferUpdate();
+                    const color = colorSubmitted.fields.getTextInputValue("hex_color");
+                    if (/^#?[0-9A-F]{6}$/i.test(color)) {
+                      const colorValue = color.startsWith("#") ? color : `#${color}`;
+                      state.embed.setColor(colorValue as `#${string}`);
+                    } else {
+                      await i.followUp({
+                        content: "❌ Invalid hex color format. Please use format like #FF0000.",
+                        ephemeral: true,
+                      });
+                    }
+                  }
+                } else {
+                  await colorInteraction.deferUpdate();
+                  const colorValue = parseInt(colorInteraction.values[0]);
+                  if (!isNaN(colorValue)) {
+                    state.embed.setColor(colorValue);
+                  } else {
+                    await i.followUp({ content: "❌ Invalid color value selected.", ephemeral: true });
                   }
                 }
-              } else {
-                await colorInteraction.deferUpdate();
-                state.embed.setColor(parseInt(colorInteraction.values[0]));
+                await updateMessage();
+              } catch (colorError) {
+                logger.error("Error in color selection:", colorError);
+                await i.followUp({ content: "❌ Error setting color. Please try again.", ephemeral: true });
+                await updateMessage();
               }
+            } else {
+              await i.followUp({ content: "⏰ You didn't select a color in time.", ephemeral: true });
               await updateMessage();
             }
             break;
@@ -270,13 +302,25 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
               .catch(() => null);
 
             if (roleInteraction?.isRoleSelectMenu()) {
-              const roleId = roleInteraction.values[0];
-              const role = roleInteraction.guild?.roles.cache.get(roleId);
-              state.roles.set(emoji.name, roleId);
+              try {
+                const roleId = roleInteraction.values[0];
+                const role = roleInteraction.guild?.roles.cache.get(roleId);
 
-              await roleInteraction.update({
-                content: `✅ Added: ${emoji.name} → **${role?.name}**`,
-              });
+                if (!role) {
+                  await i.followUp({ content: "❌ Selected role no longer exists.", ephemeral: true });
+                  await updateMessage();
+                  return;
+                }
+
+                state.roles.set(emoji.name, roleId);
+
+                await roleInteraction.update({
+                  content: `✅ Added: ${emoji.name} → **${role.name}**`,
+                });
+              } catch (roleError) {
+                logger.error("Error in role selection:", roleError);
+                await i.followUp({ content: "❌ Error adding role. Please try again.", ephemeral: true });
+              }
             } else {
               await i.followUp({ content: "⏰ You didn't select a role in time.", ephemeral: true });
             }
@@ -321,54 +365,61 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
               .catch(() => null);
 
             if (channelInteraction?.isChannelSelectMenu()) {
-              const channel = channelInteraction.channels.first();
-              if (channel instanceof TextChannel) {
-                await channelInteraction.deferUpdate();
+              try {
+                const channel = channelInteraction.channels.first();
+                if (channel instanceof TextChannel) {
+                  await channelInteraction.deferUpdate();
 
-                try {
-                  const finalMessage = await channel.send({ embeds: [state.embed] });
+                  try {
+                    const finalMessage = await channel.send({ embeds: [state.embed] });
 
-                  // Add reactions and database entries
-                  for (const [emoji, roleId] of state.roles.entries()) {
-                    await finalMessage.react(emoji);
-                    await addReactionRole(interaction, finalMessage.id, emoji, roleId);
-                  }
+                    // Add reactions and database entries
+                    for (const [emoji, roleId] of state.roles.entries()) {
+                      await finalMessage.react(emoji);
+                      await addReactionRole(interaction, finalMessage.id, emoji, roleId);
+                    }
 
-                  // Create reaction role message entry
-                  await createReactionRoleMessage({
-                    guildId: interaction.guild?.id ?? "",
-                    channelId: channel.id,
-                    messageId: finalMessage.id,
-                    title: state.embed.data.title ?? "Reaction Roles",
-                    description: state.embed.data.description,
-                    embedColor: state.embed.data.color?.toString(),
-                    createdBy: interaction.user.id,
-                  });
-
-                  await channelInteraction.editReply({
-                    content: `✅ **Success!** Reaction role message posted in ${channel}!\n🔗 [Jump to message](${finalMessage.url})`,
-                    components: [],
-                  });
-
-                  // Log the creation
-                  if (interaction.guild) {
-                    await client.logManager.log(interaction.guild.id, "REACTION_ROLE_MESSAGE_CREATE", {
-                      userId: interaction.user.id,
+                    // Create reaction role message entry
+                    await createReactionRoleMessage({
+                      guildId: interaction.guild?.id ?? "",
                       channelId: channel.id,
-                      metadata: {
-                        messageId: finalMessage.id,
-                        roleCount: state.roles.size,
-                        roles: Array.from(state.roles.entries()),
-                      },
+                      messageId: finalMessage.id,
+                      title: state.embed.data.title ?? "Reaction Roles",
+                      description: state.embed.data.description,
+                      embedColor: state.embed.data.color?.toString(),
+                      createdBy: interaction.user.id,
+                    });
+
+                    await channelInteraction.editReply({
+                      content: `✅ **Success!** Reaction role message posted in ${channel}!\n🔗 [Jump to message](${finalMessage.url})`,
+                      components: [],
+                    });
+
+                    // Log the creation
+                    if (interaction.guild) {
+                      await client.logManager.log(interaction.guild.id, "REACTION_ROLE_MESSAGE_CREATE", {
+                        userId: interaction.user.id,
+                        channelId: channel.id,
+                        metadata: {
+                          messageId: finalMessage.id,
+                          roleCount: state.roles.size,
+                          roles: Array.from(state.roles.entries()),
+                        },
+                      });
+                    }
+                  } catch (error) {
+                    logger.error("Error posting reaction role message:", error);
+                    await channelInteraction.editReply({
+                      content: "❌ Failed to post the message. Please check my permissions in that channel.",
+                      components: [],
                     });
                   }
-                } catch (error) {
-                  logger.error("Error posting reaction role message:", error);
-                  await channelInteraction.editReply({
-                    content: "❌ Failed to post the message. Please check my permissions in that channel.",
-                    components: [],
-                  });
+                } else {
+                  await i.followUp({ content: "❌ Selected channel is not a text channel.", ephemeral: true });
                 }
+              } catch (channelError) {
+                logger.error("Error in channel selection:", channelError);
+                await i.followUp({ content: "❌ Error selecting channel. Please try again.", ephemeral: true });
               }
             } else {
               await i.followUp({ content: "⏰ You didn't select a channel in time.", ephemeral: true });
@@ -389,7 +440,31 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
         }
       } catch (error) {
         logger.error("Error in reaction role builder:", error);
-        await i.followUp({ content: "❌ An error occurred. Please try again.", ephemeral: true });
+
+        // Try to provide a more specific error message
+        let errorMessage = "❌ An error occurred. Please try again.";
+
+        if (error instanceof Error) {
+          if (error.message.includes("Missing Permissions")) {
+            errorMessage = "❌ I don't have the required permissions to perform this action.";
+          } else if (error.message.includes("Unknown Message")) {
+            errorMessage = "❌ The message was deleted or I can't access it.";
+          } else if (error.message.includes("Invalid Form Body")) {
+            errorMessage = "❌ Invalid input provided. Please check your selection.";
+          }
+        }
+
+        try {
+          if (!i.replied && !i.deferred) {
+            await i.reply({ content: errorMessage, ephemeral: true });
+          } else if (i.deferred) {
+            await i.editReply({ content: errorMessage });
+          } else {
+            await i.followUp({ content: errorMessage, ephemeral: true });
+          }
+        } catch (replyError) {
+          logger.error("Failed to send error message to user:", replyError);
+        }
       }
     })();
   });
@@ -403,6 +478,8 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
     }
   });
 }
+
+export { handleMessageCreate };
 
 async function handleMessageList(client: Client, interaction: GuildChatInputCommandInteraction) {
   await interaction.deferReply({ ephemeral: true });

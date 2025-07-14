@@ -161,5 +161,11 @@ export default new ClientEvent("interactionCreate", async (interaction: Interact
   } else if (interaction.customId.startsWith("add-reaction-role-modal-")) {
     const messageId = interaction.customId.replace("add-reaction-role-modal-", "");
     await handleAddReactionRole(interaction, messageId);
+  } else if (interaction.customId === "custom_color_modal") {
+    // This modal is handled by the reaction role builder's collector
+    // The interaction is already handled in the builder flow
+    logger.debug("Custom color modal submitted, handled by reaction role builder");
+  } else {
+    logger.warn(`Unknown modal customId: ${interaction.customId}`);
   }
 });
