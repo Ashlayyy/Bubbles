@@ -208,7 +208,7 @@ export const getTickets = async (req: AuthRequest, res: Response) => {
 				? {
 						id: ticket.messages[0].id,
 						content: ticket.messages[0].content,
-						authorId: ticket.messages[0].authorId,
+						userId: ticket.messages[0].userId,
 						createdAt: ticket.messages[0].createdAt,
 				  }
 				: null,
@@ -274,10 +274,11 @@ export const getTicket = async (req: AuthRequest, res: Response) => {
 			messages: ticket.messages.map((message: any) => ({
 				id: message.id,
 				content: message.content,
-				authorId: message.authorId,
-				isStaff: message.isStaff,
-				isInternal: message.isInternal,
+				userId: message.userId,
+				userIcon: message.userIcon,
+				isSystemMsg: message.isSystemMsg,
 				attachments: message.attachments,
+				embeds: message.embeds,
 				createdAt: message.createdAt,
 			})),
 		};
@@ -316,7 +317,7 @@ export const createTicket = async (req: AuthRequest, res: Response) => {
 			where: {
 				guildId,
 				userId,
-				status: { in: ['OPEN', 'IN_PROGRESS'] },
+				status: { in: ['OPEN', 'CLAIMED'] },
 			},
 		});
 
@@ -398,10 +399,13 @@ export const createTicket = async (req: AuthRequest, res: Response) => {
 		await prisma.ticketMessage.create({
 			data: {
 				ticketId: ticket.id,
+				messageId: 'system',
+				userId: userId,
+				userIcon: '',
 				content: description || 'No description provided',
-				authorId: userId,
-				isStaff: false,
-				isInternal: false,
+				attachments: [],
+				embeds: [],
+				isSystemMsg: false,
 			},
 		});
 
@@ -532,7 +536,7 @@ export const claimTicket = async (req: AuthRequest, res: Response) => {
 			},
 			data: {
 				assignedTo: req.user?.id || 'unknown',
-				status: 'IN_PROGRESS',
+				status: 'CLAIMED',
 				lastActivity: new Date(),
 				updatedAt: new Date(),
 			},
@@ -619,8 +623,8 @@ export const getTicketStatistics = async (req: AuthRequest, res: Response) => {
 				open:
 					statusCounts.find((s: any) => s.status === 'OPEN')?._count.status ||
 					0,
-				inProgress:
-					statusCounts.find((s: any) => s.status === 'IN_PROGRESS')?._count
+				claimed:
+					statusCounts.find((s: any) => s.status === 'CLAIMED')?._count
 						.status || 0,
 				closed:
 					statusCounts.find((s: any) => s.status === 'CLOSED')?._count.status ||
@@ -811,7 +815,7 @@ export const bulkAssignTickets = async (req: AuthRequest, res: Response) => {
 			where: {
 				id: { in: ticketIds },
 				guildId,
-				status: { in: ['OPEN', 'IN_PROGRESS'] },
+				status: { in: ['OPEN', 'CLAIMED'] },
 			},
 		});
 
@@ -895,7 +899,7 @@ export const autoAssignTickets = async (req: AuthRequest, res: Response) => {
 			where: {
 				guildId,
 				assignedTo: null,
-				status: { in: ['OPEN', 'IN_PROGRESS'] },
+				status: { in: ['OPEN', 'CLAIMED'] },
 			},
 			orderBy: { createdAt: 'asc' },
 		});
@@ -911,7 +915,7 @@ export const autoAssignTickets = async (req: AuthRequest, res: Response) => {
 					where: {
 						guildId,
 						assignedTo: staffId,
-						status: { in: ['OPEN', 'IN_PROGRESS'] },
+						status: { in: ['OPEN', 'CLAIMED'] },
 					},
 				});
 				return { staffId, assignedCount };
@@ -1021,7 +1025,7 @@ export const getAssignmentStatistics = async (
 			where: {
 				guildId,
 				assignedTo: { not: null },
-				status: { in: ['OPEN', 'IN_PROGRESS'] },
+				status: { in: ['OPEN', 'CLAIMED'] },
 			},
 			_count: { assignedTo: true },
 		});
@@ -1105,7 +1109,7 @@ export const getAssignmentStatistics = async (
 			where: {
 				guildId,
 				assignedTo: null,
-				status: { in: ['OPEN', 'IN_PROGRESS'] },
+				status: { in: ['OPEN', 'CLAIMED'] },
 			},
 		});
 

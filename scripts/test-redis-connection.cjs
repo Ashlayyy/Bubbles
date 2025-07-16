@@ -2,17 +2,14 @@
 
 /**
  * Test script to verify Redis connection works properly
- * Run with: node scripts/test-redis-connection.js
+ * Run with: node scripts/test-redis-connection.cjs
  */
 
-import { config } from 'dotenv';
-import Redis from 'ioredis';
-import { resolve } from 'path';
-import { fileURLToPath } from 'url';
+const { config } = require('dotenv');
+const Redis = require('ioredis');
+const { resolve } = require('path');
 
 // Load environment variables
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = resolve(__filename, '..');
 config({ path: resolve(__dirname, '../.env') });
 
 console.log('🔧 Testing Redis connection...');

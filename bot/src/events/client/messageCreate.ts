@@ -3,6 +3,7 @@ import type { Message } from "discord.js";
 import { Events } from "discord.js";
 
 import { prisma } from "../../database/index.js";
+import logger from "../../logger.js";
 import { ClientEvent } from "../../structures/Event.js";
 
 export default new ClientEvent(Events.MessageCreate, async (message: Message) => {
@@ -45,7 +46,7 @@ export default new ClientEvent(Events.MessageCreate, async (message: Message) =>
         data: { lastActivity: new Date() },
       });
     } catch (error) {
-      console.error("Failed to log ticket message:", error);
+      logger.error("Failed to log ticket message:", error);
     }
   }
 

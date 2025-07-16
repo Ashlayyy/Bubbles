@@ -27,11 +27,10 @@ import { logTicketEvent } from "./ticketLogger.js";
 
 // Helper function to sanitize username for channel/thread names
 function sanitizeUsername(username: string): string {
-  // Remove special characters and limit length
   return username
     .replace(/[^a-zA-Z0-9\-_]/g, "")
     .toLowerCase()
-    .substring(0, 20); // Limit to 20 chars to keep total name reasonable
+    .substring(0, 20);
 }
 
 // Helper function to get next ticket number for a guild
@@ -134,9 +133,6 @@ export async function handleTicketButtonInteraction(interaction: ButtonInteracti
     switch (interaction.customId) {
       case "create_ticket":
         await showTicketCategorySelection(interaction);
-        break;
-      case "ticket_close":
-        await handleTicketClose(interaction);
         break;
       default:
         // Handle dynamic ticket buttons
@@ -456,29 +452,29 @@ async function handleTicketCreation(interaction: ModalSubmitInteraction): Promis
         .setStyle(ButtonStyle.Success)
     );
 
+    // Send welcome message in ticket channel
     await ticketChannel.send({
       content: config.ticketOnCallRoleId
-        ? `<@${interaction.user.id}> Welcome to your support ticket!\n||<@&${String(config.ticketOnCallRoleId)}>||`
+        ? `<@${interaction.user.id}> Welcome to your support ticket!\n<@&${String(config.ticketOnCallRoleId)}>`
         : `<@${interaction.user.id}> Welcome to your support ticket!`,
       embeds: [ticketEmbed],
       components: [actionRow],
+      allowedMentions: config.ticketOnCallRoleId
+        ? { users: [interaction.user.id], roles: [String(config.ticketOnCallRoleId)] }
+        : { users: [interaction.user.id] },
     });
 
+    // Send confirmation to user
     await interaction.editReply({
       embeds: [
         new EmbedBuilder()
           .setColor(0x2ecc71)
           .setTitle("✅ Ticket Created")
-          .setDescription(
-            `Your ticket has been created successfully!\n\n` +
-              `**Subject:** ${subject}\n` +
-              `**Category:** ${category.name}`
+          .setDescription(`Your ticket has been created: <#${ticketChannel.id}>`)
+          .addFields(
+            { name: "🎫 Ticket Number", value: `#${ticket.ticketNumber.toString().padStart(4, "0")}`, inline: true },
+            { name: "📝 Category", value: category.name, inline: true }
           )
-          .addFields({
-            name: "📍 Location",
-            value: `${ticketChannel}`,
-            inline: false,
-          })
           .setTimestamp(),
       ],
     });
@@ -487,12 +483,12 @@ async function handleTicketCreation(interaction: ModalSubmitInteraction): Promis
     const client = interaction.client as typeof interaction.client & { logManager: LogManager };
     await client.logManager.log(interaction.guild.id, "TICKET_CREATE", {
       userId: interaction.user.id,
-      channelId: ticketChannel.id,
       metadata: {
         ticketId: ticket.id,
-        subject,
-        category: categoryId,
-        useThreads: Boolean(config.useTicketThreads),
+        ticketNumber: ticket.ticketNumber,
+        category: category.name,
+        title: subject,
+        channelId: ticketChannel.id,
       },
     });
 
@@ -506,13 +502,19 @@ async function handleTicketCreation(interaction: ModalSubmitInteraction): Promis
       metadata: {
         title: subject,
         category: category.name,
-        useThreads: Boolean(config.useTicketThreads),
+        useThreads: config.useTicketThreads,
       },
     });
   } catch (error) {
     logger.error("Error creating ticket:", error);
     await interaction.editReply({
-      content: "❌ Failed to create ticket. Please try again or contact an administrator.",
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xe74c3c)
+          .setTitle("❌ Error")
+          .setDescription("Failed to create ticket. Please try again or contact an administrator.")
+          .setTimestamp(),
+      ],
     });
   }
 }
@@ -682,18 +684,51 @@ async function handleTicketCloseWithReason(interaction: ModalSubmitInteraction):
       components: [], // Remove all buttons
     });
 
-    // Archive thread or delete channel after delay
+    // Send a follow-up message about the archiving
+    setTimeout(() => {
+      void interaction.followUp({
+        content: "🔒 Channel will be archived in 10 seconds.",
+        ephemeral: true,
+      });
+    }, 1000);
+
+    // Remove all users except administrators from the ticket channel
+    if (channel.isTextBased() && !channel.isDMBased()) {
+      try {
+        const textChannel = channel as TextChannel;
+        const overwrites = textChannel.permissionOverwrites.cache;
+
+        for (const [id, overwrite] of overwrites) {
+          // Skip if it's the bot or a role with administrator permissions
+          if (id === interaction.client.user?.id) continue;
+
+          const member = interaction.guild.members.cache.get(id);
+          const role = interaction.guild.roles.cache.get(id);
+
+          // Keep administrators
+          if (member && member.permissions.has(PermissionFlagsBits.Administrator)) continue;
+          if (role && role.permissions.has(PermissionFlagsBits.Administrator)) continue;
+
+          // Remove the overwrite
+          await textChannel.permissionOverwrites.delete(id);
+        }
+      } catch (error) {
+        logger.error("Error removing users from ticket channel:", error);
+      }
+    }
+
+    // Archive thread or log closure after delay
     setTimeout(() => {
       void (async () => {
         try {
           if (channel.isThread()) {
             await (channel as ThreadChannel).setArchived(true, "Ticket closed");
           } else {
-            // For channels, optionally move to closed category or delete
-            await (channel as TextChannel).delete("Ticket closed");
+            // For regular channels, just log that it's closed
+            logger.info(`Ticket channel ${channel.id} closed and ready for manual cleanup`);
           }
         } catch (error) {
-          logger.warn(`Failed to archive/delete ticket channel ${channel.id}:`, error);
+          logger.warn(`Failed to archive ticket channel ${channel.id}:`, error);
         }
       })();
     }, 10000); // 10 second delay

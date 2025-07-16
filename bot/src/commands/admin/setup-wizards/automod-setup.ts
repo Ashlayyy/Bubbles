@@ -585,7 +585,7 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
     await interaction.editReply({ embeds: [successEmbed] });
 
     // Log the configuration change
-    await client.logManager.log(interaction.guild.id, "AUTOMOD_CONFIG_CHANGE", {
+    await client.logManager.log(interaction.guild.id, "AUTOMOD_RULE_CREATE", {
       userId: interaction.user.id,
       metadata: {
         action: "preset_applied",
@@ -725,7 +725,7 @@ async function _applyPreset(client: Client, interaction: ChatInputCommandInterac
     await interaction.editReply({ embeds: [successEmbed] });
 
     // Log the configuration change
-    await client.logManager.log(interaction.guild.id, "AUTOMOD_CONFIG_CHANGE", {
+    await client.logManager.log(interaction.guild.id, "AUTOMOD_RULE_CREATE", {
       userId: interaction.user.id,
       metadata: {
         action: "preset_applied",

@@ -1,4 +1,5 @@
 import { bullMQRegistry } from "@shared/queue";
+import { Worker } from "bullmq";
 import logger from "../logger.js";
 import { DeadLetterQueue } from "../queue/DeadLetterQueue.js";
 import type Client from "../structures/Client.js";
@@ -34,6 +35,7 @@ export class BotQueueService {
     NOTIFICATIONS: "notifications",
     DISCORD_EVENTS: "discord-events",
   } as const;
+  private workers = new Map<string, Worker>();
 
   constructor(client: Client) {
     this.client = client;
@@ -50,13 +52,29 @@ export class BotQueueService {
       return;
     }
 
-    // Check if Redis is available before proceeding
-    if (!bullMQRegistry.isAvailable()) {
-      logger.warn("⚠️ Redis not available - Queue operations will be disabled");
+    // Wait for Redis to be available with a timeout
+    let redisAvailable = false;
+    const maxAttempts = 10;
+    const delayMs = 1000;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (bullMQRegistry.isAvailable()) {
+        redisAvailable = true;
+        break;
+      }
+
+      logger.info(`Waiting for Redis connection... (attempt ${attempt}/${maxAttempts})`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    if (!redisAvailable) {
+      logger.warn("⚠️ Redis not available after timeout - Queue operations will be disabled");
       logger.warn("💡 Install Redis or start Redis container to enable queue features");
       logger.info("✅ Bot Queue Service initialized (Redis disabled)");
       return;
     }
+
+    logger.info("✅ Redis connection established, initializing queues...");
 
     // Initialize all required queues
     Object.values(this.queueNames).forEach((queueName) => {
@@ -69,7 +87,214 @@ export class BotQueueService {
     // Set up failed job handling for dead letter queue integration
     this.setupFailedJobHandling();
 
+    // Initialize workers to process jobs
+    await this.initializeWorkers();
+
     logger.info("✅ Bot Queue Service initialized with BullMQ");
+  }
+
+  /**
+   * Initialize workers for all queues
+   */
+  private async initializeWorkers(): Promise<void> {
+    if (!bullMQRegistry.isAvailable()) {
+      logger.warn("Cannot initialize workers - Redis not available");
+      return;
+    }
+
+    logger.info("Initializing BullMQ workers...");
+
+    // Create workers for each queue
+    for (const [queueType, queueName] of Object.entries(this.queueNames)) {
+      try {
+        const queue = bullMQRegistry.getQueue(queueName);
+        if (!queue) {
+          logger.warn(`Cannot create worker for ${queueName} - queue not available`);
+          continue;
+        }
+
+        const worker = new Worker(
+          queueName,
+          async (job) => {
+            if (!job) {
+              logger.error("Received undefined job");
+              return;
+            }
+
+            logger.debug(`Processing job ${job.id} of type ${job.name} in queue ${queueName}`);
+
+            try {
+              // Process the job based on its type
+              const result = await this.processJob(job);
+              logger.debug(`Job ${job.id} completed successfully`);
+              return result;
+            } catch (error) {
+              logger.error(`Job ${job.id} failed:`, error);
+              throw error;
+            }
+          },
+          {
+            connection: queue.connection,
+            concurrency: queueType === "CRITICAL" ? 1 : 5, // Critical operations get single concurrency
+            removeOnComplete: { count: 100 },
+            removeOnFail: { count: 50 },
+          }
+        );
+
+        // Set up worker event listeners
+        worker.on("completed", (job, result) => {
+          if (job) {
+            logger.debug(`Worker completed job ${job.id} in ${queueName}:`, result);
+          }
+        });
+
+        worker.on("failed", (job, err) => {
+          if (job) {
+            logger.error(`Worker failed job ${job.id} in ${queueName}:`, err);
+          }
+        });
+
+        worker.on("error", (err) => {
+          logger.error(`Worker error in ${queueName}:`, err);
+        });
+
+        this.workers.set(queueName, worker);
+        logger.info(`✅ Worker initialized for queue: ${queueName}`);
+      } catch (error) {
+        logger.error(`Failed to initialize worker for ${queueName}:`, error);
+      }
+    }
+
+    logger.info(`✅ Initialized ${this.workers.size} workers`);
+  }
+
+  /**
+   * Process a job based on its type
+   */
+  private async processJob(job: any): Promise<any> {
+    const { type, data } = job.data;
+
+    logger.debug(`Processing job type: ${type}`, { jobId: job.id, data });
+
+    switch (type) {
+      case "KICK_USER":
+        return await this.processKickUser(data);
+
+      case "BAN_USER":
+        return await this.processBanUser(data);
+
+      case "TIMEOUT_USER":
+        return await this.processTimeoutUser(data);
+
+      case "UNBAN_USER":
+        return await this.processUnbanUser(data);
+
+      case "LEGACY_REQUEST":
+        // Handle legacy requests by executing them directly
+        return await this.processLegacyRequest(data);
+
+      default:
+        logger.warn(`Unknown job type: ${type}`);
+        return { success: false, error: `Unknown job type: ${type}` };
+    }
+  }
+
+  /**
+   * Process kick user job
+   */
+  private async processKickUser(data: any): Promise<any> {
+    try {
+      const { targetUserId, guildId, reason } = data;
+      const guild = await this.client.guilds.fetch(guildId);
+      const member = await guild.members.fetch(targetUserId);
+
+      await member.kick(reason);
+
+      logger.info(`Successfully kicked user ${targetUserId} from guild ${guildId}`);
+      return { success: true, action: "kick", userId: targetUserId };
+    } catch (error) {
+      logger.error("Failed to process kick user job:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process ban user job
+   */
+  private async processBanUser(data: any): Promise<any> {
+    try {
+      const { targetUserId, guildId, reason } = data;
+      const guild = await this.client.guilds.fetch(guildId);
+
+      await guild.members.ban(targetUserId, {
+        reason,
+        deleteMessageSeconds: 7 * 24 * 60 * 60, // Delete messages from the last 7 days
+      });
+
+      logger.info(`Successfully banned user ${targetUserId} from guild ${guildId}`);
+      return { success: true, action: "ban", userId: targetUserId };
+    } catch (error) {
+      logger.error("Failed to process ban user job:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process timeout user job
+   */
+  private async processTimeoutUser(data: any): Promise<any> {
+    try {
+      const { targetUserId, guildId, reason, duration } = data;
+      const guild = await this.client.guilds.fetch(guildId);
+      const member = await guild.members.fetch(targetUserId);
+
+      if (duration) {
+        const timeoutDuration = duration * 1000; // Convert to milliseconds
+        await member.timeout(timeoutDuration, reason);
+        logger.info(`Successfully timed out user ${targetUserId} for ${duration}s in guild ${guildId}`);
+      } else {
+        // Remove timeout
+        await member.timeout(null, reason);
+        logger.info(`Successfully removed timeout from user ${targetUserId} in guild ${guildId}`);
+      }
+
+      return { success: true, action: "timeout", userId: targetUserId, duration };
+    } catch (error) {
+      logger.error("Failed to process timeout user job:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process unban user job
+   */
+  private async processUnbanUser(data: any): Promise<any> {
+    try {
+      const { targetUserId, guildId, reason } = data;
+      const guild = await this.client.guilds.fetch(guildId);
+
+      await guild.members.unban(targetUserId, reason);
+
+      logger.info(`Successfully unbanned user ${targetUserId} from guild ${guildId}`);
+      return { success: true, action: "unban", userId: targetUserId };
+    } catch (error) {
+      logger.error("Failed to process unban user job:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process legacy request job
+   */
+  private async processLegacyRequest(data: any): Promise<any> {
+    try {
+      logger.debug("Processing legacy request:", data);
+      // For now, just return success - this can be expanded based on legacy request types
+      return { success: true, processed: true };
+    } catch (error) {
+      logger.error("Failed to process legacy request:", error);
+      throw error;
+    }
   }
 
   /**
@@ -259,10 +484,39 @@ export class BotQueueService {
   }
 
   /**
+   * Get detailed connection status for debugging
+   */
+  getConnectionStatus(): any {
+    return bullMQRegistry.getConnectionStatus();
+  }
+
+  /**
+   * Reset BullMQ connections (useful for debugging)
+   */
+  async resetConnections(): Promise<void> {
+    logger.info("Resetting BullMQ connections...");
+    await bullMQRegistry.shutdown();
+    // Force re-initialization
+    bullMQRegistry.isAvailable();
+    logger.info("BullMQ connections reset complete");
+  }
+
+  /**
    * Shutdown the service
    */
   async shutdown(): Promise<void> {
     logger.info("Shutting down Bot Queue Service...");
+
+    // Close all workers
+    for (const [queueName, worker] of this.workers.entries()) {
+      try {
+        await worker.close();
+        logger.info(`Closed worker for queue: ${queueName}`);
+      } catch (error) {
+        logger.error(`Error closing worker for ${queueName}:`, error);
+      }
+    }
+
     this.deadLetterQueue.shutdown();
     await bullMQRegistry.shutdown();
     logger.info("✅ Bot Queue Service shutdown complete");
@@ -273,6 +527,17 @@ export class BotQueueService {
    */
   async processRequest(request: any): Promise<any> {
     logger.debug("Processing legacy request via BullMQ");
+
+    // Check if Redis is available
+    if (!bullMQRegistry.isAvailable()) {
+      logger.warn("Cannot process request - Redis not available");
+      return {
+        success: false,
+        error: "Queue system unavailable - Redis not connected",
+        requestId: request.id,
+        timestamp: Date.now(),
+      };
+    }
 
     const jobData: BotQueueJobData = {
       type: request.type || "LEGACY_REQUEST",

@@ -1,4 +1,4 @@
-import { RedisConnectionFactory } from "../../../shared/src/utils/RedisConnectionFactory";
+import { RedisConnectionFactory } from "@shared/utils/RedisConnectionFactory";
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import type Client from "../structures/Client.js";

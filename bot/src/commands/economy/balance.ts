@@ -1,5 +1,5 @@
+import { prisma } from "@shared/database.js";
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { prisma } from "../../../../shared/src/database.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";

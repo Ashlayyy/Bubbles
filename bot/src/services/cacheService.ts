@@ -1,4 +1,4 @@
-import { RedisConnectionFactory } from "../../../shared/src/utils/RedisConnectionFactory";
+import { RedisConnectionFactory } from "@shared/utils/RedisConnectionFactory";
 import logger from "../logger.js";
 
 /**

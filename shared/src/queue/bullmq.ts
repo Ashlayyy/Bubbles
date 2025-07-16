@@ -68,7 +68,7 @@ export function createBullMQEventsConnection(options?: Partial<RedisOptions>) {
 		maxRetriesPerRequest: null, // Required by BullMQ v5+
 		enableReadyCheck: true,
 		connectTimeout: 100_000, // Increased for Docker environments
-		commandTimeout: 0, // No timeout for blocking commands used by QueueEvents
+		commandTimeout: 30_000, // Use a reasonable timeout instead of 0 to avoid hanging
 		enableOfflineQueue: true,
 		lazyConnect: true,
 		keepAlive: 30000,
@@ -133,28 +133,43 @@ export class BullMQRegistry {
 		// Mark as initialized
 		this.initialized = true;
 
-		// Simple availability check - just check if connections are ready
+		// Availability check - main connection must be ready, events connection can be connecting or even failed
 		const checkAvailability = () => {
-			if (
-				this.connection.status === 'ready' &&
-				this.eventsConnection.status === 'ready'
-			) {
+			const mainReady = this.connection.status === 'ready';
+			const eventsReady = this.eventsConnection.status === 'ready';
+			const eventsConnecting = this.eventsConnection.status === 'connecting';
+			const mainFailed = this.connection.status === 'end';
+			const eventsFailed = this.eventsConnection.status === 'end';
+
+			// Main connection must be ready, but events connection can be more flexible
+			if (mainReady && (eventsReady || eventsConnecting)) {
 				this.isRedisAvailable = true;
-				console.log('[BullMQ] Redis connections ready');
-			} else if (
-				this.connection.status === 'end' ||
-				this.eventsConnection.status === 'end'
-			) {
+				console.log(
+					'[BullMQ] Redis connections ready (main ready, events connecting/ready)'
+				);
+			} else if (mainReady && eventsFailed) {
+				// If main is ready but events failed, we can still operate (just without event monitoring)
+				this.isRedisAvailable = true;
+				console.log(
+					'[BullMQ] Redis connections ready (main ready, events failed - limited functionality)'
+				);
+			} else if (mainFailed) {
 				this.isRedisAvailable = false;
-				console.warn('[BullMQ] Redis connections failed');
+				console.warn(
+					'[BullMQ] Redis connections failed (main connection failed)'
+				);
 			} else {
 				// Still connecting, check again in a moment
 				setTimeout(checkAvailability, 1000);
 			}
 		};
 
-		// Start checking availability
-		setTimeout(checkAvailability, 1000);
+		// Start checking availability after a longer delay to allow connections to establish
+		setTimeout(checkAvailability, 2000);
+
+		// Also check immediately and then periodically
+		checkAvailability();
+		setInterval(checkAvailability, 5000); // Check every 5 seconds
 	}
 
 	// Prometheus metrics
@@ -188,7 +203,32 @@ export class BullMQRegistry {
 	 */
 	public isAvailable(): boolean {
 		this.initializeConnections();
-		return this.isRedisAvailable;
+
+		// If connections aren't initialized yet, return false
+		if (!this.initialized) {
+			return false;
+		}
+
+		// If explicitly disabled, return false
+		if (process.env.DISABLE_QUEUES === 'true') {
+			return false;
+		}
+
+		// Check if connections exist and are in a good state
+		if (!this.connection || !this.eventsConnection) {
+			return false;
+		}
+
+		// Check connection status
+		const mainStatus = this.connection.status;
+		const eventsStatus = this.eventsConnection.status;
+
+		// Main connection must be ready, events can be connecting or ready
+		const mainReady = mainStatus === 'ready';
+		const eventsAcceptable =
+			eventsStatus === 'ready' || eventsStatus === 'connecting';
+
+		return mainReady && eventsAcceptable;
 	}
 
 	/**

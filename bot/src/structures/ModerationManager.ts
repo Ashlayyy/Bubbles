@@ -454,9 +454,10 @@ export default class ModerationManager {
       // Use unified queue system if available
       if (this.client.queueService) {
         try {
+          let queueResult;
           switch (action.type) {
             case "KICK": {
-              await this.client.queueService.processRequest({
+              queueResult = await this.client.queueService.processRequest({
                 type: "KICK_USER",
                 data: {
                   targetUserId: action.userId,
@@ -468,12 +469,11 @@ export default class ModerationManager {
                 guildId: guild.id,
                 requiresReliability: true,
               });
-              success = true;
               break;
             }
 
             case "BAN": {
-              await this.client.queueService.processRequest({
+              queueResult = await this.client.queueService.processRequest({
                 type: "BAN_USER",
                 data: {
                   targetUserId: action.userId,
@@ -485,13 +485,12 @@ export default class ModerationManager {
                 guildId: guild.id,
                 requiresReliability: true,
               });
-              success = true;
               break;
             }
 
             case "TIMEOUT": {
               // Pass duration in seconds; processor will convert to milliseconds once
-              await this.client.queueService.processRequest({
+              queueResult = await this.client.queueService.processRequest({
                 type: "TIMEOUT_USER",
                 data: {
                   targetUserId: action.userId,
@@ -504,12 +503,11 @@ export default class ModerationManager {
                 guildId: guild.id,
                 requiresReliability: true,
               });
-              success = true;
               break;
             }
 
             case "UNBAN": {
-              await this.client.queueService.processRequest({
+              queueResult = await this.client.queueService.processRequest({
                 type: "UNBAN_USER",
                 data: {
                   targetUserId: action.userId,
@@ -521,12 +519,11 @@ export default class ModerationManager {
                 guildId: guild.id,
                 requiresReliability: true,
               });
-              success = true;
               break;
             }
 
             case "UNTIMEOUT": {
-              await this.client.queueService.processRequest({
+              queueResult = await this.client.queueService.processRequest({
                 type: "TIMEOUT_USER",
                 data: {
                   targetUserId: action.userId,
@@ -539,7 +536,6 @@ export default class ModerationManager {
                 guildId: guild.id,
                 requiresReliability: true,
               });
-              success = true;
               break;
             }
 
@@ -550,7 +546,14 @@ export default class ModerationManager {
               break;
           }
 
-          logger.info(`Processed Discord action ${action.type} via unified queue system`);
+          // Check if queue operation was successful
+          if (queueResult && queueResult.success) {
+            success = true;
+            logger.info(`Processed Discord action ${action.type} via unified queue system`);
+          } else {
+            logger.warn(`Queue operation failed for ${action.type}, falling back to direct execution`);
+            success = false;
+          }
         } catch (queueError) {
           logger.warn(`Unified queue failed for ${action.type}, falling back to direct execution:`, queueError);
           success = false;

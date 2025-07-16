@@ -7,7 +7,6 @@ import { startReportWizard } from "../_shared/report-setup.js";
 import { startAppealsWizard } from "./setup-wizards/appeals-setup.js";
 import { startSetupWizard as startAutoModWizard } from "./setup-wizards/automod-setup.js";
 import { startLoggingWizard } from "./setup-wizards/logging-setup.js";
-import { startReactionRolesWizard } from "./setup-wizards/reactionroles-setup.js";
 import { startTicketWizard } from "./setup-wizards/ticket-setup.js";
 import { startWelcomeWizard } from "./setup-wizards/welcome-setup.js";
 
@@ -54,9 +53,6 @@ class SetupCommand extends AdminCommand {
           break;
         case "appeals":
           await startAppealsWizard(this.client, this.interaction as ChatInputCommandInteraction);
-          break;
-        case "reactionroles":
-          await startReactionRolesWizard(this.client, this.interaction as ChatInputCommandInteraction);
           break;
         default:
           return {

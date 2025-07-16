@@ -216,28 +216,42 @@ class AutoModCommand extends AdminCommand {
 
     const subcommand = this.interaction.options.getSubcommand();
 
-    switch (subcommand) {
-      case "create":
-        await handleCreate(this.client, this.interaction);
-        break;
-      case "list":
-        await handleList(this.client, this.interaction);
-        break;
-      case "configure":
-        await handleConfigure(this.client, this.interaction);
-        break;
-      case "toggle":
-        await handleToggle(this.client, this.interaction);
-        break;
-      case "delete":
-        await handleDelete(this.client, this.interaction);
-        break;
-      case "test":
-        await handleTest(this.client, this.interaction);
-        break;
-      case "stats":
-        await handleStats(this.client, this.interaction);
-        break;
+    try {
+      switch (subcommand) {
+        case "create":
+          await handleCreate(this.client, this.interaction);
+          break;
+        case "list":
+          await handleList(this.client, this.interaction);
+          break;
+        case "configure":
+          await handleConfigure(this.client, this.interaction);
+          break;
+        case "toggle":
+          await handleToggle(this.client, this.interaction);
+          break;
+        case "delete":
+          await handleDelete(this.client, this.interaction);
+          break;
+        case "test":
+          await handleTest(this.client, this.interaction);
+          break;
+        case "stats":
+          await handleStats(this.client, this.interaction);
+          break;
+        default:
+          logger.warn(`Unknown automod subcommand: ${subcommand}`);
+          await this.interaction.reply({
+            content: "❌ Unknown subcommand. Please try again.",
+            ephemeral: true,
+          });
+      }
+    } catch (error) {
+      logger.error("Unhandled error in command automod:", error);
+      await this.interaction.reply({
+        content: "❌ An unexpected error occurred while executing the command.",
+        ephemeral: true,
+      });
     }
 
     return {};
@@ -349,6 +363,11 @@ async function handleList(_client: Client, interaction: ChatInputCommandInteract
   const detailed = interaction.options.getBoolean("detailed") ?? false;
 
   try {
+    // Check if interaction has already been replied to
+    if (interaction.replied || interaction.deferred) {
+      logger.warn("Interaction already replied to in handleList");
+      return;
+    }
     const rules = await prisma.autoModRule.findMany({
       where: { guildId: interaction.guild.id },
       orderBy: { createdAt: "desc" },
@@ -801,6 +820,11 @@ async function handleStats(_client: Client, interaction: ChatInputCommandInterac
   const timeframe = interaction.options.getString("timeframe") ?? "24h";
 
   try {
+    // Check if interaction has already been replied to
+    if (interaction.replied || interaction.deferred) {
+      logger.warn("Interaction already replied to in handleStats");
+      return;
+    }
     if (ruleId) {
       // Show stats for specific rule
       const rule = await prisma.autoModRule.findFirst({

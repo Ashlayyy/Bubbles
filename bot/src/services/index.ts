@@ -3,6 +3,8 @@
  * Import all API services from here for consistency and easy access
  */
 
+import logger from "../logger.js";
+
 // Import services for utility functions (must be imported before being used)
 import { cacheService } from "./cacheService.js";
 import { economyApiService } from "./economyApiService.js";
@@ -151,23 +153,23 @@ export async function getApiServicesStatus(): Promise<{
  */
 export async function initializeServices(): Promise<void> {
   // Log initialization
-  console.log("🚀 Initializing API services...");
+  logger.info("🚀 Initializing API services...");
 
   const status = await getApiServicesStatus();
 
   if (status.configured) {
-    console.log("✅ All API services configured successfully");
+    logger.info("✅ All API services configured successfully");
   } else {
-    console.warn("⚠️ Some API services are not configured:");
+    logger.warn("⚠️ Some API services are not configured:");
     status.services
       .filter((service) => !service.configured)
       .forEach((service) => {
-        console.warn(`  - ${service.name}: Not configured`);
+        logger.warn(`  - ${service.name}: Not configured`);
       });
   }
 
-  console.log(`📊 Cache: ${status.cacheStats.totalKeys} keys, ${status.cacheStats.hitRatio}% hit ratio`);
-  console.log(`📈 Metrics: Tracking API calls and command executions`);
+  logger.info(`📊 Cache: ${status.cacheStats.totalKeys} keys, ${status.cacheStats.hitRatio}% hit ratio`);
+  logger.info(`📈 Metrics: Tracking API calls and command executions`);
 }
 
 /**
@@ -176,8 +178,8 @@ export async function initializeServices(): Promise<void> {
 export async function warmUpCaches(guildId: string): Promise<void> {
   try {
     await cacheService.warmUp(guildId);
-    console.log(`🔥 Cache warmed up for guild: ${guildId}`);
+    logger.info(`🔥 Cache warmed up for guild: ${guildId}`);
   } catch (error) {
-    console.error(`❌ Failed to warm up cache for guild ${guildId}:`, error);
+    logger.error(`❌ Failed to warm up cache for guild ${guildId}:`, error);
   }
 }

@@ -215,7 +215,7 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
     await interaction.reply({
       embeds: [welcomeEmbed],
       components: [buttons],
-      ephemeral: true,
+      flags: 64, // Use flags instead of ephemeral
     });
   } else if (interaction.deferred) {
     await interaction.editReply({
@@ -227,7 +227,7 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
     await interaction.followUp({
       embeds: [welcomeEmbed],
       components: [buttons],
-      ephemeral: true,
+      flags: 64, // Use flags instead of ephemeral
     });
   }
 
@@ -269,7 +269,7 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
             } else if (buttonInteraction.customId.startsWith("cat_")) {
               await handleCategoryToggle(buttonInteraction, client);
             } else {
-              await buttonInteraction.reply({
+              await safeReply(buttonInteraction, {
                 content: "❌ Unknown button interaction. Please try again.",
                 ephemeral: true,
               });
@@ -278,25 +278,10 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
         }
       } catch (error) {
         logger.error("Error handling logging wizard interaction:", error);
-        try {
-          if (!buttonInteraction.replied && !buttonInteraction.deferred) {
-            await buttonInteraction.reply({
-              content: "❌ An error occurred. Please try again.",
-              ephemeral: true,
-            });
-          } else if (buttonInteraction.deferred) {
-            await buttonInteraction.editReply({
-              content: "❌ An error occurred. Please try again.",
-            });
-          } else if (buttonInteraction.replied) {
-            await buttonInteraction.followUp({
-              content: "❌ An error occurred. Please try again.",
-              ephemeral: true,
-            });
-          }
-        } catch (replyError) {
-          logger.error("Failed to send error message to user:", replyError);
-        }
+        await safeReply(buttonInteraction, {
+          content: "❌ An error occurred. Please try again.",
+          ephemeral: true,
+        });
       }
     })();
   });
@@ -907,7 +892,7 @@ export async function handleLoggingButtonInteraction(
 
     // Handle wizard navigation buttons
     if (interaction.customId === "logging_wizard_back") {
-      await interaction.reply({
+      await safeReply(interaction, {
         content: "⬅️ To restart the setup wizard, please use `/logging setup` again.",
         ephemeral: true,
       });
@@ -938,7 +923,7 @@ export async function handleLoggingButtonInteraction(
 
     // Handle status management buttons
     if (interaction.customId === "logging_manage_channels") {
-      await interaction.reply({
+      await safeReply(interaction, {
         content: "📍 To configure channels, please use `/logging channels` command.",
         ephemeral: true,
       });
@@ -951,7 +936,7 @@ export async function handleLoggingButtonInteraction(
     }
 
     if (interaction.customId === "logging_advanced_settings") {
-      await interaction.reply({
+      await safeReply(interaction, {
         content: "⚙️ To access advanced options, please use `/logging advanced` command.",
         ephemeral: true,
       });
@@ -959,24 +944,42 @@ export async function handleLoggingButtonInteraction(
     }
 
     // Default fallback
-    await interaction.reply({
+    await safeReply(interaction, {
       content: "❌ This button interaction is not implemented yet.",
       ephemeral: true,
     });
   } catch (error) {
     logger.error("Error handling logging button interaction:", error);
+    await safeReply(interaction, {
+      content: "❌ An error occurred while processing your request.",
+      ephemeral: true,
+    });
+  }
+}
 
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({
-        content: "❌ An error occurred while processing your request.",
-        ephemeral: true,
-      });
+/**
+ * Safely reply to an interaction, handling already-acknowledged cases
+ */
+async function safeReply(
+  interaction: ButtonInteraction | ChannelSelectMenuInteraction,
+  options: { content: string; ephemeral?: boolean }
+): Promise<void> {
+  try {
+    const replyOptions = {
+      content: options.content,
+      flags: options.ephemeral ? 64 : undefined, // Use flags instead of ephemeral
+    };
+
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply(replyOptions);
+    } else if (interaction.deferred) {
+      await interaction.editReply({ content: options.content });
     } else {
-      await interaction.reply({
-        content: "❌ An error occurred while processing your request.",
-        ephemeral: true,
-      });
+      await interaction.followUp(replyOptions);
     }
+  } catch (error) {
+    logger.error("Failed to send interaction response:", error);
+    // Don't throw - we don't want to crash the bot for UI errors
   }
 }
 

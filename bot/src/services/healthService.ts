@@ -197,10 +197,16 @@ class BotHealthService {
       const isReady = queueService?.isReady() ?? false;
       const workerCount = 0; // TODO: implement actual worker count
 
+      // Get detailed connection status for debugging
+      const connectionStatus = queueService
+        ? (queueService as any).getConnectionStatus?.() || { isAvailable: isReady }
+        : { isAvailable: false };
+
       return {
         status: isReady ? ("healthy" as const) : ("degraded" as const),
         ready: isReady,
         processingJobs: workerCount,
+        connectionStatus, // Add detailed connection info for debugging
       };
     } catch (error) {
       logger.error("Queue health check failed:", error);
@@ -208,6 +214,7 @@ class BotHealthService {
         status: "unhealthy" as const,
         ready: false,
         processingJobs: 0,
+        connectionStatus: { error: error instanceof Error ? error.message : "Unknown error" },
       };
     }
   }

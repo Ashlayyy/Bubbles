@@ -156,14 +156,15 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
               .setLabel("Description")
               .setStyle(TextInputStyle.Paragraph)
               .setMaxLength(2048)
-              .setRequired(true);
+              .setRequired(false);
             modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
 
             await i.showModal(modal);
             const submitted = await i.awaitModalSubmit({ time: 60000 }).catch(() => null);
             if (submitted) {
               await submitted.deferUpdate();
-              state.embed.setDescription(submitted.fields.getTextInputValue("description"));
+              const description = submitted.fields.getTextInputValue("description");
+              state.embed.setDescription(description || null);
               await updateMessage();
             }
             break;
@@ -341,6 +342,15 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
           }
 
           case "rr_post": {
+            // Check if title is set
+            if (!state.embed.data.title || state.embed.data.title === "New Reaction Role Message") {
+              await i.reply({
+                content: "❌ You need to set a title before posting. Use the 'Set Title' button first.",
+                ephemeral: true,
+              });
+              return;
+            }
+
             if (state.roles.size === 0) {
               await i.reply({ content: "❌ You need to add at least one role before posting.", ephemeral: true });
               return;

@@ -414,6 +414,7 @@ export class WebSocketService extends EventEmitter {
   }
 
   public sendDiscordEvent(eventType: string, eventData: Record<string, unknown>, guildId?: string): void {
+    if (process.env.DISABLE_API === "true") return;
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.authenticated) {
       logger.warn("WebSocket not connected or authenticated. Cannot send event.");
       return;

@@ -401,7 +401,7 @@ async function handleSetupAutocomplete(interaction: AutocompleteInteraction) {
     return;
   }
 
-  const MODULE_CHOICES = ["tickets", "automod", "reports", "logging", "welcome", "appeals", "reactionroles"];
+  const MODULE_CHOICES = ["tickets", "automod", "reports", "logging", "welcome", "appeals"];
   const value = String(focusedOption.value).toLowerCase();
   let matched = MODULE_CHOICES.filter((m) => m.includes(value)).slice(0, 25);
 
