@@ -28,14 +28,34 @@ function attachRedisLogging(connection: any, label: string) {
 	connection.on('end', () => {
 		console.warn(`[${label}] Redis event: end`);
 	});
+	connection.on('wait', () => {
+		console.log(`[${label}] Redis event: wait`);
+	});
+	connection.on('select', (db: number) => {
+		console.log(`[${label}] Redis event: select db ${db}`);
+	});
+	connection.on('auth', () => {
+		console.log(`[${label}] Redis event: auth`);
+	});
+	connection.on('authError', (err: Error) => {
+		console.error(`[${label}] Redis event: authError`, err);
+	});
 }
 
 /**
  * Create a Redis connection for BullMQ that auto-reconnects with sensible defaults.
  */
 export function createBullMQConnection(options?: Partial<RedisOptions>) {
+	console.log('[BullMQ] Creating main connection with config:', {
+		host: process.env.REDIS_HOST || '127.0.0.1',
+		port: parseInt(process.env.REDIS_PORT || '6379', 10),
+		password: process.env.REDIS_PASSWORD ? '[SET]' : '[NOT SET]',
+		db: 0,
+		lazyConnect: false,
+	});
+
 	const connection = new IORedis({
-		host: process.env.REDIS_HOST || 'localhost',
+		host: process.env.REDIS_HOST || '127.0.0.1',
 		port: parseInt(process.env.REDIS_PORT || '6379', 10),
 		password: process.env.REDIS_PASSWORD || undefined,
 		db: 0,
@@ -44,14 +64,36 @@ export function createBullMQConnection(options?: Partial<RedisOptions>) {
 		connectTimeout: 100_000, // Increased for Docker environments
 		commandTimeout: 60_000,
 		enableOfflineQueue: true,
-		lazyConnect: true,
 		keepAlive: 30000,
 		family: 4, // Force IPv4 for WSL compatibility
 		showFriendlyErrorStack: true,
+		lazyConnect: false, // Force immediate connection
 		...(options || {}),
 	});
 
-	attachRedisLogging(connection, 'BullMQ');
+	attachRedisLogging(connection, 'BullMQ Main');
+
+	// Force connection establishment with better error handling
+	console.log('[BullMQ] Forcing main connection establishment...');
+	connection.connect().catch((err) => {
+		console.error('[BullMQ] Failed to connect main connection:', err);
+	});
+
+	// Add a timeout to detect if connection is stuck
+	setTimeout(() => {
+		if (connection.status === 'wait') {
+			console.warn(
+				'[BullMQ] Main connection still in wait state after 5 seconds, forcing reconnect...'
+			);
+			connection.disconnect();
+			setTimeout(() => {
+				connection.connect().catch((err) => {
+					console.error('[BullMQ] Failed to reconnect main connection:', err);
+				});
+			}, 100);
+		}
+	}, 5000);
+
 	return connection;
 }
 
@@ -60,8 +102,16 @@ export function createBullMQConnection(options?: Partial<RedisOptions>) {
  * QueueEvents use blocking Redis commands (BLPOP, BRPOP) and need different timeout settings.
  */
 export function createBullMQEventsConnection(options?: Partial<RedisOptions>) {
+	console.log('[BullMQ Events] Creating events connection with config:', {
+		host: process.env.REDIS_HOST || '127.0.0.1',
+		port: parseInt(process.env.REDIS_PORT || '6379', 10),
+		password: process.env.REDIS_PASSWORD ? '[SET]' : '[NOT SET]',
+		db: 0,
+		lazyConnect: false,
+	});
+
 	const connection = new IORedis({
-		host: process.env.REDIS_HOST || 'localhost',
+		host: process.env.REDIS_HOST || '127.0.0.1',
 		port: parseInt(process.env.REDIS_PORT || '6379', 10),
 		password: process.env.REDIS_PASSWORD || undefined,
 		db: 0,
@@ -70,14 +120,39 @@ export function createBullMQEventsConnection(options?: Partial<RedisOptions>) {
 		connectTimeout: 100_000, // Increased for Docker environments
 		commandTimeout: 30_000, // Use a reasonable timeout instead of 0 to avoid hanging
 		enableOfflineQueue: true,
-		lazyConnect: true,
 		keepAlive: 30000,
 		family: 4, // Force IPv4 for WSL compatibility
 		showFriendlyErrorStack: true,
+		lazyConnect: false, // Force immediate connection
 		...(options || {}),
 	});
 
 	attachRedisLogging(connection, 'BullMQ Events');
+
+	// Force connection establishment with better error handling
+	console.log('[BullMQ Events] Forcing events connection establishment...');
+	connection.connect().catch((err) => {
+		console.error('[BullMQ Events] Failed to connect events connection:', err);
+	});
+
+	// Add a timeout to detect if connection is stuck
+	setTimeout(() => {
+		if (connection.status === 'wait') {
+			console.warn(
+				'[BullMQ Events] Events connection still in wait state after 5 seconds, forcing reconnect...'
+			);
+			connection.disconnect();
+			setTimeout(() => {
+				connection.connect().catch((err) => {
+					console.error(
+						'[BullMQ Events] Failed to reconnect events connection:',
+						err
+					);
+				});
+			}, 100);
+		}
+	}, 5000);
+
 	return connection;
 }
 
@@ -106,7 +181,7 @@ export class BullMQRegistry {
 
 		console.log('[BullMQ] Initializing connections...');
 		console.log('[BullMQ] Environment check:');
-		console.log('  - REDIS_HOST:', process.env.REDIS_HOST || 'localhost');
+		console.log('  - REDIS_HOST:', process.env.REDIS_HOST || '127.0.0.1');
 		console.log('  - REDIS_PORT:', process.env.REDIS_PORT || '6379');
 		console.log(
 			'  - REDIS_PASSWORD:',
@@ -135,11 +210,27 @@ export class BullMQRegistry {
 
 		// Availability check - main connection must be ready, events connection can be connecting or even failed
 		const checkAvailability = () => {
-			const mainReady = this.connection.status === 'ready';
-			const eventsReady = this.eventsConnection.status === 'ready';
-			const eventsConnecting = this.eventsConnection.status === 'connecting';
-			const mainFailed = this.connection.status === 'end';
-			const eventsFailed = this.eventsConnection.status === 'end';
+			const mainStatus = this.connection.status;
+			const eventsStatus = this.eventsConnection.status;
+
+			console.log(
+				`[BullMQ] Connection status check - Main: ${mainStatus}, Events: ${eventsStatus}`
+			);
+			console.log(
+				`[BullMQ] Connection objects - Main: ${
+					this.connection ? 'exists' : 'null'
+				}, Events: ${this.eventsConnection ? 'exists' : 'null'}`
+			);
+
+			const mainReady = mainStatus === 'ready';
+			const eventsReady = eventsStatus === 'ready';
+			const eventsConnecting = eventsStatus === 'connecting';
+			const mainFailed = mainStatus === 'end';
+			const eventsFailed = eventsStatus === 'end';
+
+			console.log(
+				`[BullMQ] Status analysis - Main ready: ${mainReady}, Events ready: ${eventsReady}, Events connecting: ${eventsConnecting}, Main failed: ${mainFailed}, Events failed: ${eventsFailed}`
+			);
 
 			// Main connection must be ready, but events connection can be more flexible
 			if (mainReady && (eventsReady || eventsConnecting)) {
@@ -158,8 +249,17 @@ export class BullMQRegistry {
 				console.warn(
 					'[BullMQ] Redis connections failed (main connection failed)'
 				);
-			} else {
+			} else if (mainStatus === 'connecting') {
+				console.log(
+					'[BullMQ] Main connection still connecting, will check again...'
+				);
 				// Still connecting, check again in a moment
+				setTimeout(checkAvailability, 1000);
+			} else {
+				console.log(
+					`[BullMQ] Unexpected connection states - Main: ${mainStatus}, Events: ${eventsStatus}, will check again...`
+				);
+				// Still connecting or in unexpected state, check again in a moment
 				setTimeout(checkAvailability, 1000);
 			}
 		};
@@ -206,16 +306,19 @@ export class BullMQRegistry {
 
 		// If connections aren't initialized yet, return false
 		if (!this.initialized) {
+			console.log('[BullMQ] Connections not yet initialized');
 			return false;
 		}
 
 		// If explicitly disabled, return false
 		if (process.env.DISABLE_QUEUES === 'true') {
+			console.log('[BullMQ] Queues explicitly disabled');
 			return false;
 		}
 
 		// Check if connections exist and are in a good state
 		if (!this.connection || !this.eventsConnection) {
+			console.log('[BullMQ] Connections not created');
 			return false;
 		}
 
@@ -223,12 +326,56 @@ export class BullMQRegistry {
 		const mainStatus = this.connection.status;
 		const eventsStatus = this.eventsConnection.status;
 
+		console.log(
+			`[BullMQ] isAvailable check - Main: ${mainStatus}, Events: ${eventsStatus}, isRedisAvailable: ${this.isRedisAvailable}`
+		);
+
 		// Main connection must be ready, events can be connecting or ready
 		const mainReady = mainStatus === 'ready';
 		const eventsAcceptable =
 			eventsStatus === 'ready' || eventsStatus === 'connecting';
 
-		return mainReady && eventsAcceptable;
+		const available = mainReady && eventsAcceptable;
+
+		if (!available) {
+			console.log(
+				`[BullMQ] Not available - Main ready: ${mainReady}, Events acceptable: ${eventsAcceptable}`
+			);
+		}
+
+		return available;
+	}
+
+	/**
+	 * Force reconnection of Redis connections
+	 */
+	public async forceReconnect(): Promise<void> {
+		console.log('[BullMQ] Forcing reconnection...');
+
+		if (this.connection) {
+			try {
+				await this.connection.disconnect();
+			} catch (error) {
+				console.warn('[BullMQ] Error disconnecting main connection:', error);
+			}
+		}
+
+		if (this.eventsConnection) {
+			try {
+				await this.eventsConnection.disconnect();
+			} catch (error) {
+				console.warn('[BullMQ] Error disconnecting events connection:', error);
+			}
+		}
+
+		// Reset state
+		this.isRedisAvailable = false;
+		this.initialized = false;
+
+		// Re-initialize
+		this.initializeConnections();
+
+		console.log('[BullMQ] Reconnection initiated');
 	}
 
 	/**

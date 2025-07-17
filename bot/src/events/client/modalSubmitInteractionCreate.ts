@@ -165,6 +165,10 @@ export default new ClientEvent("interactionCreate", async (interaction: Interact
     // This modal is handled by the reaction role builder's collector
     // The interaction is already handled in the builder flow
     logger.debug("Custom color modal submitted, handled by reaction role builder");
+  } else if (interaction.customId === "compliment_embed_modal" || interaction.customId === "compliment_config_modal") {
+    // These modals are handled by the compliment wheel setup wizard's collector
+    // The interaction is already handled in the wizard flow
+    logger.debug(`Compliment wheel modal submitted: ${interaction.customId}, handled by setup wizard`);
   } else {
     logger.warn(`Unknown modal customId: ${interaction.customId}`);
   }

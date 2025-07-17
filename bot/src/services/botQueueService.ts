@@ -484,13 +484,6 @@ export class BotQueueService {
   }
 
   /**
-   * Get detailed connection status for debugging
-   */
-  getConnectionStatus(): any {
-    return bullMQRegistry.getConnectionStatus();
-  }
-
-  /**
    * Reset BullMQ connections (useful for debugging)
    */
   async resetConnections(): Promise<void> {
@@ -499,6 +492,15 @@ export class BotQueueService {
     // Force re-initialization
     bullMQRegistry.isAvailable();
     logger.info("BullMQ connections reset complete");
+  }
+
+  /**
+   * Get detailed connection status for debugging
+   */
+  getConnectionStatus(): any {
+    const status = bullMQRegistry.getConnectionStatus();
+    logger.debug("BullMQ connection status:", status);
+    return status;
   }
 
   /**

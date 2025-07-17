@@ -6,11 +6,20 @@ import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 import { startReportWizard } from "../_shared/report-setup.js";
 import { startAppealsWizard } from "./setup-wizards/appeals-setup.js";
 import { startSetupWizard as startAutoModWizard } from "./setup-wizards/automod-setup.js";
+import { startComplimentenWizard } from "./setup-wizards/complimenten-setup.js";
 import { startLoggingWizard } from "./setup-wizards/logging-setup.js";
 import { startTicketWizard } from "./setup-wizards/ticket-setup.js";
 import { startWelcomeWizard } from "./setup-wizards/welcome-setup.js";
 
-const MODULE_CHOICES = ["tickets", "automod", "reports", "logging", "welcome", "appeals", "reactionroles"] as const;
+const MODULE_CHOICES = [
+  "tickets",
+  "automod",
+  "reports",
+  "logging",
+  "welcome/goodbye",
+  "appeals",
+  "complimenten",
+] as const;
 
 type SetupModule = (typeof MODULE_CHOICES)[number];
 
@@ -48,11 +57,14 @@ class SetupCommand extends AdminCommand {
         case "logging":
           await startLoggingWizard(this.client, this.interaction as ChatInputCommandInteraction);
           break;
-        case "welcome":
+        case "welcome/goodbye":
           await startWelcomeWizard(this.client, this.interaction as ChatInputCommandInteraction);
           break;
         case "appeals":
           await startAppealsWizard(this.client, this.interaction as ChatInputCommandInteraction);
+          break;
+        case "complimenten":
+          await startComplimentenWizard(this.client, this.interaction as ChatInputCommandInteraction);
           break;
         default:
           return {

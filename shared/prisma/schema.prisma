@@ -1930,6 +1930,8 @@ model ComplimentWheel {
   channelId           String // Channel where the message is located
   complimentChannelId String // Channel where daily compliments are announced
   emoji               String                @default("❤️") // The emoji to monitor for reactions
+  customMessage       String? // Custom embed message for daily compliments
+  pinnedRoleId        String? // Role to pin in the compliment message
   isActive            Boolean               @default(true)
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt

@@ -26,8 +26,6 @@ export class ComplimentCommand extends GeneralCommand {
 
     try {
       switch (subcommand) {
-        case "setup":
-          return await this.handleSetup();
         case "reset":
           return await this.handleReset();
         case "test":
@@ -36,7 +34,7 @@ export class ComplimentCommand extends GeneralCommand {
           return await this.handleDelete();
         default:
           return {
-            content: "❌ Unknown subcommand",
+            content: "❌ Unknown subcommand. Use `/setup complimenten` to configure the system.",
             ephemeral: true,
           };
       }
@@ -44,122 +42,6 @@ export class ComplimentCommand extends GeneralCommand {
       logger.error("Error in compliment command:", error);
       return {
         content: `❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`,
-        ephemeral: true,
-      };
-    }
-  }
-
-  private async handleSetup(): Promise<CommandResponse> {
-    // Check if user has manage guild permissions
-    if (!this.member.permissions.has("ManageGuild")) {
-      return {
-        content: "❌ You need the 'Manage Server' permission to set up the compliment wheel.",
-        ephemeral: true,
-      };
-    }
-
-    const messageId = this.getStringOption("message_id", true);
-    const messageChannel = this.getChannelOption("channel", true);
-    const complimentChannel = this.getChannelOption("compliment_channel", true);
-    const emoji = this.getStringOption("emoji", true);
-
-    if (!messageChannel.isTextBased()) {
-      return {
-        content: "❌ The message channel must be a text channel.",
-        ephemeral: true,
-      };
-    }
-
-    if (!complimentChannel.isTextBased()) {
-      return {
-        content: "❌ The compliment channel must be a text channel.",
-        ephemeral: true,
-      };
-    }
-
-    try {
-      // Verify the message exists
-      const message = await messageChannel.messages.fetch(messageId).catch(() => null);
-      if (!message) {
-        return {
-          content:
-            "❌ Message not found. Please make sure the message ID is correct and the message is in the specified channel.",
-          ephemeral: true,
-        };
-      }
-
-      // Setup the wheel
-      const wheelService = ComplimentWheelService.getInstance(this.client);
-
-      // Validate emoji before saving to DB
-      try {
-        // Test if the bot can use this emoji by trying to react to the message
-        await message.react(emoji);
-      } catch (emojiError) {
-        return {
-          content: `❌ Invalid emoji or the bot cannot use this emoji. Please make sure the emoji is valid and the bot has permission to use it in this channel.`,
-          ephemeral: true,
-        };
-      }
-
-      // Fetch all users who already reacted with the emoji (excluding bots and users not in the guild)
-      const reaction = message.reactions.cache.get(emoji);
-      if (reaction) {
-        const users = await reaction.users.fetch();
-        for (const [userId, user] of users) {
-          if (user.bot) continue;
-          // Check if user is still a member of the guild
-          try {
-            await message.guild.members.fetch(userId);
-          } catch {
-            continue; // Not a member
-          }
-          await wheelService.addParticipant(this.guild.id, userId, user.username);
-        }
-      }
-
-      // Setup the wheel
-      await wheelService.setupWheel({
-        guildId: this.guild.id,
-        messageId,
-        channelId: messageChannel.id,
-        complimentChannelId: complimentChannel.id,
-        emoji,
-      });
-
-      const embed = new EmbedBuilder()
-        .setTitle("🎉 Compliment Wheel Setup Complete!")
-        .setColor("#00ff00")
-        .setDescription("The compliment wheel has been successfully configured!")
-        .addFields(
-          {
-            name: "📝 Message ID",
-            value: messageId,
-            inline: true,
-          },
-          {
-            name: "�� Compliment Channel",
-            value: `<#${complimentChannel.id}>`,
-            inline: true,
-          },
-          {
-            name: "😊 Emoji",
-            value: emoji,
-            inline: true,
-          },
-          {
-            name: "🎯 How it works",
-            value:
-              "• Users react with the specified emoji to join the wheel\n• Every day at 00:00, a random person is chosen\n• The winner gets a compliment in the designated channel\n• Once everyone has been drawn, the wheel resets automatically",
-          }
-        )
-        .setTimestamp();
-
-      return { embeds: [embed], ephemeral: true };
-    } catch (error) {
-      logger.error("Error setting up compliment wheel:", error);
-      return {
-        content: "❌ Failed to set up the compliment wheel. Please try again.",
         ephemeral: true,
       };
     }

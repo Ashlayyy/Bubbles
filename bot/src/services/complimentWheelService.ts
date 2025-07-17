@@ -9,6 +9,8 @@ interface ComplimentWheelConfig {
   channelId: string;
   complimentChannelId: string;
   emoji: string;
+  customMessage?: string;
+  pinnedRoleId?: string;
 }
 
 interface WheelParticipant {
@@ -66,6 +68,8 @@ export class ComplimentWheelService {
           channelId: config.channelId,
           complimentChannelId: config.complimentChannelId,
           emoji: config.emoji,
+          customMessage: config.customMessage,
+          pinnedRoleId: config.pinnedRoleId,
           isActive: true,
           updatedAt: new Date(),
         },
@@ -75,6 +79,8 @@ export class ComplimentWheelService {
           channelId: config.channelId,
           complimentChannelId: config.complimentChannelId,
           emoji: config.emoji,
+          customMessage: config.customMessage,
+          pinnedRoleId: config.pinnedRoleId,
           isActive: true,
         },
       });
@@ -161,6 +167,8 @@ export class ComplimentWheelService {
         channelId: wheel.channelId,
         complimentChannelId: wheel.complimentChannelId,
         emoji: wheel.emoji,
+        customMessage: wheel.customMessage || undefined,
+        pinnedRoleId: wheel.pinnedRoleId || undefined,
       };
     } catch (error) {
       logger.error("Error getting wheel config:", error);
@@ -370,18 +378,39 @@ export class ComplimentWheelService {
         return;
       }
 
-      // Send compliment message with ping in content
-      const embed = {
+      // Parse embed from config.customMessage
+      let embedData: { title: string; description: string; color: number } = {
         title: `🎉 Persoon van de dag!`,
-        description: `<@${winner.userId}> is de persoon van de dag!\n*Geef zoveel complimenten als je wilt, zolang ze maar over <@${winner.userId}> gaan!*`,
+        description: `<@USER_ID> is de persoon van de dag!\n*Geef zoveel complimenten als je wilt, zolang ze maar over <@USER_ID}> gaan!*`,
         color: 0x00bfff,
+      };
+      try {
+        if (config.customMessage) {
+          const parsed = JSON.parse(config.customMessage);
+          if (parsed.title && parsed.description && parsed.color) {
+            embedData = parsed;
+          }
+        }
+      } catch (error) {
+        logger.debug(`Failed to parse custom message for guild ${guildId}:`, error);
+      }
+
+      // Replace mentions in content and embed
+      const userMention = `<@${winner.userId}>`;
+      const roleMention = config.pinnedRoleId ? `<@&${config.pinnedRoleId}>` : "";
+      const content = `${userMention}${roleMention ? " " + roleMention : ""}`;
+      const embed = {
+        title: embedData.title,
+        description: embedData.description.replace(/<@USER_ID>/g, userMention).replace(/<@ROLE_ID>/g, roleMention),
+        color: embedData.color,
         timestamp: new Date().toISOString(),
       };
       await channel.send({
-        content: `<@${winner.userId}>`,
+        content,
         embeds: [embed],
         allowedMentions: {
           users: [winner.userId],
+          roles: config.pinnedRoleId ? [config.pinnedRoleId] : [],
         },
       });
 
@@ -504,19 +533,42 @@ export class ComplimentWheelService {
         logger.debug(`Compliment channel ${config.complimentChannelId} not found or not text-based`);
         return null;
       }
-      const testEmbed = {
+
+      // Parse embed from config.customMessage
+      let embedData: { title: string; description: string; color: number } = {
         title: `🎉 Persoon van de dag!`,
-        description: `<@${winner.userId}> is de persoon van de dag!\n*Geef zoveel complimenten als je wilt, zolang ze maar over <@${winner.userId}> gaan!*`,
+        description: `<@USER_ID> is de persoon van de dag!\n*Geef zoveel complimenten als je wilt, zolang ze maar over <@USER_ID}> gaan!*`,
         color: 0x00bfff,
+      };
+      try {
+        if (config.customMessage) {
+          const parsed = JSON.parse(config.customMessage);
+          if (parsed.title && parsed.description && parsed.color) {
+            embedData = parsed;
+          }
+        }
+      } catch (error) {
+        logger.debug(`Failed to parse custom message for guild ${guildId}:`, error);
+      }
+
+      // Replace mentions in content and embed
+      const userMention = `<@${winner.userId}>`;
+      const roleMention = config.pinnedRoleId ? `<@&${config.pinnedRoleId}>` : "";
+      const content = `${userMention}${roleMention ? " " + roleMention : ""}`;
+      const embed = {
+        title: embedData.title,
+        description: embedData.description.replace(/<@USER_ID>/g, userMention).replace(/<@ROLE_ID>/g, roleMention),
+        color: embedData.color,
         footer: { text: "Test Compliment" },
         timestamp: new Date().toISOString(),
       };
       logger.debug(`Attempting to send test embed to channel ${config.complimentChannelId}`);
       await channel.send({
-        content: `<@${winner.userId}>`,
-        embeds: [testEmbed],
+        content,
+        embeds: [embed],
         allowedMentions: {
           users: [winner.userId],
+          roles: config.pinnedRoleId ? [config.pinnedRoleId] : [],
         },
       });
 
