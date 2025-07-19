@@ -499,7 +499,7 @@ export class BotQueueService {
    */
   getConnectionStatus(): any {
     const status = bullMQRegistry.getConnectionStatus();
-    logger.debug("BullMQ connection status:", status);
+    logger.debug(`BullMQ connection status: ${JSON.stringify(status)}`);
     return status;
   }
 

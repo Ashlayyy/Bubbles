@@ -67,7 +67,7 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
   const state = {
     embed: new EmbedBuilder()
       .setTitle("New Reaction Role Message")
-      .setDescription("Use the buttons below to build your message.")
+      .setDescription(null) // Always empty as requested
       .setColor(0x3498db),
     roles: new Map<string, string>(), // emoji -> roleId
   };
@@ -90,20 +90,25 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
   };
 
   const updateMessage = async () => {
-    const rolesText =
-      state.roles.size > 0
-        ? [...state.roles.entries()].map(([e, r]) => `${e} → <@&${r}>`).join("\n")
-        : "No roles added yet";
+    try {
+      const rolesText =
+        state.roles.size > 0
+          ? [...state.roles.entries()].map(([e, r]) => `${e} → <@&${r}>`).join("\n")
+          : "No roles added yet";
 
-    state.embed.setFields({
-      name: `🎭 Roles (${state.roles.size})`,
-      value: rolesText,
-    });
+      state.embed.setFields({
+        name: `🎭 Roles (${state.roles.size})`,
+        value: rolesText,
+      });
 
-    await safeReply(interaction, {
-      embeds: [state.embed],
-      components: generateComponents(),
-    });
+      await safeReply(interaction, {
+        embeds: [state.embed],
+        components: generateComponents(),
+      });
+    } catch (error) {
+      logger.error("Error in updateMessage:", error);
+      throw error; // Re-throw so the calling function can handle it
+    }
   };
 
   await safeReply(interaction, {
@@ -116,92 +121,330 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
 
   const reply = await interaction.fetchReply();
   const collector = reply.createMessageComponentCollector({
-    componentType: ComponentType.Button,
     time: 600000, // 10 minutes
   });
 
   collector.on("collect", (i) => {
     void (async () => {
       if (i.user.id !== interaction.user.id) {
-        await i.reply({ content: "❌ You can't use these buttons.", ephemeral: true });
+        await i.reply({ content: "❌ You can't use these components.", ephemeral: true });
         return;
       }
 
       try {
-        switch (i.customId) {
-          case "rr_title": {
-            const modal = new ModalBuilder().setCustomId("rr_title_modal").setTitle("Set Message Title");
-            const input = new TextInputBuilder()
-              .setCustomId("title")
-              .setLabel("Title")
-              .setStyle(TextInputStyle.Short)
-              .setMaxLength(256)
-              .setRequired(true);
-            modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+        logger.debug(`Collector received interaction: ${i.customId} (type: ${i.constructor.name})`);
 
-            await i.showModal(modal);
-            const submitted = await i.awaitModalSubmit({ time: 60000 }).catch(() => null);
-            if (submitted) {
-              await submitted.deferUpdate();
-              state.embed.setTitle(submitted.fields.getTextInputValue("title"));
-              await updateMessage();
+        // Handle both button and select menu interactions
+        if (i.isButton()) {
+          switch (i.customId) {
+            case "rr_title": {
+              const modal = new ModalBuilder().setCustomId("rr_title_modal").setTitle("Set Message Title");
+              const input = new TextInputBuilder()
+                .setCustomId("title")
+                .setLabel("Title")
+                .setStyle(TextInputStyle.Short)
+                .setMaxLength(256)
+                .setRequired(true);
+              modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+
+              await i.showModal(modal);
+              const submitted = await i.awaitModalSubmit({ time: 60000 }).catch(() => null);
+              if (submitted) {
+                try {
+                  logger.debug("Processing rr_title_modal submission");
+                  await submitted.deferUpdate();
+                  const title = submitted.fields.getTextInputValue("title");
+                  logger.debug(`Setting title to: ${title}`);
+
+                  // Validate title is not default
+                  if (!title || title.trim() === "" || title === "New Reaction Role Message") {
+                    await submitted.followUp({
+                      content: "❌ Please enter a valid title for your reaction role message.",
+                      ephemeral: true,
+                    });
+                    return;
+                  }
+
+                  state.embed.setTitle(title);
+                  await updateMessage();
+                  logger.debug("Successfully updated title");
+                } catch (error) {
+                  logger.error("Error processing rr_title_modal:", error);
+                  await submitted.followUp({
+                    content: "❌ An error occurred while updating the title. Please try again.",
+                    ephemeral: true,
+                  });
+                }
+              }
+              break;
             }
-            break;
-          }
 
-          case "rr_desc": {
-            const modal = new ModalBuilder().setCustomId("rr_desc_modal").setTitle("Set Message Description");
-            const input = new TextInputBuilder()
-              .setCustomId("description")
-              .setLabel("Description")
-              .setStyle(TextInputStyle.Paragraph)
-              .setMaxLength(2048)
-              .setRequired(false);
-            modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+            case "rr_desc": {
+              const modal = new ModalBuilder().setCustomId("rr_desc_modal").setTitle("Set Message Description");
+              const input = new TextInputBuilder()
+                .setCustomId("description")
+                .setLabel("Description")
+                .setStyle(TextInputStyle.Paragraph)
+                .setMaxLength(2048)
+                .setRequired(false);
+              modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
 
-            await i.showModal(modal);
-            const submitted = await i.awaitModalSubmit({ time: 60000 }).catch(() => null);
-            if (submitted) {
-              await submitted.deferUpdate();
-              const description = submitted.fields.getTextInputValue("description");
-              state.embed.setDescription(description || null);
-              await updateMessage();
+              await i.showModal(modal);
+              const submitted = await i.awaitModalSubmit({ time: 60000 }).catch(() => null);
+              if (submitted) {
+                try {
+                  logger.debug("Processing rr_desc_modal submission");
+                  await submitted.deferUpdate();
+                  const description = submitted.fields.getTextInputValue("description");
+                  logger.debug(`Setting description to: ${description?.substring(0, 50)}...`);
+                  state.embed.setDescription(description || null);
+                  await updateMessage();
+                  logger.debug("Successfully updated description");
+                } catch (error) {
+                  logger.error("Error processing rr_desc_modal:", error);
+                  await submitted.followUp({
+                    content: "❌ An error occurred while updating the description. Please try again.",
+                    ephemeral: true,
+                  });
+                }
+              }
+              break;
             }
-            break;
+
+            case "rr_color": {
+              const colorOptions = [
+                { label: "Blue", value: "0x3498db", emoji: "🔵" },
+                { label: "Green", value: "0x2ecc71", emoji: "🟢" },
+                { label: "Red", value: "0xe74c3c", emoji: "🔴" },
+                { label: "Purple", value: "0x9b59b6", emoji: "🟣" },
+                { label: "Orange", value: "0xe67e22", emoji: "🟠" },
+                { label: "Yellow", value: "0xf1c40f", emoji: "🟡" },
+                { label: "Pink", value: "0xe91e63", emoji: "🩷" },
+                { label: "Custom", value: "custom", emoji: "🎨" },
+              ];
+
+              const select = new StringSelectMenuBuilder()
+                .setCustomId("color_select")
+                .setPlaceholder("Choose a color...")
+                .addOptions(colorOptions);
+
+              await i.update({
+                content: "🎨 Choose a color for your embed:",
+                components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)],
+              });
+              break;
+            }
+
+            case "rr_add_role": {
+              await i.update({
+                content: "📝 Type the emoji you want to use for this role:",
+                embeds: [],
+                components: [],
+              });
+
+              const emojiFilter = (m: Message) => m.author.id === interaction.user.id;
+              const collected = await interaction.channel
+                ?.awaitMessages({
+                  filter: emojiFilter,
+                  max: 1,
+                  time: 30000,
+                  errors: ["time"],
+                })
+                .catch(() => null);
+
+              const emojiMessage = collected?.first();
+              if (emojiMessage) {
+                await emojiMessage.delete().catch(() => {
+                  // Ignore deletion errors
+                });
+              }
+
+              const emojiRaw = emojiMessage?.content;
+              if (!emojiRaw) {
+                await i.followUp({ content: "⏰ You didn't provide an emoji in time.", ephemeral: true });
+                await updateMessage();
+                return;
+              }
+
+              const emoji = parseEmoji(emojiRaw, client);
+              if (!emoji) {
+                await i.followUp({ content: "❌ That doesn't appear to be a valid emoji.", ephemeral: true });
+                await updateMessage();
+                return;
+              }
+
+              const roleSelect = new RoleSelectMenuBuilder()
+                .setCustomId("role_select")
+                .setPlaceholder("Select a role...")
+                .setMaxValues(1);
+
+              await i.editReply({
+                content: `✅ Emoji set to ${emoji.name}. Now select the role:`,
+                components: [new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(roleSelect)],
+              });
+
+              const roleInteraction = await reply
+                .awaitMessageComponent({
+                  componentType: ComponentType.RoleSelect,
+                  time: 30000,
+                })
+                .catch(() => null);
+
+              if (roleInteraction?.isRoleSelectMenu()) {
+                try {
+                  const roleId = roleInteraction.values[0];
+                  const role = roleInteraction.guild?.roles.cache.get(roleId);
+
+                  if (!role) {
+                    await i.followUp({ content: "❌ Selected role no longer exists.", ephemeral: true });
+                    await updateMessage();
+                    return;
+                  }
+
+                  state.roles.set(emoji.name, roleId);
+
+                  await roleInteraction.update({
+                    content: `✅ Added: ${emoji.name} → **${role.name}**`,
+                  });
+                } catch (roleError) {
+                  logger.error("Error in role selection:", roleError);
+                  await i.followUp({ content: "❌ Error adding role. Please try again.", ephemeral: true });
+                }
+              } else {
+                await i.followUp({ content: "⏰ You didn't select a role in time.", ephemeral: true });
+              }
+
+              await updateMessage();
+              break;
+            }
+
+            case "rr_preview": {
+              await i.deferUpdate();
+              const previewEmbed = EmbedBuilder.from(state.embed);
+              await i.followUp({
+                content: "👀 **Preview of your reaction role message:**",
+                embeds: [previewEmbed],
+                ephemeral: true,
+              });
+              break;
+            }
+
+            case "rr_post": {
+              // Check if title is set
+              if (!state.embed.data.title || state.embed.data.title === "New Reaction Role Message") {
+                await i.reply({
+                  content: "❌ You need to set a title before posting. Use the 'Set Title' button first.",
+                  ephemeral: true,
+                });
+                return;
+              }
+
+              if (state.roles.size === 0) {
+                await i.reply({ content: "❌ You need to add at least one role before posting.", ephemeral: true });
+                return;
+              }
+
+              const channelSelect = new ChannelSelectMenuBuilder()
+                .setCustomId("channel_select")
+                .setChannelTypes(ChannelType.GuildText)
+                .setPlaceholder("Select a channel to post the message");
+
+              await i.update({
+                content: "📍 Select a channel to post your reaction role message:",
+                embeds: [],
+                components: [new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(channelSelect)],
+              });
+
+              const channelInteraction = await reply
+                .awaitMessageComponent({
+                  componentType: ComponentType.ChannelSelect,
+                  time: 60000,
+                })
+                .catch(() => null);
+
+              if (channelInteraction?.isChannelSelectMenu()) {
+                try {
+                  const channel = channelInteraction.channels.first();
+                  if (channel instanceof TextChannel) {
+                    await channelInteraction.deferUpdate();
+
+                    try {
+                      const finalMessage = await channel.send({ embeds: [state.embed] });
+
+                      // Add reactions and database entries
+                      for (const [emoji, roleId] of state.roles.entries()) {
+                        await finalMessage.react(emoji);
+                        await addReactionRole(interaction, finalMessage.id, emoji, roleId);
+                      }
+
+                      // Create reaction role message entry
+                      await createReactionRoleMessage({
+                        guildId: interaction.guild?.id ?? "",
+                        channelId: channel.id,
+                        messageId: finalMessage.id,
+                        title: state.embed.data.title ?? "Reaction Roles",
+                        description: state.embed.data.description,
+                        embedColor: state.embed.data.color?.toString(),
+                        createdBy: interaction.user.id,
+                      });
+
+                      await channelInteraction.editReply({
+                        content: `✅ **Success!** Reaction role message posted in ${channel}!\n🔗 [Jump to message](${finalMessage.url})`,
+                        components: [],
+                      });
+
+                      // Log the creation
+                      if (interaction.guild) {
+                        await client.logManager.log(interaction.guild.id, "REACTION_ROLE_MESSAGE_CREATE", {
+                          userId: interaction.user.id,
+                          channelId: channel.id,
+                          metadata: {
+                            messageId: finalMessage.id,
+                            roleCount: state.roles.size,
+                            roles: Array.from(state.roles.entries()),
+                          },
+                        });
+                      }
+                    } catch (error) {
+                      logger.error("Error posting reaction role message:", error);
+                      await channelInteraction.editReply({
+                        content: "❌ Failed to post the message. Please check my permissions in that channel.",
+                        components: [],
+                      });
+                    }
+                  } else {
+                    await i.followUp({ content: "❌ Selected channel is not a text channel.", ephemeral: true });
+                  }
+                } catch (channelError) {
+                  logger.error("Error in channel selection:", channelError);
+                  await i.followUp({ content: "❌ Error selecting channel. Please try again.", ephemeral: true });
+                }
+              } else {
+                await i.followUp({ content: "⏰ You didn't select a channel in time.", ephemeral: true });
+              }
+              collector.stop();
+              break;
+            }
+
+            case "rr_cancel": {
+              await i.update({
+                content: "❌ Reaction role builder cancelled.",
+                embeds: [],
+                components: [],
+              });
+              collector.stop();
+              break;
+            }
           }
-
-          case "rr_color": {
-            const colorOptions = [
-              { label: "Blue", value: "0x3498db", emoji: "🔵" },
-              { label: "Green", value: "0x2ecc71", emoji: "🟢" },
-              { label: "Red", value: "0xe74c3c", emoji: "🔴" },
-              { label: "Purple", value: "0x9b59b6", emoji: "🟣" },
-              { label: "Orange", value: "0xe67e22", emoji: "🟠" },
-              { label: "Yellow", value: "0xf1c40f", emoji: "🟡" },
-              { label: "Pink", value: "0xe91e63", emoji: "🩷" },
-              { label: "Custom", value: "custom", emoji: "🎨" },
-            ];
-
-            const select = new StringSelectMenuBuilder()
-              .setCustomId("color_select")
-              .setPlaceholder("Choose a color...")
-              .addOptions(colorOptions);
-
-            await i.update({
-              content: "🎨 Choose a color for your embed:",
-              components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)],
-            });
-
-            const colorInteraction = await reply
-              .awaitMessageComponent({
-                componentType: ComponentType.StringSelect,
-                time: 30000,
-              })
-              .catch(() => null);
-
-            if (colorInteraction?.isStringSelectMenu()) {
+        } else if (i.isStringSelectMenu() || i.isChannelSelectMenu()) {
+          // Handle select menu interactions
+          switch (i.customId) {
+            case "color_select": {
+              logger.debug("Processing color_select interaction via collector");
+              // Acknowledge the interaction immediately to prevent other handlers from processing it
+              await i.deferUpdate();
               try {
-                if (colorInteraction.values[0] === "custom") {
+                if (i.values[0] === "custom") {
                   const modal = new ModalBuilder().setCustomId("custom_color_modal").setTitle("Custom Color");
                   const input = new TextInputBuilder()
                     .setCustomId("hex_color")
@@ -210,102 +453,69 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
                     .setRequired(true);
                   modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
 
-                  await colorInteraction.showModal(modal);
-                  const colorSubmitted = await colorInteraction.awaitModalSubmit({ time: 60000 }).catch(() => null);
+                  await i.showModal(modal);
+                  const colorSubmitted = await i.awaitModalSubmit({ time: 60000 }).catch(() => null);
                   if (colorSubmitted) {
                     await colorSubmitted.deferUpdate();
                     const color = colorSubmitted.fields.getTextInputValue("hex_color");
                     if (/^#?[0-9A-F]{6}$/i.test(color)) {
                       const colorValue = color.startsWith("#") ? color : `#${color}`;
                       state.embed.setColor(colorValue as `#${string}`);
+                      logger.debug(`Set custom color to: ${colorValue}`);
                     } else {
                       await i.followUp({
                         content: "❌ Invalid hex color format. Please use format like #FF0000.",
                         ephemeral: true,
                       });
+                      return;
                     }
                   }
                 } else {
-                  await colorInteraction.deferUpdate();
-                  const colorValue = parseInt(colorInteraction.values[0]);
+                  const colorValue = parseInt(i.values[0]);
                   if (!isNaN(colorValue)) {
                     state.embed.setColor(colorValue);
+                    logger.debug(`Set predefined color to: ${colorValue}`);
                   } else {
                     await i.followUp({ content: "❌ Invalid color value selected.", ephemeral: true });
+                    return;
                   }
                 }
-                await updateMessage();
+
+                // Update the embed fields before sending
+                const rolesText =
+                  state.roles.size > 0
+                    ? [...state.roles.entries()].map(([e, r]) => `${e} → <@&${r}>`).join("\n")
+                    : "No roles added yet";
+
+                logger.debug(`Setting embed fields - rolesText: "${rolesText}", rolesSize: ${state.roles.size}`);
+
+                state.embed.setFields({
+                  name: `🎭 Roles (${state.roles.size})`,
+                  value: rolesText,
+                });
+
+                logger.debug(
+                  `About to update interaction - embedColor: ${state.embed.data.color}, embedTitle: "${state.embed.data.title}", embedFields count: ${state.embed.data.fields?.length || 0}`
+                );
+
+                // Update the interaction reply since we deferred it
+                await i.editReply({
+                  embeds: [state.embed],
+                  components: generateComponents(),
+                });
+                logger.debug("Successfully updated color");
               } catch (colorError) {
-                logger.error("Error in color selection:", colorError);
+                logger.error(
+                  `Error details - message: "${colorError instanceof Error ? colorError.message : "Unknown error"}", values: [${i.values}], embedColor: ${state.embed.data.color}`
+                );
                 await i.followUp({ content: "❌ Error setting color. Please try again.", ephemeral: true });
-                await updateMessage();
               }
-            } else {
-              await i.followUp({ content: "⏰ You didn't select a color in time.", ephemeral: true });
-              await updateMessage();
+              break;
             }
-            break;
-          }
-
-          case "rr_add_role": {
-            await i.update({
-              content: "📝 Type the emoji you want to use for this role:",
-              embeds: [],
-              components: [],
-            });
-
-            const emojiFilter = (m: Message) => m.author.id === interaction.user.id;
-            const collected = await interaction.channel
-              ?.awaitMessages({
-                filter: emojiFilter,
-                max: 1,
-                time: 30000,
-                errors: ["time"],
-              })
-              .catch(() => null);
-
-            const emojiMessage = collected?.first();
-            if (emojiMessage) {
-              await emojiMessage.delete().catch(() => {
-                // Ignore deletion errors
-              });
-            }
-
-            const emojiRaw = emojiMessage?.content;
-            if (!emojiRaw) {
-              await i.followUp({ content: "⏰ You didn't provide an emoji in time.", ephemeral: true });
-              await updateMessage();
-              return;
-            }
-
-            const emoji = parseEmoji(emojiRaw, client);
-            if (!emoji) {
-              await i.followUp({ content: "❌ That doesn't appear to be a valid emoji.", ephemeral: true });
-              await updateMessage();
-              return;
-            }
-
-            const roleSelect = new RoleSelectMenuBuilder()
-              .setCustomId("role_select")
-              .setPlaceholder("Select a role...")
-              .setMaxValues(1);
-
-            await i.editReply({
-              content: `✅ Emoji set to ${emoji.name}. Now select the role:`,
-              components: [new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(roleSelect)],
-            });
-
-            const roleInteraction = await reply
-              .awaitMessageComponent({
-                componentType: ComponentType.RoleSelect,
-                time: 30000,
-              })
-              .catch(() => null);
-
-            if (roleInteraction?.isRoleSelectMenu()) {
+            case "role_select": {
               try {
-                const roleId = roleInteraction.values[0];
-                const role = roleInteraction.guild?.roles.cache.get(roleId);
+                const roleId = i.values[0];
+                const role = i.guild?.roles.cache.get(roleId);
 
                 if (!role) {
                   await i.followUp({ content: "❌ Selected role no longer exists.", ephemeral: true });
@@ -313,113 +523,121 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
                   return;
                 }
 
-                state.roles.set(emoji.name, roleId);
-
-                await roleInteraction.update({
-                  content: `✅ Added: ${emoji.name} → **${role.name}**`,
+                // Get the emoji from the state (this would need to be stored temporarily)
+                // For now, we'll handle this in the button flow
+                await i.update({
+                  content: `✅ Role selected: **${role.name}**`,
                 });
               } catch (roleError) {
                 logger.error("Error in role selection:", roleError);
-                await i.followUp({ content: "❌ Error adding role. Please try again.", ephemeral: true });
+                await i.followUp({ content: "❌ Error selecting role. Please try again.", ephemeral: true });
               }
-            } else {
-              await i.followUp({ content: "⏰ You didn't select a role in time.", ephemeral: true });
+              await updateMessage();
+              break;
             }
-
-            await updateMessage();
-            break;
-          }
-
-          case "rr_preview": {
-            await i.deferUpdate();
-            const previewEmbed = EmbedBuilder.from(state.embed);
-            await i.followUp({
-              content: "👀 **Preview of your reaction role message:**",
-              embeds: [previewEmbed],
-              ephemeral: true,
-            });
-            break;
-          }
-
-          case "rr_post": {
-            // Check if title is set
-            if (!state.embed.data.title || state.embed.data.title === "New Reaction Role Message") {
-              await i.reply({
-                content: "❌ You need to set a title before posting. Use the 'Set Title' button first.",
-                ephemeral: true,
-              });
-              return;
-            }
-
-            if (state.roles.size === 0) {
-              await i.reply({ content: "❌ You need to add at least one role before posting.", ephemeral: true });
-              return;
-            }
-
-            const channelSelect = new ChannelSelectMenuBuilder()
-              .setCustomId("channel_select")
-              .setChannelTypes(ChannelType.GuildText)
-              .setPlaceholder("Select a channel to post the message");
-
-            await i.update({
-              content: "📍 Select a channel to post your reaction role message:",
-              embeds: [],
-              components: [new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(channelSelect)],
-            });
-
-            const channelInteraction = await reply
-              .awaitMessageComponent({
-                componentType: ComponentType.ChannelSelect,
-                time: 60000,
-              })
-              .catch(() => null);
-
-            if (channelInteraction?.isChannelSelectMenu()) {
+            case "channel_select": {
+              if (!i.isChannelSelectMenu()) {
+                await i.followUp({ content: "❌ Invalid interaction type for channel selection.", ephemeral: true });
+                return;
+              }
               try {
-                const channel = channelInteraction.channels.first();
+                const channel = i.channels.first();
                 if (channel instanceof TextChannel) {
-                  await channelInteraction.deferUpdate();
+                  await i.deferUpdate();
+
+                  // Validate that the bot can use all emojis before sending the message
+                  const invalidEmojis: string[] = [];
+                  for (const [emoji] of state.roles.entries()) {
+                    try {
+                      // Test if the bot can use this emoji
+                      const testMessage = await channel.send({ content: "Testing emoji..." });
+                      await testMessage.react(emoji);
+                      await testMessage.delete();
+                    } catch (emojiError) {
+                      invalidEmojis.push(emoji);
+                    }
+                  }
+
+                  if (invalidEmojis.length > 0) {
+                    await i.editReply({
+                      content: `❌ **Cannot use the following emojis:** ${invalidEmojis.join(", ")}\n\nPlease use emojis that are available to me in this server.`,
+                      components: [],
+                    });
+                    return;
+                  }
 
                   try {
                     const finalMessage = await channel.send({ embeds: [state.embed] });
 
-                    // Add reactions and database entries
-                    for (const [emoji, roleId] of state.roles.entries()) {
-                      await finalMessage.react(emoji);
-                      await addReactionRole(interaction, finalMessage.id, emoji, roleId);
-                    }
+                    // Add reactions and database entries with rollback on failure
+                    const addedReactions: string[] = [];
+                    const addedDbEntries: { emoji: string; roleId: string }[] = [];
 
-                    // Create reaction role message entry
-                    await createReactionRoleMessage({
-                      guildId: interaction.guild?.id ?? "",
-                      channelId: channel.id,
-                      messageId: finalMessage.id,
-                      title: state.embed.data.title ?? "Reaction Roles",
-                      description: state.embed.data.description,
-                      embedColor: state.embed.data.color?.toString(),
-                      createdBy: interaction.user.id,
-                    });
+                    try {
+                      for (const [emoji, roleId] of state.roles.entries()) {
+                        await finalMessage.react(emoji);
+                        addedReactions.push(emoji);
 
-                    await channelInteraction.editReply({
-                      content: `✅ **Success!** Reaction role message posted in ${channel}!\n🔗 [Jump to message](${finalMessage.url})`,
-                      components: [],
-                    });
+                        await addReactionRole(interaction, finalMessage.id, emoji, roleId);
+                        addedDbEntries.push({ emoji, roleId });
+                      }
 
-                    // Log the creation
-                    if (interaction.guild) {
-                      await client.logManager.log(interaction.guild.id, "REACTION_ROLE_MESSAGE_CREATE", {
-                        userId: interaction.user.id,
+                      // Create reaction role message entry
+                      await createReactionRoleMessage({
+                        guildId: interaction.guild?.id ?? "",
                         channelId: channel.id,
-                        metadata: {
-                          messageId: finalMessage.id,
-                          roleCount: state.roles.size,
-                          roles: Array.from(state.roles.entries()),
-                        },
+                        messageId: finalMessage.id,
+                        title: state.embed.data.title ?? "Reaction Roles",
+                        description: state.embed.data.description,
+                        embedColor: state.embed.data.color?.toString(),
+                        createdBy: interaction.user.id,
                       });
+
+                      await i.editReply({
+                        content: `✅ **Success!** Reaction role message posted in ${channel}!\n🔗 [Jump to message](${finalMessage.url})`,
+                        components: [],
+                      });
+
+                      // Log the creation
+                      if (interaction.guild) {
+                        await client.logManager.log(interaction.guild.id, "REACTION_ROLE_MESSAGE_CREATE", {
+                          userId: interaction.user.id,
+                          channelId: channel.id,
+                          metadata: {
+                            messageId: finalMessage.id,
+                            roleCount: state.roles.size,
+                            roles: Array.from(state.roles.entries()),
+                          },
+                        });
+                      }
+                    } catch (reactionError) {
+                      logger.error("Error adding reactions:", reactionError);
+
+                      // Rollback: Delete the message and remove database entries
+                      try {
+                        await finalMessage.delete();
+                      } catch (deleteError) {
+                        logger.error("Failed to delete message during rollback:", deleteError);
+                      }
+
+                      // Remove any database entries that were created
+                      for (const { emoji, roleId } of addedDbEntries) {
+                        try {
+                          await removeReactionRole(client, finalMessage.id, emoji);
+                        } catch (dbError) {
+                          logger.error("Failed to remove database entry during rollback:", dbError);
+                        }
+                      }
+
+                      await i.editReply({
+                        content: `❌ **Failed to add reactions.** The message was deleted.\n\nError: ${reactionError instanceof Error ? reactionError.message : "Unknown error"}`,
+                        components: [],
+                      });
+                      return;
                     }
-                  } catch (error) {
-                    logger.error("Error posting reaction role message:", error);
-                    await channelInteraction.editReply({
+                  } catch (messageError) {
+                    logger.error("Error posting reaction role message:", messageError);
+                    await i.editReply({
                       content: "❌ Failed to post the message. Please check my permissions in that channel.",
                       components: [],
                     });
@@ -431,21 +649,9 @@ async function handleMessageCreate(client: Client, interaction: GuildChatInputCo
                 logger.error("Error in channel selection:", channelError);
                 await i.followUp({ content: "❌ Error selecting channel. Please try again.", ephemeral: true });
               }
-            } else {
-              await i.followUp({ content: "⏰ You didn't select a channel in time.", ephemeral: true });
+              collector.stop();
+              break;
             }
-            collector.stop();
-            break;
-          }
-
-          case "rr_cancel": {
-            await i.update({
-              content: "❌ Reaction role builder cancelled.",
-              embeds: [],
-              components: [],
-            });
-            collector.stop();
-            break;
           }
         }
       } catch (error) {

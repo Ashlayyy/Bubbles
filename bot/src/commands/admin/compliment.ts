@@ -1,4 +1,4 @@
-import { ChannelType, EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import { ComplimentWheelService } from "../../services/complimentWheelService.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
@@ -208,31 +208,6 @@ export default new ComplimentCommand();
 export const builder = new SlashCommandBuilder()
   .setName("compliment")
   .setDescription("Manage the compliment wheel system")
-  .addSubcommand((sub) =>
-    sub
-      .setName("setup")
-      .setDescription("Set up the compliment wheel")
-      .addStringOption((opt) =>
-        opt.setName("message_id").setDescription("ID of the message to monitor for reactions").setRequired(true)
-      )
-      .addChannelOption((opt) =>
-        opt
-          .setName("channel")
-          .setDescription("Channel where the message to monitor is located")
-          .addChannelTypes(ChannelType.GuildText)
-          .setRequired(true)
-      )
-      .addChannelOption((opt) =>
-        opt
-          .setName("compliment_channel")
-          .setDescription("Channel where daily compliments will be sent")
-          .addChannelTypes(ChannelType.GuildText)
-          .setRequired(true)
-      )
-      .addStringOption((opt) =>
-        opt.setName("emoji").setDescription("Emoji to monitor for reactions (e.g., ❤️, 👍, 🎉)").setRequired(true)
-      )
-  )
   .addSubcommand((sub) => sub.setName("reset").setDescription("Reset the compliment wheel and start a new cycle"))
   .addSubcommand((sub) => sub.setName("test").setDescription("Perform an instant test round of the compliment wheel"))
   .addSubcommand((sub) =>

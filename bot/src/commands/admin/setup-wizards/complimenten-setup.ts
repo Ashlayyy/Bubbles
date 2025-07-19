@@ -136,10 +136,18 @@ async function startComplimentenWizard(client: Client, interaction: ChatInputCom
     await interaction.followUp({ embeds: [wizardEmbed], components: components, ephemeral: true });
   }
 
+  logger.debug("Creating message component collector for compliment wizard");
   const collector = interaction.channel?.createMessageComponentCollector({
     time: 300000, // 5 minutes
     filter: (i) => i.user.id === interaction.user.id,
   });
+
+  if (!collector) {
+    logger.error("Failed to create collector - channel is null");
+    return;
+  }
+
+  logger.debug("Collector created successfully");
 
   // Store wizard state
   const wizardState: ComplimentWizardState = {
@@ -151,12 +159,15 @@ async function startComplimentenWizard(client: Client, interaction: ChatInputCom
     embed: {
       title: "🎉 Persoon van de dag!",
       description:
-        "<@USER_ID> is de persoon van de dag!\n*Geef zoveel complimenten als je wilt, zolang ze maar over <@USER_ID}> gaan!*",
+        "<@USER_ID> is de persoon van de dag!\n*Geef zoveel complimenten als je wilt, zolang ze maar over <@USER_ID> gaan!*",
       color: WIZARD_COLORS.PRIMARY,
     },
   };
 
   collector?.on("collect", (interactionComponent: any) => {
+    logger.debug(
+      `Collector received interaction: ${interactionComponent.customId} (type: ${interactionComponent.constructor.name})`
+    );
     void (async () => {
       try {
         if (interactionComponent.isChannelSelectMenu()) {
@@ -193,9 +204,24 @@ async function startComplimentenWizard(client: Client, interaction: ChatInputCom
         } else if (interactionComponent.isButton()) {
           const btn = interactionComponent;
           switch (btn.customId) {
-            case "compliment_embed_edit":
+            case "compliment_embed_edit": {
               await showEmbedEditModal(btn, wizardState);
+              // Wait for modal submission
+              const modalSubmitted = await btn
+                .awaitModalSubmit({
+                  time: 60000,
+                  filter: (i) => i.customId === "compliment_embed_modal" && i.user.id === interaction.user.id,
+                })
+                .catch(() => null);
+
+              if (modalSubmitted) {
+                logger.debug("Modal submitted via awaitModalSubmit, processing...");
+                await handleEmbedEditModalSubmit(modalSubmitted, wizardState);
+              } else {
+                logger.debug("Modal submission timed out or was cancelled");
+              }
               break;
+            }
             case "compliment_setup_config":
               await showConfigModal(btn);
               break;
@@ -214,17 +240,11 @@ async function startComplimentenWizard(client: Client, interaction: ChatInputCom
           }
         } else if (interactionComponent.isModalSubmit()) {
           const modal = interactionComponent;
-          if (modal.customId === "compliment_embed_modal") {
-            await handleEmbedEditModalSubmit(modal, wizardState);
-            // Show ephemeral preview
-            const previewEmbed = new EmbedBuilder()
-              .setTitle(wizardState.embed.title)
-              .setDescription(wizardState.embed.description)
-              .setColor(wizardState.embed.color);
-            await modal.reply({ embeds: [previewEmbed], ephemeral: true, content: "(Preview)" });
-          } else if (modal.customId === "compliment_config_modal") {
-            await handleConfigModalSubmit(client, modal, wizardState);
-          }
+          logger.debug(
+            `Compliment wizard received modal: ${modal.customId} (this should not happen with awaitModalSubmit)`
+          );
+          // Modals should be handled by awaitModalSubmit, not the collector
+          // This is just a fallback in case something goes wrong
         }
       } catch (error) {
         logger.error("Compliment wizard error:", error);
@@ -272,10 +292,64 @@ async function showEmbedEditModal(interaction: ButtonInteraction, wizardState: C
 }
 
 async function handleEmbedEditModalSubmit(modal: ModalSubmitInteraction, wizardState: ComplimentWizardState) {
-  wizardState.embed.title = modal.fields.getTextInputValue("embed_title");
-  wizardState.embed.description = modal.fields.getTextInputValue("embed_desc");
-  const colorStr = modal.fields.getTextInputValue("embed_color").replace("#", "");
-  wizardState.embed.color = parseInt(colorStr, 16) || WIZARD_COLORS.PRIMARY;
+  logger.debug("handleEmbedEditModalSubmit called");
+  try {
+    logger.debug("Extracting modal fields");
+    const newTitle = modal.fields.getTextInputValue("embed_title");
+    const newDescription = modal.fields.getTextInputValue("embed_desc");
+    const colorStr = modal.fields.getTextInputValue("embed_color").replace("#", "");
+    const newColor = parseInt(colorStr, 16) || WIZARD_COLORS.PRIMARY;
+
+    logger.debug("Modal field values:", {
+      title: newTitle,
+      description: newDescription.substring(0, 50) + "...",
+      colorStr,
+      newColor: `#${newColor.toString(16).padStart(6, "0")}`,
+    });
+
+    // Validate color
+    if (isNaN(newColor) || newColor < 0 || newColor > 0xffffff) {
+      await modal.reply({
+        content: "❌ Invalid color format. Please use a valid hex color (e.g., #00bfff).",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Update wizard state
+    wizardState.embed.title = newTitle;
+    wizardState.embed.description = newDescription;
+    wizardState.embed.color = newColor;
+
+    // Log the changes
+    logger.info(`Compliment wheel embed updated by ${modal.user.tag} in guild ${modal.guild?.name}:`, {
+      title: newTitle,
+      description: newDescription.substring(0, 100) + (newDescription.length > 100 ? "..." : ""),
+      color: `#${newColor.toString(16).padStart(6, "0")}`,
+    });
+
+    // Show preview and confirmation
+    const previewEmbed = new EmbedBuilder()
+      .setTitle(newTitle)
+      .setDescription(newDescription)
+      .setColor(newColor)
+      .setFooter({ text: "Preview - Embed settings updated successfully!" });
+
+    logger.debug("About to send modal reply");
+    await modal.reply({
+      embeds: [previewEmbed],
+      ephemeral: true,
+      content: "✅ Embed settings have been updated successfully!",
+    });
+    logger.debug("Modal reply sent successfully");
+  } catch (error) {
+    logger.error("Error handling embed edit modal:", error);
+    await modal.reply({
+      content: "❌ Failed to update embed settings. Please try again.",
+      ephemeral: true,
+    });
+  }
+  logger.debug("handleEmbedEditModalSubmit completed");
 }
 
 async function showConfigModal(interaction: ButtonInteraction): Promise<void> {
