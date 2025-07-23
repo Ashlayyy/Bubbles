@@ -442,50 +442,229 @@ async function handleMessageList(client: Client, interaction: GuildChatInputComm
 }
 
 async function handleMessageDelete(client: Client, interaction: GuildChatInputCommandInteraction) {
-  const messageId = interaction.options.getString("message-id", true);
+  const messageIds = interaction.options.getString("message_ids", true).split(/[,\s]+/).filter(id => id.trim());
+  const skipConfirmation = interaction.options.getBoolean("skip_confirmation") ?? false;
 
   await interaction.deferReply({ ephemeral: true });
 
-  try {
-    const message = await findMessageById(interaction.guild ?? ({} as Guild), messageId);
-    if (!message) {
-      await interaction.followUp({
-        content: "❌ Could not find a message with that ID in this server.",
-        ephemeral: true,
-      });
-      return;
-    }
-
-    // Delete from database
-    await deleteReactionRoleMessage(messageId);
-
-    // Try to delete the actual Discord message
-    try {
-      await message.delete();
-    } catch (error) {
-      logger.warn("Could not delete Discord message:", error);
-    }
-
+  if (messageIds.length === 0) {
     await interaction.followUp({
-      content: "✅ Reaction role message deleted successfully!",
+      content: "❌ Please provide at least one valid message ID.",
       ephemeral: true,
     });
+    return;
+  }
 
-    // Log the deletion
-    if (interaction.guild) {
-      await client.logManager.log(interaction.guild.id, "REACTION_ROLE_MESSAGE_DELETE", {
-        userId: interaction.user.id,
-        channelId: message.channelId,
-        metadata: {
-          messageId: messageId,
-          deletedAt: new Date().toISOString(),
-        },
+  if (messageIds.length > 10) {
+    await interaction.followUp({
+      content: "❌ You can only delete up to 10 messages at once.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  try {
+    // Find all messages and get their reaction role info
+    const messagesToDelete: Array<{
+      message: Message;
+      reactionRoles: any[];
+      reactionRoleMessage: any;
+    }> = [];
+
+    for (const messageId of messageIds) {
+      const message = await findMessageById(interaction.guild ?? ({} as Guild), messageId);
+      if (!message) {
+        await interaction.followUp({
+          content: `❌ Could not find message with ID \`${messageId}\` in this server.`,
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Get reaction roles for this message
+      const reactionRoles = await getReactionRolesByMessage(messageId);
+      
+      // Get reaction role message info if it exists
+      const reactionRoleMessage = await prisma.reactionRoleMessage.findUnique({
+        where: { messageId },
+      });
+
+      messagesToDelete.push({
+        message,
+        reactionRoles,
+        reactionRoleMessage,
       });
     }
+
+    // Show preview unless skipping confirmation
+    if (!skipConfirmation) {
+      const previewEmbed = new EmbedBuilder()
+        .setTitle("🗑️ Delete Reaction Role Messages - Preview")
+        .setColor(0xe74c3c)
+        .setDescription(`You are about to delete **${messagesToDelete.length}** reaction role message${messagesToDelete.length === 1 ? "" : "s"}:`)
+        .setTimestamp();
+
+      const messageFields = messagesToDelete.map((item, index) => {
+        const channel = client.channels.cache.get(item.message.channelId);
+        const roleCount = item.reactionRoles.reduce((total, rr) => total + rr.roleIds.length, 0);
+        const emojiCount = item.reactionRoles.length;
+        
+        return {
+          name: `${index + 1}. ${item.reactionRoleMessage?.title || "Reaction Role Message"}`,
+          value: [
+            `**Channel:** ${channel ? `<#${item.message.channelId}>` : "Unknown Channel"}`,
+            `**Message:** [Jump to Message](${item.message.url})`,
+            `**Emojis:** ${emojiCount} reaction${emojiCount === 1 ? "" : "s"}`,
+            `**Roles:** ${roleCount} role assignment${roleCount === 1 ? "" : "s"}`,
+            `**Created:** <t:${Math.floor(item.message.createdTimestamp / 1000)}:R>`,
+          ].join("\n"),
+          inline: false,
+        };
+      });
+
+      previewEmbed.addFields(messageFields);
+      previewEmbed.addFields({
+        name: "⚠️ Important",
+        value: [
+          "• The Discord messages will be **permanently deleted**",
+          "• All reactions will be removed from the messages",
+          "• Database entries will be removed",
+          "• **User roles will NOT be removed** - users keep their assigned roles",
+          "• This action cannot be undone",
+        ].join("\n"),
+        inline: false,
+      });
+
+      const confirmButton = new ButtonBuilder()
+        .setCustomId("confirm_delete")
+        .setLabel("🗑️ Delete Messages")
+        .setStyle(ButtonStyle.Danger);
+
+      const cancelButton = new ButtonBuilder()
+        .setCustomId("cancel_delete")
+        .setLabel("❌ Cancel")
+        .setStyle(ButtonStyle.Secondary);
+
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(confirmButton, cancelButton);
+
+      const previewReply = await interaction.followUp({
+        embeds: [previewEmbed],
+        components: [row],
+        ephemeral: true,
+      });
+
+      // Wait for confirmation
+      const confirmation = await previewReply.awaitMessageComponent({
+        componentType: ComponentType.Button,
+        time: 60000,
+      }).catch(() => null);
+
+      if (!confirmation) {
+        await interaction.editReply({
+          content: "⏰ Deletion cancelled - confirmation timed out after 1 minute.",
+          embeds: [],
+          components: [],
+        });
+        return;
+      }
+
+      if (confirmation.customId === "cancel_delete") {
+        await confirmation.update({
+          content: "❌ Deletion cancelled by user.",
+          embeds: [],
+          components: [],
+        });
+        return;
+      }
+
+      await confirmation.deferUpdate();
+    }
+
+    // Perform the deletion
+    let successCount = 0;
+    let failedMessages: string[] = [];
+
+    for (const item of messagesToDelete) {
+      try {
+        // Delete from database first
+        await deleteReactionRoleMessage(item.message.id);
+
+        // Try to delete the actual Discord message
+        try {
+          await item.message.delete();
+          successCount++;
+        } catch (error) {
+          logger.warn(`Could not delete Discord message ${item.message.id}:`, error);
+          failedMessages.push(`${item.message.id} (Discord deletion failed)`);
+        }
+
+        // Log the deletion
+        if (interaction.guild) {
+          await client.logManager.log(interaction.guild.id, "REACTION_ROLE_MESSAGE_DELETE", {
+            userId: interaction.user.id,
+            channelId: item.message.channelId,
+            metadata: {
+              messageId: item.message.id,
+              title: item.reactionRoleMessage?.title,
+              roleCount: item.reactionRoles.reduce((total, rr) => total + rr.roleIds.length, 0),
+              emojiCount: item.reactionRoles.length,
+              deletedAt: new Date().toISOString(),
+            },
+          });
+        }
+      } catch (error) {
+        logger.error(`Error deleting reaction role message ${item.message.id}:`, error);
+        failedMessages.push(`${item.message.id} (Database error)`);
+      }
+    }
+
+    // Create result embed
+    const resultEmbed = new EmbedBuilder()
+      .setTimestamp();
+
+    if (successCount === messagesToDelete.length) {
+      resultEmbed
+        .setTitle("✅ Messages Deleted Successfully")
+        .setColor(0x2ecc71)
+        .setDescription(`Successfully deleted **${successCount}** reaction role message${successCount === 1 ? "" : "s"}.`);
+    } else if (successCount > 0) {
+      resultEmbed
+        .setTitle("⚠️ Partial Success")
+        .setColor(0xf39c12)
+        .setDescription(`Successfully deleted **${successCount}** out of **${messagesToDelete.length}** messages.`)
+        .addFields({
+          name: "❌ Failed Messages",
+          value: failedMessages.join("\n") || "None",
+          inline: false,
+        });
+    } else {
+      resultEmbed
+        .setTitle("❌ Deletion Failed")
+        .setColor(0xe74c3c)
+        .setDescription("Failed to delete any messages.")
+        .addFields({
+          name: "❌ Failed Messages",
+          value: failedMessages.join("\n") || "All messages failed",
+          inline: false,
+        });
+    }
+
+    resultEmbed.addFields({
+      name: "ℹ️ Note",
+      value: "Users who had roles from these reaction role messages still keep their roles.",
+      inline: false,
+    });
+
+    if (skipConfirmation) {
+      await interaction.followUp({ embeds: [resultEmbed], ephemeral: true });
+    } else {
+      await interaction.editReply({ embeds: [resultEmbed], components: [] });
+    }
+
   } catch (error) {
-    logger.error("Error deleting reaction role message:", error);
+    logger.error("Error in handleMessageDelete:", error);
     await interaction.followUp({
-      content: "❌ Failed to delete the reaction role message.",
+      content: `❌ Failed to delete reaction role messages: ${error instanceof Error ? error.message : "Unknown error"}`,
       ephemeral: true,
     });
   }
@@ -689,6 +868,11 @@ export class ReactionRolesCommand extends AdminCommand {
           return await this.handleRemove();
         case "clear":
           return await this.handleClear();
+        case "delete":
+          await handleMessageDelete(this.client, this.interaction as GuildChatInputCommandInteraction);
+          return { content: "🔧 Message deletion process started.", ephemeral: true };
+        case "help":
+          return { embeds: [createDeletionHelpEmbed()], ephemeral: true };
         default:
           return {
             content: "❌ Unknown subcommand",
@@ -817,8 +1001,13 @@ export class ReactionRolesCommand extends AdminCommand {
 
         const embed = new EmbedBuilder()
           .setColor(0xe74c3c)
-          .setTitle("❌ Reaction Role Removed")
-          .setDescription(`Removed reaction role for emoji \`${emoji}\` on message \`${messageId}\`.`)
+          .setTitle("❌ Reaction Role Mapping Removed")
+          .setDescription(`Removed reaction role mapping for emoji \`${emoji}\` on message \`${messageId}\`.`)
+          .addFields({
+            name: "ℹ️ Note",
+            value: "The message and its reactions remain. Only the role assignment was removed. Use `/reactionroles delete` to delete the entire message.",
+            inline: false,
+          })
           .setTimestamp();
 
         // Log removal
@@ -850,10 +1039,15 @@ export class ReactionRolesCommand extends AdminCommand {
 
         const embed = new EmbedBuilder()
           .setColor(0xe74c3c)
-          .setTitle("❌ Reaction Roles Removed")
+          .setTitle("❌ Reaction Role Mappings Removed")
           .setDescription(
-            `Removed **${deleted.count}** reaction role${deleted.count === 1 ? "" : "s"} from message \`${messageId}\`.`
+            `Removed **${deleted.count}** reaction role mapping${deleted.count === 1 ? "" : "s"} from message \`${messageId}\`.`
           )
+          .addFields({
+            name: "ℹ️ Note",
+            value: "The message and its reactions remain. Only the role assignments were removed. Use `/reactionroles delete` to delete the entire message.",
+            inline: false,
+          })
           .setTimestamp();
 
         // Log removal
@@ -896,15 +1090,20 @@ export class ReactionRolesCommand extends AdminCommand {
 
       const embed = new EmbedBuilder()
         .setColor(0xe74c3c)
-        .setTitle("🧹 Reaction Roles Cleared")
+        .setTitle("🧹 Reaction Role Mappings Cleared")
         .setDescription(
           channelId
-            ? `Removed **${deleted.count}** reaction role${deleted.count === 1 ? "" : "s"} from <#${channelId}>.`
-            : `Removed **${deleted.count}** reaction role${deleted.count === 1 ? "" : "s"} from this server.`
+            ? `Removed **${deleted.count}** reaction role mapping${deleted.count === 1 ? "" : "s"} from <#${channelId}>.`
+            : `Removed **${deleted.count}** reaction role mapping${deleted.count === 1 ? "" : "s"} from this server.`
         )
         .addFields({
           name: "⚠️ Important",
           value: "This action cannot be undone. You'll need to recreate any reaction roles you want to keep.",
+          inline: false,
+        },
+        {
+          name: "ℹ️ Note",
+          value: "The messages and their reactions remain. Only the role assignments were removed. Use `/reactionroles delete` to delete entire messages.",
           inline: false,
         })
         .setTimestamp();
@@ -952,6 +1151,50 @@ export class ReactionRolesCommand extends AdminCommand {
   }
 }
 
+// Helper function to show deletion options help
+function createDeletionHelpEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setTitle("🎭 Reaction Roles - Deletion Options")
+    .setColor(0x3498db)
+    .setDescription("Choose the right deletion method for your needs:")
+    .addFields(
+      {
+        name: "🔧 `/reactionroles remove`",
+        value: [
+          "**What it does:** Removes role assignments from reactions",
+          "**Message:** Stays intact",
+          "**Reactions:** Stay on the message",
+          "**User roles:** Users keep their roles",
+          "**Use when:** You want to stop new role assignments but keep the message",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "🧹 `/reactionroles clear`",
+        value: [
+          "**What it does:** Removes all reaction role mappings",
+          "**Message:** Stays intact",
+          "**Reactions:** Stay on the message",
+          "**User roles:** Users keep their roles",
+          "**Use when:** You want to clear all reaction roles from a channel/server",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "🗑️ `/reactionroles delete`",
+        value: [
+          "**What it does:** Completely deletes the message and all data",
+          "**Message:** Permanently deleted",
+          "**Reactions:** Removed (message is gone)",
+          "**User roles:** Users keep their roles",
+          "**Use when:** You want to completely remove the reaction role message",
+        ].join("\n"),
+        inline: false,
+      }
+    )
+    .setFooter({ text: "💡 Tip: User roles are preserved in all deletion methods" });
+}
+
 // Export the command instance
 export default new ReactionRolesCommand();
 
@@ -960,10 +1203,11 @@ export const builder = new SlashCommandBuilder()
   .setName("reactionroles")
   .setDescription("ADMIN ONLY: Manage reaction role system")
   .addSubcommand((sub) => sub.setName("list").setDescription("List all reaction roles in this server"))
+  .addSubcommand((sub) => sub.setName("help").setDescription("Show help for deletion options"))
   .addSubcommand((sub) =>
     sub
       .setName("remove")
-      .setDescription("Remove reaction role(s) from a message")
+      .setDescription("Remove reaction role mappings (keeps message, removes role assignments)")
       .addStringOption((opt) =>
         opt.setName("message_id").setDescription("ID of the message to remove reaction roles from").setRequired(true)
       )
@@ -974,9 +1218,26 @@ export const builder = new SlashCommandBuilder()
   .addSubcommand((sub) =>
     sub
       .setName("clear")
-      .setDescription("Clear reaction roles from channel or entire server")
+      .setDescription("Clear all reaction role mappings from channel/server (keeps messages)")
       .addStringOption((opt) =>
         opt.setName("channel_id").setDescription("Channel ID to clear (leave empty to clear entire server)")
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("delete")
+      .setDescription("Delete entire reaction role messages (preserves user roles)")
+      .addStringOption((opt) =>
+        opt
+          .setName("message_ids")
+          .setDescription("Message ID(s) to delete (comma or space separated, max 10)")
+          .setRequired(true)
+      )
+      .addBooleanOption((opt) =>
+        opt
+          .setName("skip_confirmation")
+          .setDescription("Skip confirmation dialog (use with caution)")
+          .setRequired(false)
       )
   )
   .addSubcommand((sub) => sub.setName("create").setDescription("Create a new reaction role message (wizard)"));
