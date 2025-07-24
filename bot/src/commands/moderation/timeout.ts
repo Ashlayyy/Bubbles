@@ -29,10 +29,7 @@ export class TimeoutCommand extends ModerationCommand {
       throw new Error("This command only supports slash command format");
     }
 
-    const singleUser = this.getUserOption("user");
-    const idsInput = this.getStringOption("users");
-    const listAttachment = this.getAttachmentOption("list");
-
+    const targetUser = this.getUserOption("user", true);
     const durationStr = this.getStringOption("duration", true);
     const reasonInput = this.getStringOption("reason") ?? "No reason provided";
     const evidenceStr = this.getStringOption("evidence");
@@ -44,7 +41,7 @@ export class TimeoutCommand extends ModerationCommand {
       if (duration === null) {
         return this.createModerationError(
           "timeout",
-          this.user,
+          targetUser,
           `❌ Invalid duration format: **${durationStr}**\n\n` +
             `**Correct format examples:**\n` +
             `• \`30m\` - 30 minutes\n` +
@@ -60,7 +57,7 @@ export class TimeoutCommand extends ModerationCommand {
       if (duration > maxDuration) {
         return this.createModerationError(
           "timeout",
-          this.user,
+          targetUser,
           `❌ Timeout duration cannot exceed **28 days**.\n\n` +
             `**Requested:** ${this.formatDuration(duration)}\n` +
             `**Maximum allowed:** 28 days\n\n` +
@@ -68,133 +65,66 @@ export class TimeoutCommand extends ModerationCommand {
         );
       }
 
-      // Build target ID list
-      const idSet = new Set<string>();
-      if (singleUser) idSet.add(singleUser.id);
-      if (idsInput) {
-        idsInput
-          .split(/[\s,]+/)
-          .map((id) => id.trim())
-          .filter((id) => /^\d{17,20}$/.test(id))
-          .forEach((id) => idSet.add(id));
-      }
-
-      if (listAttachment) {
-        const contentType = listAttachment.contentType ?? "";
-        const fileName = listAttachment.name;
-        const isTxtOrCsv = /text\/(plain|csv)/i.test(contentType) || /\.(txt|csv)$/i.test(fileName);
-
-        if (!isTxtOrCsv) {
-          return this.createModerationError("timeout", this.user, "Unsupported attachment type. Only .txt/.csv");
-        }
-
-        try {
-          const txt = await (await fetch(listAttachment.url)).text();
-          txt
-            .split(/[\s,\n]+/)
-            .map((id) => id.trim())
-            .filter((id) => /^\d{17,20}$/.test(id))
-            .forEach((id) => idSet.add(id));
-        } catch {
-          return this.createModerationError("timeout", this.user, "Failed to download or parse attachment");
-        }
-      }
-
-      const targetIds = Array.from(idSet);
-
-      if (targetIds.length === 0) {
-        return this.createModerationError("timeout", this.user, "No valid target IDs provided.");
-      }
-
-      let success = 0;
-      let failed = 0;
-
-      // Offload to queue when many IDs
-      if (targetIds.length > 25 && this.client.queueService?.isReady()) {
-        for (const id of targetIds) {
-          const fetched: User | null = await this.client.users.fetch(id).catch(() => null);
-          const displayUser = fetched ?? ({ id, username: "Unknown" } as User);
-
-          const resolvedReason = await expandAlias(reasonInput, {
-            guild: this.guild,
-            user: displayUser,
-            moderator: this.user,
-          });
-
-          void this.client.queueService.processRequest({
-            type: "TIMEOUT_USER",
-            data: { targetUserId: id, reason: resolvedReason, duration },
-            source: "internal",
-            userId: this.user.id,
-            guildId: this.guild.id,
-          });
-        }
-
-        return buildModSuccess({
-          title: "Timeout Queued",
-          target: this.user,
-          moderator: this.user,
-          reason: `Queued ${targetIds.length} users for timeout`,
-        });
-      }
-
-      for (const id of targetIds) {
-        const member = await this.guild.members.fetch(id).catch(() => null);
-        if (!member) {
-          failed++;
-          continue;
-        }
-
-        try {
-          this.validateModerationTarget(member);
-        } catch {
-          failed++;
-          continue;
-        }
-
-        const fetchedUser: User | null = await this.client.users.fetch(id).catch(() => null);
-        const displayUser = fetchedUser ?? ({ id, username: "Unknown" } as User);
-
-        const reason = await expandAlias(reasonInput, {
-          guild: this.guild,
-          user: displayUser,
-          moderator: this.user,
-        });
-
-        const evidence = parseEvidence(evidenceStr ?? undefined);
-
-        await this.client.moderationManager.timeout(
-          this.guild,
-          id,
-          this.user.id,
-          duration,
-          reason,
-          evidence.all.length > 0 ? evidence.all : undefined,
-          !silent,
-          {
-            interactionId: this.interaction.id,
-            commandName: this.interaction.commandName,
-            interactionLatency: Date.now() - this.interaction.createdTimestamp,
-          }
+      // Get the guild member
+      const member = await this.guild.members.fetch(targetUser.id).catch(() => null);
+      if (!member) {
+        return this.createModerationError(
+          "timeout",
+          targetUser,
+          `❌ **${targetUser.username}** is not a member of this server.`
         );
-
-        success++;
       }
+
+      try {
+        this.validateModerationTarget(member);
+      } catch (error) {
+        return this.createModerationError(
+          "timeout",
+          targetUser,
+          `❌ Cannot timeout **${targetUser.username}**\n\n` +
+            `**Reason:** ${error instanceof Error ? error.message : "Unknown error"}\n\n` +
+            `💡 **Tip:** Only users with lower roles can be timed out.`
+        );
+      }
+
+      const reason = await expandAlias(reasonInput, {
+        guild: this.guild,
+        user: targetUser,
+        moderator: this.user,
+      });
+
+      const evidence = parseEvidence(evidenceStr ?? undefined);
+
+      const case_ = await this.client.moderationManager.timeout(
+        this.guild,
+        targetUser.id,
+        this.user.id,
+        duration,
+        reason,
+        evidence.all.length > 0 ? evidence.all : undefined,
+        !silent,
+        {
+          interactionId: this.interaction.id,
+          commandName: this.interaction.commandName,
+          interactionLatency: Date.now() - this.interaction.createdTimestamp,
+        }
+      );
 
       return buildModSuccess({
-        title: "Timeout Complete",
-        target: this.user,
+        title: `Timeout (${this.formatDuration(duration)}) | Case #${case_.caseNumber}`,
+        target: targetUser,
         moderator: this.user,
-        reason: `Timed out ${success}/${targetIds.length} users (${failed} failed).`,
+        reason,
         duration,
         notified: !silent,
+        caseNumber: case_.caseNumber,
       });
     } catch (error) {
       if (error instanceof Error && error.message.includes("hierarchy")) {
         return this.createModerationError(
           "timeout",
-          this.user,
-          `❌ Cannot timeout **${this.user.username}**\n\n` +
+          targetUser,
+          `❌ Cannot timeout **${targetUser.username}**\n\n` +
             `**Reason:** User has equal or higher permissions than you.\n\n` +
             `💡 **Tip:** Only users with lower roles can be timed out.`
         );
@@ -230,13 +160,7 @@ export default new TimeoutCommand();
 export const builder = new SlashCommandBuilder()
   .setName("timeout")
   .setDescription("Timeout a user (mute them temporarily)")
-  .addUserOption((option) => option.setName("user").setDescription("The user to timeout").setRequired(false))
-  .addStringOption((opt) =>
-    opt.setName("users").setDescription("User IDs separated by space/comma/newline to timeout").setRequired(false)
-  )
-  .addAttachmentOption((opt) =>
-    opt.setName("list").setDescription("Attachment (.txt/.csv) with user IDs").setRequired(false)
-  )
+  .addUserOption((option) => option.setName("user").setDescription("The user to timeout").setRequired(true))
   .addStringOption((option) =>
     option.setName("duration").setDescription("Duration (e.g., 1d, 3h, 30m) - max 28 days").setRequired(true)
   )
