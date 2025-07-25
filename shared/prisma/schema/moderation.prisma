@@ -21,11 +21,18 @@ model ModerationCase {
   dmSent       Boolean         @default(false)
   publicNote   String?
   staffNote    String?
+  
+  // Additional fields you requested
+  channelId    String?         // Where the action was taken
+  messageId    String?         // If related to a specific message
+  referenceCase String?        @db.ObjectId // Link to related cases (warn -> ban)
+  autoMod      Boolean         @default(false) // If triggered by automod
+  
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   notes        CaseNote[]
   appeals      CaseAppeal[]
-  logs         ModerationLog[]
+  logs         ModerationActionLog[]
 
   @@unique([guildId, caseNumber])
   @@index([guildId, userId])
@@ -65,30 +72,45 @@ model CaseAppeal {
   @@index([userId, status])
 }
 
-model ModerationLog {
+// Moderation Action Log (ONLY for moderation actions, not Discord events)
+model ModerationActionLog {
   id             String          @id @default(auto()) @map("_id") @db.ObjectId
   guildId        String
-  logType        String
-  userId         String?
-  channelId      String?
-  roleId         String?
+  actionType     String          // WARN, KICK, BAN, TIMEOUT, etc. (moderation only)
+  userId         String?         // Target user
+  channelId      String?         // Where action was taken
   caseId         String?         @db.ObjectId
   case           ModerationCase? @relation(fields: [caseId], references: [id])
+  
+  // Action details
+  reason         String?
+  duration       Int?            // For timeouts
+  severity       String?         // LOW, MEDIUM, HIGH, CRITICAL
+  
+  // Evidence and context
+  evidence       String[]        @default([])
+  context        Json?           // Additional context data
+  
+  // Executor information
+  executorId     String          // Who performed the action (required for mod actions)
+  executorType   String          @default("USER") // USER, AUTOMOD, SYSTEM
+  
+  // Legacy fields (for compatibility)
   before         Json?
   after          Json?
   metadata       Json?
   content        String?
-  attachments    String[]
-  embeds         Json[]
-  executorId     String?
-  reason         String?
+  attachments    String[]        @default([])
+  embeds         Json[]          @default([])
   sentToChannels String[]        @default([])
-  timestamp      DateTime        @default(now())
+  
+  createdAt      DateTime        @default(now())
 
-  @@index([guildId, logType])
-  @@index([guildId, timestamp])
-  @@index([userId])
-  @@index([channelId])
+  @@index([guildId, actionType])
+  @@index([guildId, createdAt])
+  @@index([userId, guildId])
+  @@index([caseId])
+  @@index([executorId])
 }
 
 model AutoModRule {

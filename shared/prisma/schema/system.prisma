@@ -1,5 +1,65 @@
 // System Models - Infrastructure and automation
 
+// Discord Event Logging System (separate from moderation)
+model DiscordEventLog {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  eventType   String    // MESSAGE_CREATE, MESSAGE_DELETE, etc.
+  userId      String?
+  channelId   String?
+  messageId   String?
+  roleId      String?
+  
+  // Event data
+  before      Json?     // Previous state (for updates/deletes)
+  after       Json?     // New state (for creates/updates)
+  metadata    Json?     // Additional event data
+  content     String?   // Message content, reason, etc.
+  attachments String[]  @default([])
+  embeds      Json[]    @default([])
+  
+  // Executor information
+  executorId  String?   // Who performed the action
+  reason      String?   // Reason for action (if applicable)
+  
+  // Retention management
+  retentionTier String   @default("FREE") // FREE, PREMIUM, ENTERPRISE
+  expiresAt   DateTime? // Auto-calculated based on tier + createdAt
+  
+  createdAt   DateTime  @default(now())
+
+  @@index([guildId, eventType, createdAt])
+  @@index([guildId, expiresAt]) // For cleanup jobs
+  @@index([createdAt]) // For global cleanup
+  @@index([retentionTier, expiresAt]) // For tier-based cleanup
+}
+
+// Retention Policy Configuration
+model DiscordEventRetention {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId           String   @unique
+  
+  // Retention periods (in days)
+  freeRetentionDays     Int   @default(3)   // Free tier: 3 days
+  premiumRetentionDays  Int   @default(14)  // Premium tier: 14 days
+  enterpriseRetentionDays Int @default(90)  // Enterprise tier: 90 days
+  
+  // Storage limits (number of events)
+  freeStorageLimit      Int?  @default(10000)   // 10k events for free
+  premiumStorageLimit   Int?  @default(100000)  // 100k events for premium
+  enterpriseStorageLimit Int? // Unlimited for enterprise
+  
+  // Guild's current tier
+  currentTier       String @default("FREE") // FREE, PREMIUM, ENTERPRISE
+  
+  // Event type filtering
+  enabledEventTypes String[] @default([]) // Empty = all enabled
+  disabledEventTypes String[] @default([]) // Specific types to disable
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
 // Queue System
 model QueueJob {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
