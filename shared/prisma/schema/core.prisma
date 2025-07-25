@@ -4,7 +4,21 @@ model GuildConfig {
   id                     String          @id @default(auto()) @map("_id") @db.ObjectId
   guildId                String          @unique
   guildName              String?         // Server name for visual identification
+  
+  // Core settings
   maxMessagesCleared     Int             @default(100)
+  preferredLanguage      String          @default("en")
+  
+  // Feature configurations (JSON objects for better organization)
+  musicSettings          Json?           // Music bot configuration
+  moderationSettings     Json?           // Moderation system configuration  
+  ticketSettings         Json?           // Ticket system configuration
+  welcomeSettings        Json?           // Welcome/goodbye configuration
+  automodSettings        Json?           // Automod configuration
+  economySettings        Json?           // Economy system configuration
+  levelsSettings         Json?           // Leveling system configuration
+  
+  // Legacy fields (consider migrating to JSON objects above)
   musicChannelId         String          @default("")
   defaultRepeatMode      Int             @default(0)
   reactionRoleChannels   String[]        @default([])
@@ -13,22 +27,21 @@ model GuildConfig {
   goodbyeChannelId       String?
   welcomeEnabled         Boolean         @default(true)
   goodbyeEnabled         Boolean         @default(true)
-  preferredLanguage      String          @default("en")
+  
   // Relations
   logSettings            LogSettings?    @relation(fields: [logSettingsId], references: [id])
-  appealSettings         AppealSettings? @relation(fields: [appealSettingsId], references: [id])
   logSettingsId          String?         @db.ObjectId
-  appealSettingsId       String?         @db.ObjectId
-  // Moderation
-  moderatorRoleIds       String[]        @default([])
-  notify_user            Boolean         @default(false)
-  moderation_case_rules  Json?
-  reportChannelId        String?
-  reportPingRoleId       String?
-  // Ticket system configuration (JSON object)
-  ticketSettings         Json?           // Structured ticket configuration
-  // Statistics
-  welcomeStats           Json?
+  automodConfig          AutomodConfig?  @relation(fields: [automodConfigId], references: [id])
+  automodConfigId        String?         @db.ObjectId
+  economyConfig          EconomyConfig?  @relation(fields: [economyConfigId], references: [id])
+  economyConfigId        String?         @db.ObjectId
+  levelsConfig           LevelsConfig?   @relation(fields: [levelsConfigId], references: [id])
+  levelsConfigId         String?         @db.ObjectId
+
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  @@index([guildId])
 }
 
 model LogSettings {

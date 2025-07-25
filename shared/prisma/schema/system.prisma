@@ -42,15 +42,13 @@ model DiscordEventRetention {
   // Retention periods (in days)
   freeRetentionDays     Int   @default(3)   // Free tier: 3 days
   premiumRetentionDays  Int   @default(14)  // Premium tier: 14 days
-  enterpriseRetentionDays Int @default(90)  // Enterprise tier: 90 days
   
   // Storage limits (number of events)
   freeStorageLimit      Int?  @default(10000)   // 10k events for free
   premiumStorageLimit   Int?  @default(100000)  // 100k events for premium
-  enterpriseStorageLimit Int? // Unlimited for enterprise
   
   // Guild's current tier
-  currentTier       String @default("FREE") // FREE, PREMIUM, ENTERPRISE
+  currentTier       String @default("FREE") // FREE, PREMIUM
   
   // Event type filtering
   enabledEventTypes String[] @default([]) // Empty = all enabled
