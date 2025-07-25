@@ -4,7 +4,6 @@ import {
   ButtonStyle,
   ChannelSelectMenuBuilder,
   ChannelType,
-  ComponentType,
   EmbedBuilder,
   type ButtonInteraction,
   type ChannelSelectMenuInteraction,
@@ -30,6 +29,19 @@ interface QueueService {
 function getQueueService(client: Client): QueueService | undefined {
   return (client as unknown as { queueService?: QueueService }).queueService;
 }
+
+// State management for the wizard
+interface LoggingWizardState {
+  selectedCategories: string[];
+  channelMappings: Record<string, string>;
+  includeHighVolume: boolean;
+  currentStep: number;
+  preset?: string;
+  testMode: boolean;
+}
+
+// Store wizard states per user
+const wizardStates = new Map<string, LoggingWizardState>();
 
 interface LoggingPreset {
   name: string;
@@ -167,6 +179,28 @@ const LOGGING_PRESETS: LoggingPreset[] = [
 export { startLoggingWizard };
 
 async function startLoggingWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    return;
+  }
+
+  // Initialize wizard state for this user
+  const stateKey = `${interaction.guild.id}-${interaction.user.id}`;
+  wizardStates.set(stateKey, {
+    selectedCategories: [],
+    channelMappings: {},
+    includeHighVolume: false,
+    currentStep: 0,
+    testMode: false,
+  });
+
+  await showMainMenu(interaction, client);
+}
+
+async function showMainMenu(
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
+  client: Client
+): Promise<void> {
   const welcomeEmbed = new EmbedBuilder()
     .setColor(WIZARD_COLORS.PRIMARY)
     .setTitle(`${WIZARD_EMOJIS.LOGGING} Logging Setup Wizard`)
@@ -178,8 +212,9 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
         "🔹 **Event Categories** - Choose what to track\n" +
         "🔹 **Channel Routing** - Where to send logs\n" +
         "🔹 **Volume Control** - Manage high-volume events\n" +
+        "🔹 **Test Mode** - Preview logs before going live\n" +
         "🔹 **Custom Settings** - Fine-tune your setup\n\n" +
-        "**Estimated time:** 2-3 minutes"
+        "**Estimated time:** 3-5 minutes"
     )
     .addFields(
       {
@@ -188,6 +223,7 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
           "• Which event categories to log\n" +
           "• Channel assignments for different log types\n" +
           "• High-volume event filtering\n" +
+          "• Test logs to verify setup\n" +
           "• Custom log formats and settings",
         inline: true,
       },
@@ -196,7 +232,8 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
         value:
           "• **Preset Templates** - Pre-configured setups\n" +
           "• **Custom Configuration** - Build your own\n" +
-          "• **Quick Setup** - Essential logging only",
+          "• **Quick Setup** - Essential logging only\n" +
+          "• **Test Mode** - Preview before applying",
         inline: true,
       }
     )
@@ -215,7 +252,7 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
     await interaction.reply({
       embeds: [welcomeEmbed],
       components: [buttons],
-      flags: 64, // Use flags instead of ephemeral
+      flags: 64,
     });
   } else if (interaction.deferred) {
     await interaction.editReply({
@@ -223,82 +260,18 @@ async function startLoggingWizard(client: Client, interaction: ChatInputCommandI
       components: [buttons],
     });
   } else {
-    // If already replied, send a follow-up
     await interaction.followUp({
       embeds: [welcomeEmbed],
       components: [buttons],
-      flags: 64, // Use flags instead of ephemeral
+      flags: 64,
     });
   }
 
-  // Set up collector for button interactions
-  const collector = interaction.channel?.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    time: 300000, // 5 minutes
-    filter: (i) => i.user.id === interaction.user.id,
-  });
-
-  collector?.on("collect", (buttonInteraction: ButtonInteraction) => {
-    void (async () => {
-      try {
-        switch (buttonInteraction.customId) {
-          case "logging_wizard_presets":
-            await showPresetSelection(buttonInteraction);
-            break;
-          case "logging_wizard_custom":
-            await startCustomSetup(buttonInteraction);
-            break;
-          case "logging_wizard_help":
-            await showLoggingHelp(buttonInteraction);
-            break;
-          case "logging_wizard_back":
-            await showMainMenu(buttonInteraction);
-            break;
-          case "logging_quick_setup":
-            await performQuickSetup(buttonInteraction, client);
-            break;
-          case "logging_step1_categories":
-            await showCategorySelection(buttonInteraction);
-            break;
-          case "logging_next_step":
-            await handleNextStep(buttonInteraction, client);
-            break;
-          default:
-            if (buttonInteraction.customId.startsWith("preset_")) {
-              await handlePresetSelection(buttonInteraction, client);
-            } else if (buttonInteraction.customId.startsWith("cat_")) {
-              await handleCategoryToggle(buttonInteraction, client);
-            } else {
-              await safeReply(buttonInteraction, {
-                content: "❌ Unknown button interaction. Please try again.",
-                ephemeral: true,
-              });
-            }
-            break;
-        }
-      } catch (error) {
-        logger.error("Error handling logging wizard interaction:", error);
-        await safeReply(buttonInteraction, {
-          content: "❌ An error occurred. Please try again.",
-          ephemeral: true,
-        });
-      }
-    })();
-  });
-
-  collector?.on("end", () => {
-    // Disable buttons after timeout
-    const disabledButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      ...buttons.components.map((button) => ButtonBuilder.from(button).setDisabled(true))
-    );
-
-    void interaction.editReply({ components: [disabledButtons] }).catch(() => {
-      // Ignore errors if message was deleted
-    });
-  });
+  // Note: Button interactions are now handled by the global handleLoggingButtonInteraction function
+  // which is called from the main button interaction event handler
 }
 
-async function showPresetSelection(interaction: ButtonInteraction): Promise<void> {
+async function showPresetSelection(interaction: ButtonInteraction, client: Client): Promise<void> {
   const presetEmbed = new EmbedBuilder()
     .setColor(0x9b59b6)
     .setTitle("📦 Logging Presets")
@@ -342,7 +315,7 @@ async function showPresetSelection(interaction: ButtonInteraction): Promise<void
   });
 }
 
-async function startCustomSetup(interaction: ButtonInteraction): Promise<void> {
+async function startCustomSetup(interaction: ButtonInteraction, client: Client): Promise<void> {
   const customEmbed = new EmbedBuilder()
     .setColor(0xf39c12)
     .setTitle("⚙️ Custom Logging Setup")
@@ -358,7 +331,7 @@ async function startCustomSetup(interaction: ButtonInteraction): Promise<void> {
           "1️⃣ **Choose Categories** - Select which event types to log\n" +
           "2️⃣ **Configure Channels** - Set up log channel routing\n" +
           "3️⃣ **Volume Control** - Include or exclude high-volume events\n" +
-          "4️⃣ **Fine-tune Settings** - Adjust specific log types\n" +
+          "4️⃣ **Test Mode** - Preview logs before going live\n" +
           "5️⃣ **Review & Deploy** - Confirm and activate settings",
         inline: false,
       },
@@ -388,16 +361,17 @@ async function startCustomSetup(interaction: ButtonInteraction): Promise<void> {
   });
 }
 
-async function showLoggingHelp(interaction: ButtonInteraction): Promise<void> {
+async function showLoggingHelp(interaction: ButtonInteraction, client: Client): Promise<void> {
   const helpEmbed = new EmbedBuilder()
     .setColor(0x3498db)
     .setTitle("❓ Logging Help & Information")
     .setDescription(
       "Use `/setup logging` to configure logging for your server!\n\n" +
         "**Quick Start Options:**\n" +
-        "• `/setup logging` - Interactive setup guide\n" +
-        "• `/logging` - Manual configuration\n" +
-        "• `/logging status` - View current settings"
+        "• `/setup logging` - Interactive setup wizard\n" +
+        "• **Preset Templates** - Pre-configured setups\n" +
+        "• **Custom Configuration** - Build your own\n" +
+        "• **Test Mode** - Preview before applying"
     )
     .addFields(
       {
@@ -440,7 +414,7 @@ async function showLoggingHelp(interaction: ButtonInteraction): Promise<void> {
 
 async function handlePresetSelection(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
     return;
   }
 
@@ -448,8 +422,17 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
   const preset = LOGGING_PRESETS.find((p) => p.name.toLowerCase().includes(presetType));
 
   if (!preset) {
-    await interaction.reply({ content: "❌ Preset not found.", ephemeral: true });
+    await interaction.reply({ content: "❌ Preset not found.", flags: 64 });
     return;
+  }
+
+  // Update wizard state
+  const stateKey = `${interaction.guild.id}-${interaction.user.id}`;
+  const state = wizardStates.get(stateKey);
+  if (state) {
+    state.selectedCategories = preset.categories;
+    state.preset = presetType;
+    wizardStates.set(stateKey, state);
   }
 
   await interaction.update({
@@ -495,20 +478,21 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
       .addFields({
         name: "📍 Next Steps",
         value:
-          "1. **Create log channels** using `/logging channels`\n" +
-          "2. **Review settings** with `/logging status`\n" +
-          "3. **Customize further** with `/logging advanced`\n\n" +
+          "1. **Create log channels** using the channel configuration step\n" +
+          "2. **Review settings** with the status check\n" +
+          "3. **Test the setup** with test mode\n" +
+          "4. **Customize further** if needed\n\n" +
           "💡 **Tip:** Set up dedicated channels for different log types to keep things organized!",
         inline: false,
       })
       .setTimestamp();
 
-    await interaction.followUp({ embeds: [successEmbed], ephemeral: true });
+    await interaction.followUp({ embeds: [successEmbed], flags: 64 });
   } catch (error) {
     logger.error("Error applying logging preset:", error);
     await interaction.followUp({
-      content: "❌ Failed to apply preset. Please try again or contact support.",
-      ephemeral: true,
+      content: "❌ Failed to apply preset. Please try again.",
+      flags: 64,
     });
   }
 }
@@ -519,18 +503,21 @@ async function handleLoggingAction(interaction: ButtonInteraction, client: Clien
 
   switch (action) {
     case "step1_categories":
-      await showCategorySelection(interaction);
+      await showCategorySelection(interaction, client);
       break;
     case "quick_setup":
       await performQuickSetup(interaction, client);
       break;
     default:
-      await interaction.reply({ content: "❌ Unknown action.", ephemeral: true });
+      await interaction.reply({ content: "❌ Unknown action.", flags: 64 });
       break;
   }
 }
 
-async function showCategorySelection(interaction: ButtonInteraction): Promise<void> {
+async function showCategorySelection(interaction: ButtonInteraction, client: Client): Promise<void> {
+  const stateKey = `${interaction.guild!.id}-${interaction.user.id}`;
+  const state = wizardStates.get(stateKey);
+
   const categoryEmbed = new EmbedBuilder()
     .setColor(0x3498db)
     .setTitle("1️⃣ Choose Log Categories")
@@ -542,7 +529,8 @@ async function showCategorySelection(interaction: ButtonInteraction): Promise<vo
   const categories = Object.entries(LOG_CATEGORIES);
   categories.forEach(([category, types]) => {
     const isHighVolume = category === "HIGH_VOLUME";
-    const emoji = isHighVolume ? "⚠️" : "✅";
+    const isSelected = state?.selectedCategories.includes(category);
+    const emoji = isHighVolume ? "⚠️" : isSelected ? "✅" : "❌";
     const description = isHighVolume ? "High-volume events (can spam channels)" : `${String(types.length)} event types`;
 
     categoryEmbed.addFields({
@@ -575,7 +563,7 @@ async function showCategorySelection(interaction: ButtonInteraction): Promise<vo
 
 async function performQuickSetup(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
     return;
   }
 
@@ -600,53 +588,60 @@ async function performQuickSetup(interaction: ButtonInteraction, client: Client)
       .addFields({
         name: "📍 Next Steps",
         value:
-          "1. **Set up log channels** using `/logging channels`\n" +
-          "2. **Review what's enabled** with `/logging status`\n" +
-          "3. **Enable more events** with `/logging toggle` if needed\n\n" +
+          "1. **Set up log channels** using the channel configuration step\n" +
+          "2. **Review what's enabled** with the status check\n" +
+          "3. **Test the setup** with test mode\n" +
+          "4. **Enable more events** if needed\n\n" +
           "💡 **Tip:** Create separate channels like `#member-log`, `#message-log`, etc.",
         inline: false,
       })
       .setTimestamp();
 
-    await interaction.followUp({ embeds: [successEmbed], ephemeral: true });
+    await interaction.followUp({ embeds: [successEmbed], flags: 64 });
   } catch (error) {
     logger.error("Error performing quick setup:", error);
     await interaction.followUp({
       content: "❌ Quick setup failed. Please try the manual setup instead.",
-      ephemeral: true,
+      flags: 64,
     });
   }
 }
 
-async function applyLoggingPreset(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
+async function applyConfiguration(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
     return;
   }
 
-  const presetType = interaction.options.getString("type", true);
-  const preset = LOGGING_PRESETS.find((p) => p.name.toLowerCase().includes(presetType));
-
-  if (!preset) {
-    await interaction.reply({ content: "❌ Invalid preset type.", ephemeral: true });
+  const state = wizardStates.get(`${interaction.guild.id}-${interaction.user.id}`);
+  if (!state) {
+    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", flags: 64 });
     return;
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: 64 });
 
   try {
-    await client.logManager.enableLogTypes(interaction.guild.id, preset.logTypes);
+    // Apply channel routing
+    await client.logManager.setupCategoryLogging(interaction.guild.id, state.channelMappings);
 
-    // Notify API of logging preset change
+    // Apply log type toggles
+    if (state.includeHighVolume) {
+      await client.logManager.enableLogTypes(interaction.guild.id, ALL_LOG_TYPES);
+    } else {
+      await client.logManager.enableLogTypes(interaction.guild.id, STANDARD_LOG_TYPES);
+    }
+
+    // Notify API of logging configuration change
     if (getQueueService(client)) {
       try {
         await getQueueService(client)?.processRequest({
           type: "LOGGING_UPDATE",
           data: {
             guildId: interaction.guild.id,
-            preset: presetType,
-            enabledLogTypes: preset.logTypes,
-            action: "APPLY_PRESET",
+            channelRouting: state.channelMappings,
+            enabledLogTypes: state.includeHighVolume ? ALL_LOG_TYPES : STANDARD_LOG_TYPES,
+            action: "APPLY_CONFIG",
             updatedBy: interaction.user.id,
           },
           source: "rest",
@@ -655,216 +650,396 @@ async function applyLoggingPreset(client: Client, interaction: ChatInputCommandI
           requiresReliability: true,
         });
       } catch (error) {
-        console.warn("Failed to notify API of logging preset change:", error);
+        console.warn("Failed to notify API of logging configuration change:", error);
       }
     }
 
     const successEmbed = new EmbedBuilder()
       .setColor(WIZARD_COLORS.SUCCESS)
-      .setTitle(`✅ ${preset.emoji} ${preset.name} Applied!`)
+      .setTitle("✅ Logging Configuration Applied!")
       .setDescription(
-        `Successfully applied the **${preset.name}** logging preset.\n\n` +
-          `**${String(preset.logTypes.length)} log types** have been enabled.`
+        `Successfully applied your logging configuration.\n\n` +
+          `**Channel Routing:** ${Object.keys(state.channelMappings).length} channels configured.\n` +
+          `**Log Types:** ${state.includeHighVolume ? "All" : "Standard"} events enabled.`
       )
-      .addFields(
-        {
-          name: "📋 Enabled Categories",
-          value: preset.categories.join(", "),
-          inline: false,
-        },
-        {
-          name: "📍 Recommended Channel Setup",
-          value: preset.recommendedChannels.map((ch) => `**${ch.name}:** ${ch.description}`).join("\n"),
-          inline: false,
-        },
-        {
-          name: "🔄 Next Steps",
-          value:
-            "• Use `/logging channels` to set up log channel routing\n" +
-            "• Use `/logging status` to review your configuration\n" +
-            "• Use `/logging toggle` to enable/disable specific categories",
-          inline: false,
-        }
-      )
+      .addFields({
+        name: "📍 Next Steps",
+        value:
+          "• Use the status check to review your complete configuration\n" +
+          "• Use test mode to verify everything is working\n" +
+          "• Customize further if needed\n\n" +
+          "💡 **Tip:** Set up dedicated channels for different log types to keep things organized!",
+        inline: false,
+      })
       .setTimestamp();
 
     await interaction.followUp({ embeds: [successEmbed] });
+
+    // Clear wizard state
+    wizardStates.delete(`${interaction.guild.id}-${interaction.user.id}`);
   } catch (error) {
-    logger.error("Error applying preset:", error);
-    await interaction.followUp({ content: "❌ Failed to apply preset. Please try again." });
+    logger.error("Error applying logging configuration:", error);
+    await interaction.followUp({ content: "❌ Failed to apply configuration. Please try again." });
+    wizardStates.delete(`${interaction.guild.id}-${interaction.user.id}`);
   }
 }
 
-async function showLoggingStatus(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
-    return;
-  }
-
-  await interaction.deferReply({ ephemeral: true });
-
-  try {
-    const settings = await client.logManager.getSettings(interaction.guild.id);
-    const totalLogTypes = ALL_LOG_TYPES.length;
-    const enabledCount = settings.enabledLogTypes.length;
-    const disabledCount = totalLogTypes - enabledCount;
-
-    const statusEmbed = new EmbedBuilder()
-      .setColor(enabledCount > 0 ? 0x2ecc71 : 0x95a5a6)
-      .setTitle("📊 Logging System Status")
-      .setDescription(
-        enabledCount > 0
-          ? "🟢 **Logging is active** and monitoring your server"
-          : "⚪ **Logging is inactive** - no events are currently being tracked"
-      )
-      .addFields(
-        {
-          name: "📈 Overview",
-          value:
-            `**Total Available:** ${String(totalLogTypes)} log types\n` +
-            `**Currently Enabled:** ${String(enabledCount)}\n` +
-            `**Disabled:** ${String(disabledCount)}\n` +
-            `**Coverage:** ${String(Math.round((enabledCount / totalLogTypes) * 100))}%`,
-          inline: true,
-        },
-        {
-          name: "📍 Channel Routing",
-          value:
-            Object.keys(settings.channelRouting).length > 0
-              ? Object.entries(settings.channelRouting)
-                  .slice(0, 5)
-                  .map(([type, channelId]) => `**${type}:** <#${channelId}>`)
-                  .join("\n") +
-                (Object.keys(settings.channelRouting).length > 5
-                  ? `\n... and ${String(Object.keys(settings.channelRouting).length - 5)} more`
-                  : "")
-              : "No channels configured yet",
-          inline: true,
-        }
-      );
-
-    // Category breakdown
-    const categoryStatus = Object.entries(LOG_CATEGORIES)
-      .map(([category, types]) => {
-        const categoryEnabled = types.filter((type: string) => settings.enabledLogTypes.includes(type));
-        const percentage = Math.round((categoryEnabled.length / types.length) * 100);
-        const statusIcon = percentage === 100 ? "🟢" : percentage > 0 ? "🟡" : "🔴";
-
-        return `${statusIcon} **${category}**: ${String(categoryEnabled.length)}/${String(types.length)} (${String(percentage)}%)`;
-      })
-      .join("\n");
-
-    statusEmbed.addFields({
-      name: "📋 Category Status",
-      value: categoryStatus,
-      inline: false,
-    });
-
-    // Management buttons
-    const managementButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId("logging_manage_channels")
-        .setLabel("📍 Configure Channels")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId("logging_manage_categories")
-        .setLabel("🔄 Toggle Categories")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("logging_advanced_settings")
-        .setLabel("⚙️ Advanced")
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    if (enabledCount === 0) {
-      statusEmbed.addFields({
-        name: "🚀 Get Started",
-        value:
-          "**Quick Options:**\n" +
-          "• `/logging setup` - Interactive setup wizard\n" +
-          "• `/logging preset` - Apply pre-configured templates\n" +
-          "• `/logging channels` - Configure log channels first",
-        inline: false,
-      });
-    }
-
-    await interaction.followUp({
-      embeds: [statusEmbed],
-      components: enabledCount > 0 ? [managementButtons] : [],
-    });
-  } catch (error) {
-    logger.error("Error showing logging status:", error);
-    await interaction.followUp({ content: "❌ Failed to retrieve logging status." });
-  }
-}
-
-async function configureChannels(_client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
-    return;
-  }
-
-  await interaction.deferReply({ ephemeral: true });
-
-  const channelEmbed = new EmbedBuilder()
-    .setColor(0x3498db)
-    .setTitle("📍 Configure Log Channels")
+async function showTestModeOptions(interaction: ButtonInteraction, client: Client): Promise<void> {
+  const testModeEmbed = new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .setTitle("🧪 Test Mode")
     .setDescription(
-      "Set up where different types of logs should be sent. You can route different categories " +
-        "to different channels for better organization."
+      "Enable test mode to preview how logs will look before applying them to your server.\n\n" +
+        "**Test Mode Features:**\n" +
+        "• **Preview Logs** - See example events in a dedicated channel\n" +
+        "• **No API Calls** - Your server's logs remain unchanged\n" +
+        "• **No Channel Routing** - All logs go to the test channel"
     )
     .addFields(
       {
-        name: "💡 Recommended Setup",
+        name: "💡 How to Use",
         value:
-          "**#member-log** - User activity (joins, leaves, roles)\n" +
-          "**#message-log** - Chat moderation (edits, deletions)\n" +
-          "**#mod-log** - Staff actions (bans, kicks, warnings)\n" +
-          "**#server-log** - Administrative changes\n" +
-          "**#voice-log** - Voice channel activity",
+          "1. **Choose a Test Channel** - Select a channel where you want to see example logs.\n" +
+          "2. **Enable Test Mode** - Click the button below to activate test mode.\n" +
+          "3. **Preview Events** - Send a message in the test channel, and you'll see it in the test channel.\n" +
+          "4. **Disable Test Mode** - Click the button again to revert to live mode.",
         inline: false,
       },
       {
-        name: "🔧 How to Configure",
+        name: "⚠️ Important",
         value:
-          "Use the buttons below to set up channel routing for each category. " +
-          "You can also route multiple categories to the same channel if preferred.",
+          "• Test mode is **temporary** and will be lost after the wizard closes.\n" +
+          "• Your server's actual logs will not be affected by test mode.",
         inline: false,
       }
     );
 
-  const categoryButtons = [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId("channel_config_MESSAGE")
-        .setLabel("📝 Message Logs")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("channel_config_MEMBER")
-        .setLabel("👥 Member Logs")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("channel_config_MODERATION")
-        .setLabel("🛡️ Mod Logs")
-        .setStyle(ButtonStyle.Secondary)
-    ),
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId("channel_config_SERVER")
-        .setLabel("🏢 Server Logs")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("channel_config_VOICE").setLabel("🎤 Voice Logs").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("channel_config_ALL")
-        .setLabel("📊 All to One Channel")
-        .setStyle(ButtonStyle.Primary)
-    ),
-  ];
+  const testModeButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("logging_test_mode_enable")
+      .setLabel("Enable Test Mode")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("logging_test_mode_disable")
+      .setLabel("Disable Test Mode")
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  await interaction.update({
+    embeds: [testModeEmbed],
+    components: [testModeButtons],
+  });
+}
+
+async function handleTestLog(interaction: ButtonInteraction, client: Client): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    return;
+  }
+
+  const state = wizardStates.get(`${interaction.guild.id}-${interaction.user.id}`);
+  if (!state) {
+    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", flags: 64 });
+    return;
+  }
+
+  if (!state.testMode) {
+    await interaction.reply({ content: "❌ Test mode is not enabled. Please enable it first.", flags: 64 });
+    return;
+  }
+
+  const testChannel = interaction.channel;
+  if (!testChannel?.isTextBased()) {
+    await interaction.reply({ content: "❌ This command can only be used in a text channel.", flags: 64 });
+    return;
+  }
+
+  await interaction.deferReply({ flags: 64 });
+
+  try {
+    // Check bot permissions in the test channel
+    const botMember = interaction.guild.members.me;
+    if (!botMember) {
+      await interaction.editReply({ content: "❌ Unable to check bot permissions." });
+      return;
+    }
+
+    const guildChannel = interaction.guild.channels.cache.get(testChannel.id);
+    if (!guildChannel?.isTextBased()) {
+      await interaction.editReply({ content: "❌ Selected channel is not a valid text channel." });
+      return;
+    }
+
+    const channelPerms = guildChannel.permissionsFor(botMember);
+    if (!channelPerms.has(["ViewChannel", "SendMessages", "EmbedLinks"])) {
+      await interaction.editReply({
+        content: `❌ I need the following permissions in <#${testChannel.id}>:\n• View Channel\n• Send Messages\n• Embed Links`,
+      });
+      return;
+    }
+
+    // Send a test log
+    const testEmbed = new EmbedBuilder()
+      .setColor(0x3498db)
+      .setTitle("🧪 Test Log")
+      .setDescription("This is a test log message. It will be sent to the test channel.")
+      .addFields({
+        name: "🔗 Channel",
+        value: `<#${testChannel.id}>`,
+        inline: false,
+      })
+      .setTimestamp();
+
+    await guildChannel.send({
+      embeds: [testEmbed],
+    });
+
+    const successEmbed = new EmbedBuilder()
+      .setColor(WIZARD_COLORS.SUCCESS)
+      .setTitle("✅ Test Log Sent!")
+      .setDescription(`Your test log has been sent to <#${testChannel.id}>`)
+      .addFields({
+        name: "🔗 Channel",
+        value: `<#${testChannel.id}>`,
+        inline: false,
+      })
+      .setTimestamp();
+
+    await interaction.followUp({ embeds: [successEmbed] });
+  } catch (error) {
+    logger.error("Error sending test log:", error);
+    await interaction.followUp({ content: "❌ Failed to send test log. Please try again." });
+  }
+}
+
+async function handleNextStep(interaction: ButtonInteraction, client: Client): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    return;
+  }
+
+  const stateKey = `${interaction.guild.id}-${interaction.user.id}`;
+  const state = wizardStates.get(stateKey);
+
+  if (!state) {
+    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", flags: 64 });
+    return;
+  }
+
+  // Update the current step
+  state.currentStep = 2; // Move to channel configuration step
+  wizardStates.set(stateKey, state);
+
+  // Show channel configuration options
+  const channelConfigEmbed = new EmbedBuilder()
+    .setColor(0x3498db)
+    .setTitle("🔗 Step 2: Channel Configuration")
+    .setDescription(
+      "Now let's configure where each log category will be sent. You can either:\n\n" +
+        "**Option 1: Individual Channel Setup**\n" +
+        "• Configure each category to a specific channel\n" +
+        "• More control over log organization\n\n" +
+        "**Option 2: All-in-One Channel**\n" +
+        "• Send all logs to a single channel\n" +
+        "• Simpler setup, less organization"
+    )
+    .addFields({
+      name: "📋 Selected Categories",
+      value:
+        state.selectedCategories.length > 0
+          ? state.selectedCategories.map((cat) => `• ${cat}`).join("\n")
+          : "No categories selected",
+      inline: false,
+    });
+
+  const channelConfigButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("channel_config_individual")
+      .setLabel("Individual Channels")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId("channel_config_all")
+      .setLabel("All-in-One Channel")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("logging_wizard_back").setLabel("← Back").setStyle(ButtonStyle.Secondary)
+  );
+
+  await interaction.update({
+    embeds: [channelConfigEmbed],
+    components: [channelConfigButtons],
+  });
+}
+
+async function handleCategoryToggle(interaction: ButtonInteraction, client: Client): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    return;
+  }
+
+  const category = interaction.customId.replace("cat_", "");
+  const stateKey = `${interaction.guild.id}-${interaction.user.id}`;
+  const state = wizardStates.get(stateKey);
+
+  if (!state) {
+    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", flags: 64 });
+    return;
+  }
+
+  // Toggle the category selection
+  const categoryIndex = state.selectedCategories.indexOf(category);
+  if (categoryIndex > -1) {
+    // Remove category if already selected
+    state.selectedCategories.splice(categoryIndex, 1);
+  } else {
+    // Add category if not selected
+    state.selectedCategories.push(category);
+  }
+
+  wizardStates.set(stateKey, state);
+
+  // Update the button to show the new state
+  const isSelected = state.selectedCategories.includes(category);
+  const buttonStyle = isSelected ? ButtonStyle.Primary : ButtonStyle.Secondary;
+  const buttonLabel = `${isSelected ? "✅" : "❌"} ${category}`;
+
+  // Create updated buttons for the category selection
+  const categoryButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("cat_MESSAGE")
+      .setLabel(`MESSAGE`)
+      .setStyle(state.selectedCategories.includes("MESSAGE") ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("cat_MEMBER")
+      .setLabel(`MEMBER`)
+      .setStyle(state.selectedCategories.includes("MEMBER") ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("cat_MODERATION")
+      .setLabel(`MODERATION`)
+      .setStyle(state.selectedCategories.includes("MODERATION") ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("cat_SERVER")
+      .setLabel(`SERVER`)
+      .setStyle(state.selectedCategories.includes("SERVER") ? ButtonStyle.Primary : ButtonStyle.Secondary)
+  );
+
+  const categoryButtons2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("cat_VOICE")
+      .setLabel(`VOICE`)
+      .setStyle(state.selectedCategories.includes("VOICE") ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("cat_ROLE")
+      .setLabel(`ROLE`)
+      .setStyle(state.selectedCategories.includes("ROLE") ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("cat_CHANNEL")
+      .setLabel(`CHANNEL`)
+      .setStyle(state.selectedCategories.includes("CHANNEL") ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("logging_next_step").setLabel("Continue →").setStyle(ButtonStyle.Success)
+  );
+
+  await interaction.update({
+    embeds: [],
+    components: [categoryButtons, categoryButtons2],
+  });
+}
+
+async function handleTestModeEnable(interaction: ButtonInteraction, client: Client): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    return;
+  }
+
+  const state = wizardStates.get(`${interaction.guild.id}-${interaction.user.id}`);
+  if (!state) {
+    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", flags: 64 });
+    return;
+  }
+
+  if (state.testMode) {
+    await interaction.reply({ content: "❌ Test mode is already enabled.", flags: 64 });
+    return;
+  }
+
+  state.testMode = true;
+  wizardStates.set(`${interaction.guild.id}-${interaction.user.id}`, state);
+
+  await interaction.update({
+    content: "⏳ Enabling test mode...",
+    embeds: [],
+    components: [],
+  });
 
   await interaction.followUp({
-    embeds: [channelEmbed],
-    components: categoryButtons,
+    content: "✅ Test mode enabled! You can now send test logs to the channel you selected.",
+    flags: 64,
   });
+}
+
+async function handleTestModeDisable(interaction: ButtonInteraction, client: Client): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    return;
+  }
+
+  const state = wizardStates.get(`${interaction.guild.id}-${interaction.user.id}`);
+  if (!state) {
+    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", flags: 64 });
+    return;
+  }
+
+  if (!state.testMode) {
+    await interaction.reply({ content: "❌ Test mode is already disabled.", flags: 64 });
+    return;
+  }
+
+  state.testMode = false;
+  wizardStates.set(`${interaction.guild.id}-${interaction.user.id}`, state);
+
+  await interaction.update({
+    content: "⏳ Disabling test mode...",
+    embeds: [],
+    components: [],
+  });
+
+  await interaction.followUp({
+    content: "✅ Test mode disabled. Your server's logs will now be sent to the channels you configured.",
+    flags: 64,
+  });
+}
+
+/**
+ * Safely reply to an interaction, handling already-acknowledged cases
+ */
+async function safeReply(
+  interaction: ButtonInteraction | ChannelSelectMenuInteraction,
+  options: { content: string; flags?: number }
+): Promise<void> {
+  try {
+    const replyOptions = {
+      content: options.content,
+      flags: options.flags,
+    };
+
+    // Check if interaction is still valid and hasn't been replied to
+    if (!interaction.isRepliable()) {
+      logger.warn("Interaction is no longer repliable:", (interaction as any).customId);
+      return;
+    }
+
+    // Check if interaction has already been acknowledged
+    if (interaction.replied || interaction.deferred) {
+      logger.warn("Interaction already acknowledged, using followUp:", (interaction as any).customId);
+      await interaction.followUp(replyOptions);
+      return;
+    }
+
+    // Safe to reply
+    await interaction.reply(replyOptions);
+  } catch (error) {
+    logger.error("Failed to send interaction response:", error);
+    // Don't throw - we don't want to crash the bot for UI errors
+  }
 }
 
 /**
@@ -876,8 +1051,14 @@ export async function handleLoggingButtonInteraction(
   const client = interaction.client as Client;
 
   try {
+    // Check if interaction is still valid
+    if (!interaction.isRepliable()) {
+      logger.warn("Interaction is no longer repliable:", (interaction as any).customId);
+      return;
+    }
+
     // Handle channel select menu interactions
-    if (interaction.isChannelSelectMenu() && interaction.customId.startsWith("logging_channel_select_")) {
+    if (interaction.isChannelSelectMenu() && (interaction as any).customId.startsWith("logging_channel_select_")) {
       await handleChannelSelection(interaction, client);
       return;
     }
@@ -885,60 +1066,99 @@ export async function handleLoggingButtonInteraction(
     if (!interaction.isButton()) return;
 
     // Handle preset selection buttons
-    if (interaction.customId.startsWith("preset_")) {
+    if ((interaction as any).customId.startsWith("preset_")) {
       await handlePresetSelection(interaction, client);
       return;
     }
 
     // Handle wizard navigation buttons
-    if (interaction.customId === "logging_wizard_back") {
-      await safeReply(interaction, {
-        content: "⬅️ To restart the setup wizard, please use `/logging setup` again.",
-        ephemeral: true,
-      });
+    if ((interaction as any).customId === "logging_wizard_back") {
+      await showMainMenu(interaction, client);
       return;
     }
 
-    if (interaction.customId === "logging_quick_setup") {
+    if ((interaction as any).customId === "logging_wizard_presets") {
+      await showPresetSelection(interaction, client);
+      return;
+    }
+
+    if ((interaction as any).customId === "logging_wizard_custom") {
+      await startCustomSetup(interaction, client);
+      return;
+    }
+
+    if ((interaction as any).customId === "logging_wizard_help") {
+      await showLoggingHelp(interaction, client);
+      return;
+    }
+
+    if ((interaction as any).customId === "logging_quick_setup") {
       await performQuickSetup(interaction, client);
       return;
     }
 
-    if (interaction.customId === "logging_custom_setup") {
-      await startCustomSetup(interaction);
+    // Handle category selection
+    if ((interaction as any).customId === "logging_step1_categories") {
+      await showCategorySelection(interaction, client);
       return;
     }
 
-    // Handle category selection
-    if (interaction.customId === "logging_step1_categories") {
-      await showCategorySelection(interaction);
+    // Handle category toggle buttons (cat_*)
+    if ((interaction as any).customId.startsWith("cat_")) {
+      await handleCategoryToggle(interaction, client);
+      return;
+    }
+
+    if ((interaction as any).customId === "logging_next_step") {
+      await handleNextStep(interaction, client);
+      return;
+    }
+
+    if ((interaction as any).customId === "logging_test_mode") {
+      await showTestModeOptions(interaction, client);
+      return;
+    }
+
+    if ((interaction as any).customId === "logging_apply_config") {
+      await applyConfiguration(interaction, client);
       return;
     }
 
     // Handle channel configuration buttons
-    if (interaction.customId.startsWith("channel_config_")) {
+    if ((interaction as any).customId.startsWith("channel_config_")) {
       await handleChannelConfiguration(interaction, client);
       return;
     }
 
+    // Handle test mode buttons
+    if ((interaction as any).customId === "logging_test_mode_enable") {
+      await handleTestModeEnable(interaction, client);
+      return;
+    }
+
+    if ((interaction as any).customId === "logging_test_mode_disable") {
+      await handleTestModeDisable(interaction, client);
+      return;
+    }
+
     // Handle status management buttons
-    if (interaction.customId === "logging_manage_channels") {
+    if ((interaction as any).customId === "logging_manage_channels") {
       await safeReply(interaction, {
-        content: "📍 To configure channels, please use `/logging channels` command.",
-        ephemeral: true,
+        content: "📍 To configure channels, please use the channel configuration step in the wizard.",
+        flags: 64,
       });
       return;
     }
 
-    if (interaction.customId === "logging_manage_categories") {
-      await showCategoryToggle(interaction);
+    if ((interaction as any).customId === "logging_manage_categories") {
+      await showCategoryToggle(interaction, client);
       return;
     }
 
-    if (interaction.customId === "logging_advanced_settings") {
+    if ((interaction as any).customId === "logging_advanced_settings") {
       await safeReply(interaction, {
-        content: "⚙️ To access advanced options, please use `/logging advanced` command.",
-        ephemeral: true,
+        content: "⚙️ Advanced options will be available in future updates.",
+        flags: 64,
       });
       return;
     }
@@ -946,40 +1166,18 @@ export async function handleLoggingButtonInteraction(
     // Default fallback
     await safeReply(interaction, {
       content: "❌ This button interaction is not implemented yet.",
-      ephemeral: true,
+      flags: 64,
     });
   } catch (error) {
     logger.error("Error handling logging button interaction:", error);
-    await safeReply(interaction, {
-      content: "❌ An error occurred while processing your request.",
-      ephemeral: true,
-    });
-  }
-}
-
-/**
- * Safely reply to an interaction, handling already-acknowledged cases
- */
-async function safeReply(
-  interaction: ButtonInteraction | ChannelSelectMenuInteraction,
-  options: { content: string; ephemeral?: boolean }
-): Promise<void> {
-  try {
-    const replyOptions = {
-      content: options.content,
-      flags: options.ephemeral ? 64 : undefined, // Use flags instead of ephemeral
-    };
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply(replyOptions);
-    } else if (interaction.deferred) {
-      await interaction.editReply({ content: options.content });
-    } else {
-      await interaction.followUp(replyOptions);
+    try {
+      await safeReply(interaction, {
+        content: "❌ An error occurred while processing your request.",
+        flags: 64,
+      });
+    } catch (replyError) {
+      logger.error("Failed to send error message to user:", replyError);
     }
-  } catch (error) {
-    logger.error("Failed to send interaction response:", error);
-    // Don't throw - we don't want to crash the bot for UI errors
   }
 }
 
@@ -988,14 +1186,20 @@ async function safeReply(
  */
 async function handleChannelSelection(interaction: ChannelSelectMenuInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
     return;
   }
 
-  const category = interaction.customId.replace("logging_channel_select_", "");
+  // Check if interaction is still valid
+  if (!interaction.isRepliable()) {
+    logger.warn("Channel selection interaction is no longer repliable:", (interaction as any).customId);
+    return;
+  }
+
+  const category = (interaction as any).customId.replace("logging_channel_select_", "");
 
   // Add debugging information
-  logger.info(`Channel selection for category: "${category}" from customId: "${interaction.customId}"`);
+  logger.info(`Channel selection for category: "${category}" from customId: "${(interaction as any).customId}"`);
 
   // Handle special case for "ALL" category
   if (category === "ALL") {
@@ -1010,8 +1214,8 @@ async function handleChannelSelection(interaction: ChannelSelectMenuInteraction,
       Object.keys(LOG_CATEGORIES)
     );
     await interaction.reply({
-      content: `❌ Invalid log category "${category}". Please use the \`/logging channels\` command to configure channels properly.`,
-      ephemeral: true,
+      content: `❌ Invalid log category "${category}". Please use the channel configuration step to configure channels properly.`,
+      flags: 64,
     });
     return;
   }
@@ -1019,11 +1223,11 @@ async function handleChannelSelection(interaction: ChannelSelectMenuInteraction,
   const selectedChannel = interaction.channels.first();
 
   if (!selectedChannel) {
-    await interaction.reply({ content: "❌ No channel selected.", ephemeral: true });
+    await interaction.reply({ content: "❌ No channel selected.", flags: 64 });
     return;
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: 64 });
 
   try {
     // Check bot permissions in the selected channel
@@ -1073,9 +1277,9 @@ async function handleChannelSelection(interaction: ChannelSelectMenuInteraction,
         {
           name: "🔄 Next Steps",
           value:
-            "• Configure more categories with `/logging channels`\n" +
-            "• Check your settings with `/logging status`\n" +
-            "• Enable/disable specific categories with `/logging toggle`",
+            "• Configure more categories with the channel configuration step\n" +
+            "• Check your settings with the status check\n" +
+            "• Enable/disable specific categories as needed",
           inline: false,
         }
       )
@@ -1096,26 +1300,30 @@ async function handleChannelSelection(interaction: ChannelSelectMenuInteraction,
     });
   } catch (error) {
     logger.error("Error configuring log channel:", error);
-    await interaction.editReply({
-      content: "❌ Failed to configure log channel. Please try again.",
-    });
+    try {
+      await interaction.editReply({
+        content: "❌ Failed to configure log channel. Please try again.",
+      });
+    } catch (replyError) {
+      logger.error("Failed to send error message to user:", replyError);
+    }
   }
 }
 
 async function handleAllChannelSelection(interaction: ChannelSelectMenuInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
     return;
   }
 
   const selectedChannel = interaction.channels.first();
 
   if (!selectedChannel) {
-    await interaction.reply({ content: "❌ No channel selected.", ephemeral: true });
+    await interaction.reply({ content: "❌ No channel selected.", flags: 64 });
     return;
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: 64 });
 
   try {
     // Check bot permissions in the selected channel
@@ -1176,8 +1384,8 @@ async function handleAllChannelSelection(interaction: ChannelSelectMenuInteracti
           name: "🔄 Next Steps",
           value:
             "• Monitor the channel volume and adjust as needed\n" +
-            "• Use `/logging toggle` to disable specific categories if too busy\n" +
-            "• Consider setting up separate channels later with `/logging channels`",
+            "• Use the category toggle step to disable specific categories if too busy\n" +
+            "• Consider setting up separate channels later with the channel configuration step",
           inline: false,
         }
       )
@@ -1206,7 +1414,7 @@ async function handleAllChannelSelection(interaction: ChannelSelectMenuInteracti
 
 async function handleChannelConfiguration(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
     return;
   }
 
@@ -1228,8 +1436,8 @@ async function handleChannelConfiguration(interaction: ButtonInteraction, client
       Object.keys(LOG_CATEGORIES)
     );
     await interaction.reply({
-      content: `❌ Invalid log category "${category}". Please use the \`/logging channels\` command to configure channels properly.`,
-      ephemeral: true,
+      content: `❌ Invalid log category "${category}". Please use the channel configuration step to configure channels properly.`,
+      flags: 64,
     });
     return;
   }
@@ -1241,7 +1449,7 @@ async function handleChannelConfiguration(interaction: ButtonInteraction, client
     logger.error(`Category "${category}" does not contain an array of log types:`, categoryTypes);
     await interaction.reply({
       content: `❌ Invalid configuration for category "${category}". Please contact an administrator.`,
-      ephemeral: true,
+      flags: 64,
     });
     return;
   }
@@ -1278,13 +1486,13 @@ async function handleChannelConfiguration(interaction: ButtonInteraction, client
   await interaction.reply({
     embeds: [embed],
     components: [selectRow],
-    ephemeral: true,
+    flags: 64,
   });
 }
 
-async function handleAllCategoryConfiguration(interaction: ButtonInteraction, _client: Client): Promise<void> {
+async function handleAllCategoryConfiguration(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
     return;
   }
 
@@ -1329,331 +1537,29 @@ async function handleAllCategoryConfiguration(interaction: ButtonInteraction, _c
   await interaction.reply({
     embeds: [embed],
     components: [selectRow],
-    ephemeral: true,
+    flags: 64,
   });
 }
 
-async function showCategoryToggle(interaction: ButtonInteraction): Promise<void> {
+async function showCategoryToggle(interaction: ButtonInteraction, client: Client): Promise<void> {
   const toggleEmbed = new EmbedBuilder()
     .setColor(0xf39c12)
     .setTitle("🔄 Toggle Log Categories")
     .setDescription(
-      "Use the `/logging toggle` command to enable or disable specific log categories.\n\n" +
+      "Use the category selection step to enable or disable specific log categories.\n\n" +
         "**Available categories:**\n" +
         Object.keys(LOG_CATEGORIES)
           .map((cat) => `• \`${cat}\``)
           .join("\n")
     )
     .addFields({
-      name: "📝 Example Usage",
-      value: "• `/logging toggle category:MESSAGE enabled:true`\n• `/logging toggle category:MEMBER enabled:false`",
+      name: "📝 How to Use",
+      value:
+        "• Go back to the category selection step\n" +
+        "• Click on categories to toggle them on/off\n" +
+        "• Use the continue button to proceed to the next step",
       inline: false,
     });
 
-  await interaction.reply({ embeds: [toggleEmbed], ephemeral: true });
-}
-
-async function toggleCategory(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
-    return;
-  }
-
-  const category = interaction.options.getString("category", true);
-  const enabled = interaction.options.getBoolean("enabled", true);
-
-  await interaction.deferReply({ ephemeral: true });
-
-  try {
-    const categoryTypes = LOG_CATEGORIES[category as keyof typeof LOG_CATEGORIES];
-
-    if (enabled) {
-      await client.logManager.enableLogTypes(interaction.guild.id, [...categoryTypes]);
-    } else {
-      await client.logManager.disableLogTypes(interaction.guild.id, [...categoryTypes]);
-    }
-
-    // Notify API of category toggle change
-    if (getQueueService(client)) {
-      try {
-        await getQueueService(client)?.processRequest({
-          type: "LOGGING_UPDATE",
-          data: {
-            guildId: interaction.guild.id,
-            category: category,
-            enabled: enabled,
-            logTypes: categoryTypes,
-            action: "TOGGLE_CATEGORY",
-            updatedBy: interaction.user.id,
-          },
-          source: "rest",
-          userId: interaction.user.id,
-          guildId: interaction.guild.id,
-          requiresReliability: true,
-        });
-      } catch (error) {
-        console.warn("Failed to notify API of logging category toggle:", error);
-      }
-    }
-
-    const statusEmoji = enabled ? "✅" : "❌";
-    const statusText = enabled ? "enabled" : "disabled";
-
-    await interaction.followUp({
-      content:
-        `${statusEmoji} **${category}** category ${statusText}!\n\n` +
-        `**Affected log types:** ${String(categoryTypes.length)}\n` +
-        `Use \`/logging status\` to view your complete configuration.`,
-    });
-  } catch (error) {
-    logger.error("Error toggling category:", error);
-    await interaction.followUp({ content: "❌ Failed to toggle category." });
-  }
-}
-
-async function showAdvancedOptions(_client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  await interaction.deferReply({ ephemeral: true });
-
-  const advancedEmbed = new EmbedBuilder()
-    .setColor(0xf39c12)
-    .setTitle("⚙️ Advanced Logging Configuration")
-    .setDescription("Advanced options for fine-tuning your logging setup.")
-    .addFields(
-      {
-        name: "🔧 Available Actions",
-        value:
-          "• **High-Volume Events** - Enable/disable spam-prone events\n" +
-          "• **Bulk Operations** - Mass enable/disable categories\n" +
-          "• **Channel Templates** - Create channel sets automatically\n" +
-          "• **Import/Export** - Backup and restore configurations\n" +
-          "• **Ignore Lists** - Exclude specific users/channels/roles",
-        inline: false,
-      },
-      {
-        name: "⚠️ High-Volume Events",
-        value:
-          "Events that can generate many logs per minute:\n" +
-          "• Message creation (every message sent)\n" +
-          "• Voice self-actions (mute/unmute)\n" +
-          "• Presence changes (online/offline)\n" +
-          "• Reaction additions/removals",
-        inline: false,
-      }
-    );
-
-  const advancedButtons = [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId("advanced_high_volume")
-        .setLabel("⚠️ High-Volume Events")
-        .setStyle(ButtonStyle.Danger),
-      new ButtonBuilder()
-        .setCustomId("advanced_bulk_ops")
-        .setLabel("�� Bulk Operations")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("advanced_ignore_lists")
-        .setLabel("🚫 Ignore Lists")
-        .setStyle(ButtonStyle.Secondary)
-    ),
-  ];
-
-  await interaction.followUp({
-    embeds: [advancedEmbed],
-    components: advancedButtons,
-  });
-}
-
-async function handleChannelBinding(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
-    return;
-  }
-
-  const category = interaction.options.getString("category", true);
-  const channel = interaction.options.getChannel("channel", true);
-  const channelId = channel.id;
-
-  await interaction.deferReply({ ephemeral: true });
-
-  try {
-    // Validate that the category exists in LOG_CATEGORIES
-    if (!(category in LOG_CATEGORIES)) {
-      logger.error(
-        `Invalid category "${category}" requested for channel binding. Available categories:`,
-        Object.keys(LOG_CATEGORIES)
-      );
-      await interaction.followUp({
-        content: `❌ Invalid log category "${category}". Please use the \`/logging channels\` command to configure channels properly.`,
-        ephemeral: true,
-      });
-      return;
-    }
-
-    // Channel already validated by option type, but double-check cache for permissions
-    const guildChannel = interaction.guild.channels.cache.get(channelId);
-    if (!guildChannel) {
-      await interaction.followUp({ content: "❌ Channel not found in this guild.", ephemeral: true });
-      return;
-    }
-
-    // Check bot permissions in the selected channel
-    const botMember = interaction.guild.members.me;
-    if (!botMember) {
-      await interaction.followUp({ content: "❌ Unable to check bot permissions." });
-      return;
-    }
-
-    // Type guard to ensure we have a proper guild channel
-    if (!guildChannel.isTextBased()) {
-      await interaction.followUp({ content: "❌ Selected channel is not a valid text channel." });
-      return;
-    }
-
-    const channelPerms = guildChannel.permissionsFor(botMember);
-    if (!channelPerms.has(["ViewChannel", "SendMessages", "EmbedLinks"])) {
-      await interaction.followUp({
-        content: `❌ I need the following permissions in <#${channel.id}>:\n• View Channel\n• Send Messages\n• Embed Links`,
-      });
-      return;
-    }
-
-    // Save the channel configuration
-    const channelMapping = { [category]: channel.id };
-    await client.logManager.setupCategoryLogging(interaction.guild.id, channelMapping);
-
-    // Get category types safely
-    const categoryTypes = LOG_CATEGORIES[category as keyof typeof LOG_CATEGORIES];
-
-    // Create success embed
-    const successEmbed = new EmbedBuilder()
-      .setColor(WIZARD_COLORS.SUCCESS)
-      .setTitle("✅ Log Channel Configured!")
-      .setDescription(`**${category}** logs will now be sent to <#${channel.id}>`)
-      .addFields(
-        {
-          name: "📋 Log Types Included",
-          value:
-            categoryTypes
-              .slice(0, 8)
-              .map((type: string) => `• ${type.replace(/_/g, " ").toLowerCase()}`)
-              .join("\n") + (categoryTypes.length > 8 ? `\n• ...and ${String(categoryTypes.length - 8)} more` : ""),
-          inline: false,
-        },
-        {
-          name: "🔄 Next Steps",
-          value:
-            "• Configure more categories with `/logging channels`\n" +
-            "• Check your settings with `/logging status`\n" +
-            "• Enable/disable specific categories with `/logging toggle`",
-          inline: false,
-        }
-      )
-      .setTimestamp();
-
-    await interaction.followUp({ embeds: [successEmbed] });
-
-    // Log the configuration change
-    await client.logManager.log(interaction.guild.id, "LOGGING_CONFIG_CHANGE", {
-      userId: interaction.user.id,
-      metadata: {
-        configType: "channel-routing",
-        category,
-        channelId: channel.id,
-        channelName: guildChannel.name,
-        timestamp: new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    logger.error("Error configuring log channel:", error);
-    await interaction.followUp({
-      content: "❌ Failed to configure log channel. Please try again.",
-    });
-  }
-}
-
-async function showMainMenu(interaction: ButtonInteraction): Promise<void> {
-  const welcomeEmbed = new EmbedBuilder()
-    .setColor(0x3498db)
-    .setTitle("🗂️ Logging Setup Wizard")
-    .setDescription(
-      "Welcome to the **Server Logging Setup Wizard!**\n\n" +
-        "This wizard will help you configure comprehensive logging for your server. " +
-        "We'll guide you through each step with clear explanations.\n\n" +
-        "**What we'll set up:**\n" +
-        "🔹 **Event Categories** - Choose what to track\n" +
-        "🔹 **Channel Routing** - Where to send logs\n" +
-        "🔹 **Volume Control** - Manage high-volume events\n" +
-        "🔹 **Custom Settings** - Fine-tune your setup\n\n" +
-        "**Estimated time:** 2-3 minutes"
-    )
-    .addFields(
-      {
-        name: "📋 What You'll Choose",
-        value:
-          "• Which event categories to log\n" +
-          "• Channel assignments for different log types\n" +
-          "• High-volume event filtering\n" +
-          "• Custom log formats and settings",
-        inline: true,
-      },
-      {
-        name: "🎯 Quick Start Options",
-        value:
-          "• **Preset Templates** - Pre-configured setups\n" +
-          "• **Custom Configuration** - Build your own\n" +
-          "• **Quick Setup** - Essential logging only",
-        inline: true,
-      }
-    )
-    .setFooter({ text: "Choose how you'd like to proceed below" })
-    .setTimestamp();
-
-  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("logging_wizard_presets")
-      .setLabel("📦 Use Presets")
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji("📦"),
-    new ButtonBuilder()
-      .setCustomId("logging_wizard_custom")
-      .setLabel("⚙️ Custom Setup")
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji("⚙️"),
-    new ButtonBuilder()
-      .setCustomId("logging_quick_setup")
-      .setLabel("⚡ Quick Setup")
-      .setStyle(ButtonStyle.Success)
-      .setEmoji("⚡"),
-    new ButtonBuilder()
-      .setCustomId("logging_wizard_help")
-      .setLabel("❓ Help & Info")
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji("❓")
-  );
-
-  await interaction.update({
-    embeds: [welcomeEmbed],
-    components: [buttons],
-  });
-}
-
-async function handleNextStep(interaction: ButtonInteraction, client: Client): Promise<void> {
-  await interaction.reply({
-    content: "✅ Category selection complete! The next step will be implemented soon.",
-    ephemeral: true,
-  });
-
-  // TODO: Implement the next step in the custom setup flow
-}
-
-async function handleCategoryToggle(interaction: ButtonInteraction, client: Client): Promise<void> {
-  const category = interaction.customId.replace("cat_", "");
-
-  await interaction.reply({
-    content: `✅ ${category} category selected! This feature will be implemented in the next step.`,
-    ephemeral: true,
-  });
-
-  // TODO: Implement category toggle functionality
+  await interaction.reply({ embeds: [toggleEmbed], flags: 64 });
 }

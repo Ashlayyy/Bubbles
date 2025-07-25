@@ -50,10 +50,31 @@ function getTicketAccessPermissions(
     ticketAccessType?: string | null;
     ticketAccessRoleId?: string | null;
     ticketAccessPermission?: string | null;
-  }
+    ticketOnCallRoleId?: string | null;
+  },
+  category?: string
 ): { id: string; allow: PermissionsBitField }[] {
   const permissions: { id: string; allow: PermissionsBitField }[] = [];
 
+  // For admin tickets, only add the admin role (ticketAccessRoleId)
+  if (category === "admin" && config.ticketAccessRoleId) {
+    const adminRole = guild.roles.cache.get(config.ticketAccessRoleId);
+    if (adminRole) {
+      permissions.push({
+        id: adminRole.id,
+        allow: new PermissionsBitField([
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory,
+          PermissionFlagsBits.AttachFiles,
+          PermissionFlagsBits.EmbedLinks,
+        ]),
+      });
+    }
+    return permissions;
+  }
+
+  // For all other tickets, add both the support role and the configurable role
   if (config.ticketAccessType === "role" && config.ticketAccessRoleId) {
     // Role-based access: Only users with the specific role get access
     const role = guild.roles.cache.get(config.ticketAccessRoleId);
@@ -108,6 +129,23 @@ function getTicketAccessPermissions(
     });
   }
 
+  // Add the on-call support role to all non-admin tickets
+  if (config.ticketOnCallRoleId) {
+    const onCallRole = guild.roles.cache.get(config.ticketOnCallRoleId);
+    if (onCallRole) {
+      permissions.push({
+        id: onCallRole.id,
+        allow: new PermissionsBitField([
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory,
+          PermissionFlagsBits.AttachFiles,
+          PermissionFlagsBits.EmbedLinks,
+        ]),
+      });
+    }
+  }
+
   return permissions;
 }
 
@@ -121,9 +159,10 @@ export interface TicketCategory {
 // Available ticket categories
 const TICKET_CATEGORIES: TicketCategory[] = [
   { id: "general", name: "General Support", description: "General questions and help", emoji: "❓" },
-  { id: "technical", name: "Technical Issue", description: "Bot or server technical problems", emoji: "🔧" },
+  { id: "admin", name: "Admin Ticket", description: "Use this for admin related issues", emoji: "👨‍💼" },
   { id: "report", name: "Report User", description: "Report rule violations or problematic users", emoji: "🚨" },
   { id: "suggestion", name: "Suggestion", description: "Suggest improvements or new features", emoji: "💡" },
+  { id: "technical", name: "Technical Issue", description: "Bot or server technical problems", emoji: "🔧" },
 ];
 
 export async function handleTicketButtonInteraction(interaction: ButtonInteraction): Promise<void> {
@@ -404,7 +443,7 @@ async function handleTicketCreation(interaction: ModalSubmitInteraction): Promis
             ],
           },
           // Allow access based on configured access control
-          ...getTicketAccessPermissions(interaction.guild, config),
+          ...getTicketAccessPermissions(interaction.guild, config, categoryId),
         ],
         reason: `Ticket created by ${interaction.user.tag} (${interaction.user.id})`,
       });

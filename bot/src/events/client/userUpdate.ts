@@ -5,6 +5,7 @@ import { ClientEvent } from "../../structures/Event.js";
 
 export default new ClientEvent(Events.UserUpdate, async (oldUser: User | PartialUser, newUser: User) => {
   const client = newUser.client as import("../../structures/Client.js").default;
+  const startTime = Date.now();
 
   // Compare user changes
   const changes: string[] = [];
@@ -48,26 +49,48 @@ export default new ClientEvent(Events.UserUpdate, async (oldUser: User | Partial
 
   // Only log if there are changes and we can find guilds this user is in
   if (changes.length > 0) {
-    // Get all guilds this user is in (from cache)
+    // Get all guilds this user is in (from cache) - optimized
     const guilds = client.guilds.cache.filter((guild) => guild.members.cache.has(newUser.id));
 
-    // Log to all guilds where this user is a member
-    for (const guild of guilds.values()) {
-      await client.logManager.log(guild.id, "USER_UPDATE", {
-        userId: newUser.id,
-        before: JSON.stringify(before),
-        after: JSON.stringify(after),
-        metadata: {
-          username: newUser.username,
-          displayName: newUser.displayName,
-          changes,
-          oldTag: `${oldUser.username}#${oldUser.discriminator}`,
-          newTag: `${newUser.username}#${newUser.discriminator}`,
-          oldAvatarURL: oldUser.displayAvatarURL(),
-          newAvatarURL: newUser.displayAvatarURL(),
-          timestamp: new Date().toISOString(),
-        },
+    if (guilds.size > 0) {
+      // Log to all guilds where this user is a member (async)
+      const logPromises = guilds.map(async (guild) => {
+        try {
+          await client.logManager.log(guild.id, "USER_UPDATE", {
+            userId: newUser.id,
+            before: JSON.stringify(before),
+            after: JSON.stringify(after),
+            metadata: {
+              username: newUser.username,
+              displayName: newUser.displayName,
+              changes,
+              oldTag: `${oldUser.username}#${oldUser.discriminator}`,
+              newTag: `${newUser.username}#${newUser.discriminator}`,
+              oldAvatarURL: oldUser.displayAvatarURL(),
+              newAvatarURL: newUser.displayAvatarURL(),
+              timestamp: new Date().toISOString(),
+              processingTime: Date.now() - startTime,
+            },
+          });
+        } catch (error) {
+          console.error(`Failed to log user update for guild ${guild.id}:`, error);
+        }
       });
+
+      // Wait for all logging operations to complete
+      try {
+        await Promise.allSettled(logPromises);
+        const totalTime = Date.now() - startTime;
+
+        // Log performance if it's slow
+        if (totalTime > 1000) {
+          console.warn(
+            `Slow user update processing: ${totalTime}ms for user ${newUser.id} across ${guilds.size} guilds`
+          );
+        }
+      } catch (error) {
+        console.error("Error in user update event:", error);
+      }
     }
   }
 });

@@ -6,9 +6,11 @@ import {
   ChannelType,
   EmbedBuilder,
   PermissionFlagsBits,
+  RoleSelectMenuBuilder,
   type ButtonInteraction,
   type ChannelSelectMenuInteraction,
   type ChatInputCommandInteraction,
+  type RoleSelectMenuInteraction,
 } from "discord.js";
 
 import { getGuildConfig, updateGuildConfig } from "../../../database/GuildConfig.js";
@@ -42,24 +44,44 @@ export async function startTicketWizard(client: Client, interaction: ChatInputCo
       "Welcome to the **Ticket System Setup Wizard**!\n\n" +
         "Follow the steps below to configure tickets for your server.\n\n" +
         "• **Select Ticket Channel** – Where users press the create-ticket button.\n" +
+        "• **Configure Roles** – Set up admin and support roles for ticket access.\n" +
+        "• **Access Control** – Choose between role-only or role + permission access.\n" +
         "• **Toggle Threads** – Decide whether each ticket is a thread or its own channel.\n" +
-        "• **Create Panel** – Post the " +
-        "ticket creation panel in the configured channel."
+        "• **Create Panel** – Post the ticket creation panel in the configured channel."
     )
     .addFields(
       {
         name: "Current Settings",
         value:
           `• Channel: ${config.ticketChannelId ? `<#${config.ticketChannelId}>` : "Not set"}` +
-          `\n• Threads: ${config.useTicketThreads ? "Enabled" : "Disabled"}`,
+          `\n• Threads: ${config.useTicketThreads ? "Enabled" : "Disabled"}` +
+          `\n• Admin Role: ${config.ticketAccessRoleId ? `<@&${config.ticketAccessRoleId}>` : "Not set"}` +
+          `\n• Support Role: ${config.ticketOnCallRoleId ? `<@&${config.ticketOnCallRoleId}>` : "Not set"}` +
+          `\n• Access Type: ${config.ticketAccessType === "role" ? "Role Only" : config.ticketAccessType === "permission" ? "Role + Permission" : "Permission Only"}`,
+        inline: false,
+      },
+      {
+        name: "Role Configuration",
+        value:
+          "**Admin Role:** Only users with this role can access admin tickets\n" +
+          "**Support Role:** This role gets added to all non-admin tickets for support access",
+        inline: false,
+      },
+      {
+        name: "Access Control",
+        value:
+          "**Role Only:** Only users with the admin/support roles can access tickets\n" +
+          "**Role + Permission:** Users with roles OR users with ManageMessages permission can access tickets",
         inline: false,
       },
       {
         name: "Instructions",
         value:
           "1. Select a channel (dropdown below).\n" +
-          "2. Toggle threads if desired.\n" +
-          "3. Press **Create Panel** when ready.",
+          "2. Configure admin and support roles.\n" +
+          "3. Choose access control type.\n" +
+          "4. Toggle threads if desired.\n" +
+          "5. Press **Create Panel** when ready.",
         inline: false,
       }
     )
@@ -68,6 +90,17 @@ export async function startTicketWizard(client: Client, interaction: ChatInputCo
 
   // Channel select menu
   const channelSelect = createChannelSelect("ticket_channel_select", "Select ticket channel", 1, 1);
+
+  // Role select menus
+  const adminRoleSelect = new RoleSelectMenuBuilder()
+    .setCustomId("ticket_admin_role_select")
+    .setPlaceholder("Select admin role (for admin tickets)")
+    .setMaxValues(1);
+
+  const supportRoleSelect = new RoleSelectMenuBuilder()
+    .setCustomId("ticket_support_role_select")
+    .setPlaceholder("Select support role (for all tickets)")
+    .setMaxValues(1);
 
   const threadButton = createToggleButton(
     config.useTicketThreads,
@@ -80,7 +113,12 @@ export async function startTicketWizard(client: Client, interaction: ChatInputCo
     .setLabel("Create Panel")
     .setStyle(BUTTON_STYLES.SUCCESS);
 
-  const components = [createChannelSelectRow(channelSelect), createButtonRow(threadButton, panelButton)];
+  const components = [
+    createChannelSelectRow(channelSelect),
+    new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(adminRoleSelect),
+    new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(supportRoleSelect),
+    createButtonRow(threadButton, panelButton),
+  ];
 
   // Check interaction state before replying
   if (!interaction.replied && !interaction.deferred) {
@@ -108,6 +146,19 @@ export async function startTicketWizard(client: Client, interaction: ChatInputCo
             return;
           }
           await applyTicketChannel(client, menu, selectedChannelId);
+        } else if (interactionComponent.isRoleSelectMenu()) {
+          const menu = interactionComponent;
+          const selectedRoleId = menu.values[0];
+          if (!selectedRoleId) {
+            await menu.reply({ content: "❌ No role selected.", ephemeral: true });
+            return;
+          }
+
+          if (menu.customId === "ticket_admin_role_select") {
+            await applyAdminRole(client, menu, selectedRoleId);
+          } else if (menu.customId === "ticket_support_role_select") {
+            await applySupportRole(client, menu, selectedRoleId);
+          }
         } else if (interactionComponent.isButton()) {
           const btn = interactionComponent;
           switch (btn.customId) {
@@ -146,6 +197,10 @@ export async function startTicketWizard(client: Client, interaction: ChatInputCo
     const disabledComponents = [
       new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
         ChannelSelectMenuBuilder.from(channelSelect).setDisabled(true)
+      ),
+      new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
+        RoleSelectMenuBuilder.from(adminRoleSelect).setDisabled(true),
+        RoleSelectMenuBuilder.from(supportRoleSelect).setDisabled(true)
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         ButtonBuilder.from(threadButton).setDisabled(true),
@@ -198,13 +253,11 @@ async function applyTicketChannel(
     if (customClient.queueService) {
       try {
         await customClient.queueService.processRequest({
-          type: "CONFIG_UPDATE",
+          type: "GUILD_CONFIG_UPDATE",
           data: {
             guildId: interaction.guild.id,
-            section: "TICKET_SYSTEM",
-            setting: "channelId",
+            setting: "ticketChannelId",
             value: channel.id,
-            action: "UPDATE_TICKET_CHANNEL",
             updatedBy: interaction.user.id,
           },
           source: "rest",
@@ -212,24 +265,128 @@ async function applyTicketChannel(
           guildId: interaction.guild.id,
           requiresReliability: true,
         });
-      } catch (queueError) {
-        logger.warn("Failed to notify queue service of ticket channel update:", queueError);
+      } catch (error) {
+        console.warn("Failed to notify queue service of ticket channel update:", error);
       }
     }
 
-    const embed = new EmbedBuilder()
+    const successEmbed = new EmbedBuilder()
       .setColor(WIZARD_COLORS.SUCCESS)
-      .setTitle("✅ Ticket Channel Set")
-      .setDescription(`Ticket channel has been set to <#${channelId}>`)
+      .setTitle("✅ Ticket Channel Updated!")
+      .setDescription(`Ticket channel has been set to <#${channel.id}>`)
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.update({ embeds: [successEmbed] });
   } catch (error) {
-    logger.error("Error updating ticket channel:", error);
-    await interaction.reply({
-      content: "❌ Failed to update ticket channel. Please try again.",
-      ephemeral: true,
+    logger.error("Failed to update ticket channel:", error);
+    await interaction.reply({ content: "❌ Failed to update ticket channel. Please try again.", ephemeral: true });
+  }
+}
+
+async function applyAdminRole(client: Client, interaction: RoleSelectMenuInteraction, roleId: string): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ Guild unavailable.", ephemeral: true });
+    return;
+  }
+
+  const role = interaction.guild.roles.cache.get(roleId);
+  if (!role) {
+    await interaction.reply({ content: "❌ Selected role not found.", ephemeral: true });
+    return;
+  }
+
+  try {
+    await updateGuildConfig(interaction.guild.id, {
+      ticketAccessRoleId: role.id,
+      ticketAccessType: "role",
     });
+
+    // Notify queue service if available
+    const customClient = client;
+    if (customClient.queueService) {
+      try {
+        await customClient.queueService.processRequest({
+          type: "GUILD_CONFIG_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            setting: "ticketAccessRoleId",
+            value: role.id,
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify queue service of admin role update:", error);
+      }
+    }
+
+    const successEmbed = new EmbedBuilder()
+      .setColor(WIZARD_COLORS.SUCCESS)
+      .setTitle("✅ Admin Role Updated!")
+      .setDescription(
+        `Admin role has been set to <@&${role.id}>\n\n**Note:** Only users with this role can access admin tickets.`
+      )
+      .setTimestamp();
+
+    await interaction.update({ embeds: [successEmbed] });
+  } catch (error) {
+    logger.error("Failed to update admin role:", error);
+    await interaction.reply({ content: "❌ Failed to update admin role. Please try again.", ephemeral: true });
+  }
+}
+
+async function applySupportRole(client: Client, interaction: RoleSelectMenuInteraction, roleId: string): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ Guild unavailable.", ephemeral: true });
+    return;
+  }
+
+  const role = interaction.guild.roles.cache.get(roleId);
+  if (!role) {
+    await interaction.reply({ content: "❌ Selected role not found.", ephemeral: true });
+    return;
+  }
+
+  try {
+    await updateGuildConfig(interaction.guild.id, { ticketOnCallRoleId: role.id });
+
+    // Notify queue service if available
+    const customClient = client;
+    if (customClient.queueService) {
+      try {
+        await customClient.queueService.processRequest({
+          type: "GUILD_CONFIG_UPDATE",
+          data: {
+            guildId: interaction.guild.id,
+            setting: "ticketOnCallRoleId",
+            value: role.id,
+            updatedBy: interaction.user.id,
+          },
+          source: "rest",
+          userId: interaction.user.id,
+          guildId: interaction.guild.id,
+          requiresReliability: true,
+        });
+      } catch (error) {
+        console.warn("Failed to notify queue service of support role update:", error);
+      }
+    }
+
+    const successEmbed = new EmbedBuilder()
+      .setColor(WIZARD_COLORS.SUCCESS)
+      .setTitle("✅ Support Role Updated!")
+      .setDescription(
+        `Support role has been set to <@&${role.id}>\n\n**Note:** This role will be added to all non-admin tickets for support access.`
+      )
+      .setTimestamp();
+
+    await interaction.update({ embeds: [successEmbed] });
+  } catch (error) {
+    logger.error("Failed to update support role:", error);
+    await interaction.reply({ content: "❌ Failed to update support role. Please try again.", ephemeral: true });
   }
 }
 
