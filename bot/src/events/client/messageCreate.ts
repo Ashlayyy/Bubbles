@@ -31,6 +31,7 @@ export default new ClientEvent(Events.MessageCreate, async (message: Message) =>
           ticketId: ticket.id,
           messageId: message.id,
           userId: message.author.id,
+          userIcon: message.author.displayAvatarURL() || "",
           content: message.content || "",
           attachments: message.attachments.map((att) => att.url),
           embeds: message.embeds.map((embed) => embed.toJSON()) as Prisma.InputJsonValue[],

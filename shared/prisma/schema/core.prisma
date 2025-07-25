@@ -3,6 +3,7 @@
 model GuildConfig {
   id                     String          @id @default(auto()) @map("_id") @db.ObjectId
   guildId                String          @unique
+  guildName              String?         // Server name for visual identification
   maxMessagesCleared     Int             @default(100)
   musicChannelId         String          @default("")
   defaultRepeatMode      Int             @default(0)
@@ -24,16 +25,8 @@ model GuildConfig {
   moderation_case_rules  Json?
   reportChannelId        String?
   reportPingRoleId       String?
-  // Ticket system basic fields
-  ticketChannelId        String?
-  ticketCategoryId       String?
-  useTicketThreads       Boolean         @default(true)
-  ticketOnCallRoleId     String?
-  ticketSilentClaim      Boolean         @default(true)
-  ticketAccessType       String?
-  ticketAccessRoleId     String?
-  ticketAccessPermission String?
-  ticketLogChannelId     String?
+  // Ticket system configuration (JSON object)
+  ticketSettings         Json?           // Structured ticket configuration
   // Statistics
   welcomeStats           Json?
 }
