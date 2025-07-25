@@ -1,0 +1,277 @@
+// Entertainment System Models
+
+// Polling System
+model PollAdvanced {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  channelId   String
+  messageId   String?
+  createdBy   String
+  title       String
+  description String?
+  type        String // single, multiple, ranked, rating
+  options     Json // Poll options
+  settings    Json // Privacy, duration, etc.
+  anonymous   Boolean   @default(false)
+  multiSelect Boolean   @default(false)
+  maxChoices  Int?
+  endTime     DateTime?
+  status      String // active, closed, scheduled
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  votes PollVote[]
+
+  @@index([guildId, status])
+  @@index([createdBy])
+}
+
+model PollVote {
+  id      String   @id @default(auto()) @map("_id") @db.ObjectId
+  pollId  String
+  userId  String
+  choices String[] // Selected option IDs
+  ranking Json? // For ranked voting
+  rating  Int? // For rating polls
+  votedAt DateTime @default(now())
+
+  poll PollAdvanced @relation(fields: [pollId], references: [id])
+
+  @@unique([pollId, userId])
+  @@index([pollId, votedAt])
+}
+
+// Giveaway System
+model GiveawayAdvanced {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  channelId    String
+  messageId    String?
+  createdBy    String
+  title        String
+  description  String?
+  prize        String
+  winnerCount  Int      @default(1)
+  requirements Json? // Entry requirements
+  startTime    DateTime @default(now())
+  endTime      DateTime
+  status       String   @default("active") // active, ended, cancelled
+  winners      String[] @default([])
+  entryCount   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  entries GiveawayEntryAdvanced[]
+
+  @@index([guildId, status])
+  @@index([endTime])
+}
+
+model GiveawayEntryAdvanced {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  giveawayId String
+  userId     String
+  enteredAt  DateTime @default(now())
+
+  giveaway GiveawayAdvanced @relation(fields: [giveawayId], references: [id])
+
+  @@unique([giveawayId, userId])
+  @@index([giveawayId])
+}
+
+// Trivia System
+model TriviaQuestion {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId       String? // null for global questions
+  category      String
+  difficulty    String   @default("MEDIUM") // EASY, MEDIUM, HARD
+  question      String
+  correctAnswer String
+  wrongAnswers  String[] // Array of incorrect options
+  explanation   String?
+  isActive      Boolean  @default(true)
+  timesUsed     Int      @default(0)
+  correctCount  Int      @default(0)
+  createdBy     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([guildId, category])
+  @@index([difficulty, isActive])
+}
+
+// Game Sessions
+model GameSession {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  channelId    String
+  gameType     String // TRIVIA, POLL, HANGMAN, etc.
+  status       String    @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+  hostId       String
+  participants String[]  @default([])
+  gameData     Json // Game-specific data
+  scores       Json? // Player scores
+  settings     Json? // Game settings
+  messageId    String? // Game message ID
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  duration     Int? // Session duration in seconds
+
+  @@index([guildId, gameType])
+  @@index([status, startedAt])
+  @@index([hostId])
+}
+
+model GameSettings {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String   @unique
+  enabled         Boolean  @default(true)
+  allowedChannels String[] @default([])
+  triviaEnabled   Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Reminder System
+model ReminderAdvanced {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId    String
+  userId     String
+  channelId  String?
+  message    String
+  reminderAt DateTime
+  recurring  Json? // Recurring reminder configuration
+  completed  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([reminderAt, completed])
+  @@index([guildId, userId])
+}
+
+// Event Management
+model Event {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId          String
+  createdBy        String
+  title            String
+  description      String?
+  startTime        DateTime
+  endTime          DateTime?
+  timezone         String
+  location         String? // Voice channel or external location
+  maxAttendees     Int?
+  requiresApproval Boolean   @default(false)
+  recurring        Json? // Recurring event configuration
+  reminderTimes    Int[] // Minutes before event for reminders
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  rsvps EventRSVP[]
+
+  @@index([guildId, startTime])
+}
+
+model EventRSVP {
+  id      String   @id @default(auto()) @map("_id") @db.ObjectId
+  eventId String
+  userId  String
+  status  String // going, maybe, not_going
+  notes   String?
+  rsvpAt  DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id])
+
+  @@unique([eventId, userId])
+  @@index([eventId, status])
+}
+
+// Application System
+model ApplicationForm {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId        String
+  name           String
+  description    String?
+  isActive       Boolean  @default(true)
+  isMultiStep    Boolean  @default(false)
+  maxSubmissions Int? // Per user limit
+  fields         Json // Form field definitions
+  workflow       Json? // Multi-step workflow definition
+  autoRole       String? // Role to assign on approval
+  logChannelId   String? // Where to log submissions
+  pingRoleId     String? // Role to ping on new submissions
+  createdBy      String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  applications Application[]
+  steps        ApplicationStep[]
+
+  @@unique([guildId, name])
+  @@index([guildId, isActive])
+}
+
+model ApplicationStep {
+  id          String          @id @default(auto()) @map("_id") @db.ObjectId
+  formId      String          @db.ObjectId
+  form        ApplicationForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  stepNumber  Int
+  name        String
+  description String?
+  fields      Json // Step-specific fields
+  isRequired  Boolean         @default(true)
+  conditions  Json? // Conditional logic
+
+  @@unique([formId, stepNumber])
+  @@index([formId])
+}
+
+model Application {
+  id          String          @id @default(auto()) @map("_id") @db.ObjectId
+  formId      String          @db.ObjectId
+  form        ApplicationForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  guildId     String
+  userId      String
+  status      String          @default("PENDING") // PENDING, APPROVED, REJECTED, IN_REVIEW
+  currentStep Int             @default(1)
+  responses   Json // All form responses
+  reviewerId  String?
+  reviewNotes String?
+  reviewedAt  DateTime?
+  submittedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([formId, userId])
+  @@index([guildId, status])
+  @@index([userId, status])
+}
+
+// Compliment Wheel System
+model ComplimentWheel {
+  id                  String                @id @default(auto()) @map("_id") @db.ObjectId
+  guildId             String                @unique
+  messageId           String // The message ID to monitor for reactions
+  channelId           String // Channel where the message is located
+  complimentChannelId String // Channel where daily compliments are announced
+  emoji               String                @default("❤️") // The emoji to monitor for reactions
+  customMessage       String? // Custom embed message for daily compliments
+  pinnedRoleId        String? // Role to pin in the compliment message
+  isActive            Boolean               @default(true)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  drawnUsers          ComplimentDrawnUser[]
+}
+
+model ComplimentDrawnUser {
+  id          String          @id @default(auto()) @map("_id") @db.ObjectId
+  wheelId     String          @db.ObjectId
+  wheel       ComplimentWheel @relation(fields: [wheelId], references: [id], onDelete: Cascade)
+  userId      String
+  username    String
+  drawnAt     DateTime        @default(now())
+  cycleNumber Int // Which cycle this user was drawn in
+
+  @@unique([wheelId, userId, cycleNumber])
+  @@index([wheelId])
+  @@index([userId])
+}

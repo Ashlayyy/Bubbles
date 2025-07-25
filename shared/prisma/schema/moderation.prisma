@@ -1,0 +1,198 @@
+// Moderation System Models
+
+model ModerationCase {
+  id           String          @id @default(auto()) @map("_id") @db.ObjectId
+  caseNumber   Int
+  guildId      String
+  userId       String
+  moderatorId  String
+  type         String
+  reason       String?
+  evidence     String[]
+  duration     Int?
+  expiresAt    DateTime?
+  isActive     Boolean         @default(true)
+  severity     String          @default("LOW")
+  points       Int             @default(0)
+  canAppeal    Boolean         @default(true)
+  appealedAt   DateTime?
+  appealStatus String?
+  context      Json?
+  dmSent       Boolean         @default(false)
+  publicNote   String?
+  staffNote    String?
+  
+  // Additional fields for better tracking
+  channelId    String?         // Where the action was taken
+  messageId    String?         // If related to a specific message
+  referenceCase String?        @db.ObjectId // Link to related cases (warn -> ban)
+  autoMod      Boolean         @default(false) // If triggered by automod
+  
+  // Enhanced moderation context
+  escalatedFrom String?        @db.ObjectId // Previous case that led to this
+  ipAddress    String?         // IP address if available
+  userAgent    String?         // User agent if available
+  
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  notes        CaseNote[]
+  appeals      CaseAppeal[]
+  logs         ModerationActionLog[]
+
+  @@unique([guildId, caseNumber])
+  @@index([guildId, userId])
+  @@index([guildId, type])
+  @@index([expiresAt])
+}
+
+model CaseNote {
+  id         String         @id @default(auto()) @map("_id") @db.ObjectId
+  caseId     String         @db.ObjectId
+  case       ModerationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  authorId   String
+  content    String
+  isInternal Boolean        @default(false)
+  createdAt  DateTime       @default(now())
+
+  @@index([caseId])
+}
+
+model CaseAppeal {
+  id             String         @id @default(auto()) @map("_id") @db.ObjectId
+  caseId         String         @db.ObjectId
+  case           ModerationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  userId         String
+  appealMethod   String
+  reason         String
+  status         String         @default("PENDING")
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  reviewNotes    String?
+  evidence       String[]
+  communications Json[]         @default([])
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([caseId])
+  @@index([userId, status])
+}
+
+// Moderation Action Log (ONLY for moderation actions, not Discord events)
+model ModerationActionLog {
+  id             String          @id @default(auto()) @map("_id") @db.ObjectId
+  guildId        String
+  actionType     String          // WARN, KICK, BAN, TIMEOUT, etc. (moderation only)
+  userId         String?         // Target user
+  channelId      String?         // Where action was taken
+  caseId         String?         @db.ObjectId
+  case           ModerationCase? @relation(fields: [caseId], references: [id])
+  
+  // Action details
+  reason         String?
+  duration       Int?            // For timeouts
+  severity       String?         // LOW, MEDIUM, HIGH, CRITICAL
+  
+  // Evidence and context
+  evidence       String[]        @default([])
+  context        Json?           // Additional context data
+  
+  // Executor information
+  executorId     String          // Who performed the action (required for mod actions)
+  executorType   String          @default("USER") // USER, AUTOMOD, SYSTEM
+  
+  // Legacy fields (for compatibility)
+  before         Json?
+  after          Json?
+  metadata       Json?
+  content        String?
+  attachments    String[]        @default([])
+  embeds         Json[]          @default([])
+  sentToChannels String[]        @default([])
+  
+  createdAt      DateTime        @default(now())
+
+  @@index([guildId, actionType])
+  @@index([guildId, createdAt])
+  @@index([userId, guildId])
+  @@index([caseId])
+  @@index([executorId])
+}
+
+model AutoModRule {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId        String
+  name           String
+  type           String
+  enabled        Boolean   @default(true)
+  triggers       Json
+  whitelist      String[]  @default([])
+  sensitivity    String    @default("MEDIUM")
+  actions        Json
+  escalation     Json?
+  exemptRoles    String[]  @default([])
+  exemptChannels String[]  @default([])
+  exemptUsers    String[]  @default([])
+  targetChannels String[]  @default([])
+  logChannel     String?
+  logActions     Boolean   @default(true)
+  triggerCount   Int       @default(0)
+  lastTriggered  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdBy      String
+
+  @@unique([guildId, name])
+  @@index([guildId, enabled])
+}
+
+model UserInfractions {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  userId       String
+  totalPoints  Int       @default(0)
+  strikes      Int       @default(0)
+  lastIncident DateTime?
+  pointDecay   Json?
+  restrictions Json[]    @default([])
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([guildId, totalPoints])
+}
+
+model UserReport {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  reporterId   String
+  reportedUser String
+  messageId    String
+  channelId    String
+  link         String
+  reason       String
+  status       String    @default("OPEN")
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedBy   String?
+  resolution   String?
+
+  @@index([guildId, status])
+}
+
+model ScheduledAction {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  userId       String
+  type         String
+  caseId       String?   @db.ObjectId
+  data         Json?
+  scheduledFor DateTime
+  isExecuted   Boolean   @default(false)
+  executedAt   DateTime?
+  error        String?
+  retryCount   Int       @default(0)
+  maxRetries   Int       @default(3)
+  createdAt    DateTime  @default(now())
+
+  @@index([scheduledFor, isExecuted])
+  @@index([guildId, userId])
+}

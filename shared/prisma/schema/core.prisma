@@ -1,0 +1,115 @@
+// Core Models - Basic bot configuration and user management
+
+model GuildConfig {
+  id                     String          @id @default(auto()) @map("_id") @db.ObjectId
+  guildId                String          @unique
+  guildName              String?         // Server name for visual identification
+  
+  // Core settings
+  maxMessagesCleared     Int             @default(100)
+  preferredLanguage      String          @default("en")
+  
+  // Feature configurations (JSON objects for better organization)
+  musicSettings          Json?           // Music bot configuration
+  moderationSettings     Json?           // Moderation system configuration  
+  ticketSettings         Json?           // Ticket system configuration
+  welcomeSettings        Json?           // Welcome/goodbye configuration
+  automodSettings        Json?           // Automod configuration
+  economySettings        Json?           // Economy system configuration
+  levelsSettings         Json?           // Leveling system configuration
+  
+  // Legacy fields (consider migrating to JSON objects above)
+  musicChannelId         String          @default("")
+  defaultRepeatMode      Int             @default(0)
+  reactionRoleChannels   String[]        @default([])
+  logReactionRoles       Boolean         @default(false)
+  welcomeChannelId       String?
+  goodbyeChannelId       String?
+  welcomeEnabled         Boolean         @default(true)
+  goodbyeEnabled         Boolean         @default(true)
+  
+  // Relations
+  logSettings            LogSettings?    @relation(fields: [logSettingsId], references: [id])
+  logSettingsId          String?         @db.ObjectId
+  automodConfig          AutomodConfig?  @relation(fields: [automodConfigId], references: [id])
+  automodConfigId        String?         @db.ObjectId
+  economyConfig          EconomyConfig?  @relation(fields: [economyConfigId], references: [id])
+  economyConfigId        String?         @db.ObjectId
+  levelsConfig           LevelsConfig?   @relation(fields: [levelsConfigId], references: [id])
+  levelsConfigId         String?         @db.ObjectId
+
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  @@index([guildId])
+}
+
+model LogSettings {
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String        @unique
+  channelRouting  Json
+  ignoredUsers    String[]      @default([])
+  ignoredRoles    String[]      @default([])
+  ignoredChannels String[]      @default([])
+  enabledLogTypes String[]      @default([])
+  customFormats   Json?
+  filterRules     Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  GuildConfig     GuildConfig[]
+}
+
+model AppealSettings {
+  id                    String        @id @default(auto()) @map("_id") @db.ObjectId
+  guildId               String        @unique
+  discordBotEnabled     Boolean       @default(true)
+  webFormEnabled        Boolean       @default(false)
+  emailEnabled          Boolean       @default(false)
+  separateServerEnabled Boolean       @default(false)
+  appealChannelId       String?
+  appealServerId        String?
+  webFormUrl            String?
+  appealEmail           String?
+  appealReceived        String?
+  appealApproved        String?
+  appealDenied          String?
+  appealCooldown        Int           @default(86400)
+  maxAppealsPerUser     Int           @default(3)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  GuildConfig           GuildConfig[]
+}
+
+model User {
+  id             String   @id @map("_id") @db.ObjectId
+  discordId      String   @unique
+  username       String
+  discriminator  String
+  avatar         String?
+  email          String?  @unique
+  accessToken    String
+  refreshToken   String
+  tokenExpiresAt DateTime
+  lastLogin      DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model MaintenanceMode {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String   @unique
+  isEnabled    Boolean  @default(false)
+  allowedUsers String[] @default([])
+  reason       String?
+  enabledBy    String
+  enabledAt    DateTime @default(now())
+}
+
+model TokenBlacklist {
+  jti       String   @id @map("_id")
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
