@@ -326,17 +326,60 @@ export default class LogManager {
   }
 
   /**
-   * Main logging method - super easy to use!
-   * Just call: logManager.log(guildId, "MESSAGE_DELETE", { userId, content, etc... })
+   * Main logging method - routes to appropriate logging system
+   * Discord events → DiscordEventLog, Moderation actions → ModerationActionLog
    */
   async log(guildId: string, logType: string, data: Partial<LogEvent> = {}): Promise<void> {
     try {
-      const isModerationLog = /^MOD_[A-Z_]+$/.test(logType);
-      if (!ALL_LOG_TYPES.includes(logType as (typeof ALL_LOG_TYPES)[number]) && !isModerationLog) {
-        logger.warn(`Invalid log type: ${logType}`);
-        return;
+      // Import services dynamically to avoid circular dependencies
+      const { EventLogService } = await import("../services/EventLogService");
+      const { ModerationLogService, MODERATION_ACTIONS } = await import("../services/ModerationLogService");
+      
+      const eventLogService = new EventLogService();
+      const moderationLogService = new ModerationLogService();
+
+      // Route to appropriate service based on log type
+      if (MODERATION_ACTIONS.includes(logType as any)) {
+        // This is a moderation action
+        await moderationLogService.logModerationAction(guildId, logType, {
+          userId: data.userId,
+          channelId: data.channelId,
+          caseId: data.caseId,
+          reason: data.reason,
+          executorId: data.executorId || "SYSTEM",
+          context: data.metadata,
+        });
+      } else {
+        // This is a Discord event
+        await eventLogService.logDiscordEvent(guildId, logType, {
+          userId: data.userId,
+          channelId: data.channelId,
+          messageId: data.metadata?.messageId,
+          roleId: data.roleId,
+          before: data.before,
+          after: data.after,
+          metadata: data.metadata,
+          content: data.content,
+          attachments: data.attachments,
+          embeds: data.embeds,
+          executorId: data.executorId,
+          reason: data.reason,
+        });
       }
 
+      // Also send to Discord channels if configured
+      await this.sendToDiscordChannels(guildId, logType, data);
+
+    } catch (error) {
+      logger.error(`Failed to log event ${logType}:`, error);
+    }
+  }
+
+  /**
+   * Send log to Discord channels (existing functionality)
+   */
+  private async sendToDiscordChannels(guildId: string, logType: string, data: Partial<LogEvent>): Promise<void> {
+    try {
       // Get settings for this guild
       const settings = await this.getLogSettings(guildId);
 
