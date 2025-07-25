@@ -23,7 +23,7 @@ model DiscordEventLog {
   reason      String?   // Reason for action (if applicable)
   
   // Retention management
-  retentionTier String   @default("FREE") // FREE, PREMIUM, ENTERPRISE
+  retentionTier String   @default("FREE") // FREE, PREMIUM
   expiresAt   DateTime? // Auto-calculated based on tier + createdAt
   
   createdAt   DateTime  @default(now())
