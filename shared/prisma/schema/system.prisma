@@ -1,0 +1,135 @@
+// System Models - Infrastructure and automation
+
+// Queue System
+model QueueJob {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  queueName   String
+  jobType     String
+  payload     Json
+  status      String // waiting, active, completed, failed
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+  failedAt    DateTime?
+  errorMsg    String?
+
+  @@index([queueName, status])
+  @@index([createdAt])
+}
+
+// Event System
+model EventDiscord {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  type      String
+  guildId   String?
+  userId    String?
+  channelId String?
+  messageId String?
+  payload   Json
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  ttl       DateTime?
+
+  @@index([type, guildId, createdAt])
+  @@index([userId, createdAt])
+  @@index([ttl])
+}
+
+model EventGithub {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  type       String
+  repository String?
+  payload    Json
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+  ttl        DateTime?
+
+  @@index([type, repository, createdAt])
+  @@index([ttl])
+}
+
+// Automation System
+model Automation {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  name        String
+  description String?
+  enabled     Boolean   @default(true)
+  trigger     Json // Trigger configuration
+  conditions  Json // Condition logic
+  actions     Json // Action sequence
+  schedule    String? // Cron expression for scheduled automation
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastRun     DateTime?
+  runCount    Int       @default(0)
+
+  executions AutomationExecution[]
+
+  @@index([guildId, enabled])
+}
+
+model AutomationExecution {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  automationId String
+  triggeredBy  String?
+  triggeredAt  DateTime @default(now())
+  status       String // running, completed, failed
+  result       Json?
+  errorMessage String?
+  duration     Int? // Execution time in milliseconds
+
+  automation Automation @relation(fields: [automationId], references: [id])
+
+  @@index([automationId, triggeredAt])
+}
+
+// Premium System
+model GuildSubscription {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String    @unique
+  tier         String // free, premium
+  status       String // active, canceled, expired
+  subscribedAt DateTime?
+  expiresAt    DateTime?
+  features     String[] // Enabled premium features
+  limits       Json // Usage limits configuration
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  usage FeatureUsage[]
+
+  @@index([tier, status])
+}
+
+model FeatureUsage {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  feature   String
+  usage     Int      @default(0)
+  limit     Int
+  resetAt   DateTime // Monthly reset
+  createdAt DateTime @default(now())
+
+  subscription GuildSubscription @relation(fields: [guildId], references: [guildId])
+
+  @@unique([guildId, feature])
+  @@index([resetAt])
+}
+
+// Log Type Definitions
+model LogType {
+  id             String  @id @default(auto()) @map("_id") @db.ObjectId
+  name           String  @unique // MESSAGE_DELETE, MEMBER_JOIN, etc.
+  category       String // MESSAGE, MEMBER, ROLE, CHANNEL, etc.
+  description    String
+  severity       String  @default("INFO") // DEBUG, INFO, WARN, ERROR, CRITICAL
+  defaultChannel String? // Default channel type for this log
+  isEnabled      Boolean @default(true)
+
+  // Template configuration
+  embedTemplate   Json? // Default embed template
+  messageTemplate String? // Default message template
+}

@@ -1,0 +1,446 @@
+// Feature System Models
+
+// Reaction Role System
+model ReactionRole {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  channelId String
+  messageId String
+  emoji     String // Unicode or custom emoji ID
+  roleIds   String[] // Multiple roles can be assigned to one reaction
+  isActive  Boolean  @default(true)
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  logs ReactionRoleLog[]
+
+  @@unique([messageId, emoji])
+  @@index([guildId])
+  @@index([messageId])
+}
+
+model ReactionRoleMessage {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  channelId   String
+  messageId   String   @unique
+  title       String
+  description String?
+  embedColor  String?
+  isActive    Boolean  @default(true)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([guildId])
+}
+
+model ReactionRoleLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  messageId String
+  emoji     String
+  roleId    String
+  action    String // ADD or REMOVE
+  timestamp DateTime @default(now())
+
+  reactionRole ReactionRole @relation(fields: [messageId, emoji], references: [messageId, emoji])
+
+  @@index([guildId])
+  @@index([userId])
+  @@index([messageId])
+}
+
+// Starboard System
+model StarboardSettings {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String
+  channelId       String?
+  emoji           String   @default("⭐")
+  threshold       Int      @default(3)
+  selfStar        Boolean  @default(false)
+  allowNsfw       Boolean  @default(false)
+  ignoredChannels String[] @default([])
+  ignoredRoles    String[] @default([])
+  ignoredUsers    String[] @default([])
+  color           String   @default("#FFD700")
+  isEnabled       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([guildId])
+}
+
+model StarboardMessage {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId            String
+  channelId          String // Original channel
+  messageId          String   @unique // Original message
+  starboardChannelId String // Starboard channel
+  starboardMessageId String?  @unique // Message in starboard
+  authorId           String // Original author
+  content            String?
+  attachments        String[] @default([])
+  embeds             Json[]   @default([])
+  starCount          Int      @default(0)
+  lastUpdated        DateTime @default(now())
+  createdAt          DateTime @default(now())
+
+  reactions StarboardReaction[]
+
+  @@index([guildId, starCount])
+}
+
+model StarboardReaction {
+  id        String           @id @default(auto()) @map("_id") @db.ObjectId
+  messageId String           @db.ObjectId
+  message   StarboardMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  guildId   String
+  emoji     String
+  addedAt   DateTime         @default(now())
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
+}
+
+// Webhook System
+model Webhook {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId    String
+  name       String
+  url        String
+  secret     String?
+  isActive   Boolean   @default(true)
+  events     String[]  @default([]) // Which events to send
+  headers    Json? // Custom headers
+  timeout    Int       @default(5000) // Timeout in ms
+  retryCount Int       @default(3)
+  retryDelay Int       @default(1000) // Base delay in ms
+  lastUsed   DateTime?
+  failCount  Int       @default(0)
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  logs       WebhookLog[]
+  deliveries WebhookDelivery[]
+
+  @@unique([guildId, name])
+  @@index([guildId, isActive])
+}
+
+model WebhookLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  webhookId String   @db.ObjectId
+  webhook   Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  guildId   String
+  event     String
+  payload   Json
+  response  Json?
+  status    String // SUCCESS, FAILED, TIMEOUT
+  httpCode  Int?
+  error     String?
+  duration  Int? // Response time in ms
+  timestamp DateTime @default(now())
+
+  @@index([webhookId, timestamp])
+  @@index([guildId, event])
+  @@index([status])
+}
+
+model WebhookDelivery {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  webhookId   String    @db.ObjectId
+  webhook     Webhook   @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  guildId     String
+  event       String
+  payload     Json
+  status      String    @default("PENDING") // PENDING, SUCCESS, FAILED, ABANDONED
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  nextRetry   DateTime?
+  lastError   String?
+  httpCode    Int?
+  response    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([webhookId, status])
+  @@index([nextRetry])
+  @@index([guildId, event])
+}
+
+// Alias System
+model Alias {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String
+  name            String
+  content         String
+  category        String   @default("GENERAL")
+  variables       String[] @default([])
+  permissions     String[] @default([])
+  usageCount      Int      @default(0)
+  isGlobal        Boolean  @default(false)
+  allowedChannels String[] @default([])
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([guildId, name])
+  @@index([guildId, category])
+}
+
+// Custom Commands
+model CustomCommand {
+  id                  String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId             String
+  name                String
+  description         String?
+  content             String
+  aliases             String[]  @default([])
+  category            String    @default("general")
+  enabled             Boolean   @default(true)
+  cooldownSeconds     Int       @default(0)
+  requiredRoles       String[]  @default([])
+  requiredPermissions String[]  @default([])
+  allowedChannels     String[]  @default([])
+  script              String? // JavaScript code for complex commands
+  usageCount          Int       @default(0)
+  lastUsed            DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  logs CustomCommandLog[]
+
+  @@unique([guildId, name])
+  @@index([guildId, category])
+  @@index([guildId, enabled])
+}
+
+model CustomCommandLog {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId       String
+  commandId     String
+  commandName   String
+  userId        String
+  channelId     String?
+  success       Boolean
+  error         String?
+  executionTime Int? // Execution time in milliseconds
+  timestamp     DateTime @default(now())
+
+  command CustomCommand @relation(fields: [commandId], references: [id])
+
+  @@index([guildId, commandId, timestamp])
+  @@index([userId, timestamp])
+}
+
+// Permission System
+model CommandPermission {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId            String
+  commandName        String
+  permissionLevel    String // Enum as string
+  discordPermissions String[] @default([])
+  requiredRoles      String[] @default([])
+  allowedUsers       String[] @default([])
+  deniedUsers        String[] @default([])
+  isConfigurable     Boolean  @default(true)
+  createdBy          String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([guildId, commandName])
+  @@index([guildId])
+}
+
+model PermissionAuditLog {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  commandName String?
+  action      String
+  oldValue    Json?
+  newValue    Json?
+  userId      String
+  reason      String?
+  timestamp   DateTime @default(now())
+
+  @@index([guildId])
+  @@index([timestamp])
+}
+
+model CustomRole {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  name        String
+  permissions String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignments CustomRoleAssignment[]
+
+  @@unique([guildId, name])
+  @@index([guildId])
+}
+
+model CustomRoleAssignment {
+  id         String     @id @default(auto()) @map("_id") @db.ObjectId
+  guildId    String
+  userId     String
+  roleId     String     @db.ObjectId
+  role       CustomRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedBy String
+  assignedAt DateTime   @default(now())
+  expiresAt  DateTime?
+  isActive   Boolean    @default(true)
+  reason     String?
+
+  @@unique([guildId, userId, roleId])
+  @@index([guildId, userId])
+  @@index([expiresAt])
+}
+
+model RolePermission {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  roleId      String
+  permissions String // Bitfield string
+  customNodes Json?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, roleId])
+  @@index([guildId])
+}
+
+model UserPermission {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  userId      String
+  permissions String // Bitfield string
+  customNodes Json?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([guildId])
+}
+
+// Economy System
+model UserEconomy {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  balance   BigInt    @default(0)
+  bank      BigInt    @default(0)
+  xp        Int       @default(0)
+  level     Int       @default(1)
+  lastDaily DateTime?
+  streak    Int       @default(0)
+  inventory Json      @default("[]")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  transactions EconomyTransaction[]
+
+  @@unique([guildId, userId])
+  @@index([guildId, level])
+}
+
+model EconomyTransaction {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  type      String // earn, spend, transfer, daily
+  amount    BigInt
+  reason    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user UserEconomy @relation(fields: [guildId, userId], references: [guildId, userId])
+
+  @@index([guildId, userId, createdAt])
+}
+
+model EconomyShop {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  itemId      String
+  name        String
+  description String
+  price       BigInt
+  category    String
+  stock       Int? // Null = unlimited
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, itemId])
+  @@index([guildId, category])
+}
+
+model LevelReward {
+  id               String  @id @default(auto()) @map("_id") @db.ObjectId
+  guildId          String
+  level            Int
+  roleId           String
+  removeOnDemotion Boolean @default(false)
+}
+
+model LevelHistory {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  level     Int
+  reachedAt DateTime @default(now())
+
+  @@index([guildId, userId])
+}
+
+// Music System
+model MusicSettings {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId          String   @unique
+  enabled          Boolean  @default(true)
+  djRoleId         String?
+  maxQueueSize     Int      @default(100)
+  maxTrackDuration Int      @default(600000)
+  allowNSFW        Boolean  @default(false)
+  defaultVolume    Int      @default(50)
+  autoLeave        Boolean  @default(true)
+  autoLeaveDelay   Int      @default(300000)
+  allowedChannels  String[] @default([])
+  blockedChannels  String[] @default([])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model MusicPlaylist {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  name      String
+  tracks    Json // Array of track objects
+  public    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guildId, userId])
+  @@index([public])
+}
+
+model MusicHistory {
+  id       String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId  String
+  userId   String
+  trackId  String
+  title    String
+  artist   String
+  duration Int
+  playedAt DateTime @default(now())
+
+  @@index([guildId, playedAt])
+  @@index([userId, playedAt])
+}

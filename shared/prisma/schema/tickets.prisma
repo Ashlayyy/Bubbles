@@ -1,0 +1,427 @@
+// Ticket System Models
+
+model Ticket {
+  id             String          @id @default(auto()) @map("_id") @db.ObjectId
+  ticketNumber   Int
+  guildId        String
+  userId         String
+  channelId      String
+  threadId       String?
+  category       String
+  title          String
+  description    String?
+  status         String          @default("OPEN")
+  assignedTo     String?
+  tags           String[]        @default([])
+  closedReason   String?
+  closedBy       String?
+  closedAt       DateTime?
+  lastActivity   DateTime        @default(now())
+  allowUserClose Boolean         @default(true)
+  isAnonymous    Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  messages       TicketMessage[]
+
+  @@unique([guildId, ticketNumber])
+  @@index([guildId, status])
+  @@index([assignedTo])
+}
+
+model TicketMessage {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId    String   @db.ObjectId
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  messageId   String
+  userId      String
+  userIcon    String
+  content     String
+  attachments String[]
+  embeds      Json[]
+  isSystemMsg Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([messageId])
+}
+
+model TicketCategory {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String
+  name            String
+  description     String?
+  emoji           String?
+  color           String?  @default("#5865F2")
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  maxTickets      Int?
+  autoAssignRoles String[] @default([])
+  requiredRoles   String[] @default([])
+  allowedChannels String[] @default([])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workflows TicketCategoryWorkflow[]
+  fields    TicketCategoryField[]
+
+  @@unique([guildId, name])
+  @@index([guildId, isActive])
+}
+
+model TicketCategoryWorkflow {
+  id          String               @id @default(auto()) @map("_id") @db.ObjectId
+  categoryId  String               @db.ObjectId
+  category    TicketCategory       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  isDefault   Boolean              @default(false)
+  steps       TicketWorkflowStep[]
+
+  @@unique([categoryId, name])
+}
+
+model TicketWorkflowStep {
+  id             String                 @id @default(auto()) @map("_id") @db.ObjectId
+  workflowId     String                 @db.ObjectId
+  workflow       TicketCategoryWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  stepOrder      Int
+  name           String
+  description    String?
+  type           String
+  config         Json
+  conditions     Json?
+  autoExecute    Boolean                @default(false)
+  timeoutMinutes Int?
+
+  @@unique([workflowId, stepOrder])
+  @@index([workflowId])
+}
+
+model TicketCategoryField {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  categoryId   String         @db.ObjectId
+  category     TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name         String
+  label        String
+  description  String?
+  type         String
+  required     Boolean        @default(false)
+  options      String[]       @default([])
+  defaultValue String?
+  validation   Json?
+  displayOrder Int            @default(0)
+
+  @@unique([categoryId, name])
+  @@index([categoryId])
+}
+
+model TicketFieldValue {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId  String   @db.ObjectId
+  fieldName String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([ticketId, fieldName])
+  @@index([ticketId])
+}
+
+model TicketWorkflowExecution {
+  id             String                        @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId       String                        @db.ObjectId
+  workflowId     String                        @db.ObjectId
+  currentStep    Int                           @default(0)
+  status         String                        @default("RUNNING")
+  startedAt      DateTime                      @default(now())
+  completedAt    DateTime?
+  error          String?
+  stepExecutions TicketWorkflowStepExecution[]
+
+  @@unique([ticketId, workflowId])
+  @@index([ticketId])
+  @@index([workflowId])
+}
+
+model TicketWorkflowStepExecution {
+  id          String                  @id @default(auto()) @map("_id") @db.ObjectId
+  executionId String                  @db.ObjectId
+  execution   TicketWorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  stepId      String                  @db.ObjectId
+  stepOrder   Int
+  status      String                  @default("PENDING")
+  startedAt   DateTime?
+  completedAt DateTime?
+  error       String?
+  result      Json?
+
+  @@unique([executionId, stepOrder])
+  @@index([executionId])
+}
+
+// Ticket Role Management
+model TicketRoleConfig {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String   @unique
+  autoAddRoles    String[] @default([])
+  persistentRoles String[] @default([])
+  roleHierarchy   Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  supportRoles   TicketSupportRole[]
+  categoryRoles  TicketCategoryRole[]
+  temporaryRoles TicketTemporaryRole[]
+}
+
+model TicketSupportRole {
+  id       String           @id @default(auto()) @map("_id") @db.ObjectId
+  configId String
+  roleId   String
+  config   TicketRoleConfig @relation(fields: [configId], references: [guildId], onDelete: Cascade)
+
+  @@unique([configId, roleId])
+}
+
+model TicketCategoryRole {
+  id       String           @id @default(auto()) @map("_id") @db.ObjectId
+  configId String
+  category String
+  roleIds  String[]
+  config   TicketRoleConfig @relation(fields: [configId], references: [guildId], onDelete: Cascade)
+
+  @@unique([configId, category])
+}
+
+model TicketTemporaryRole {
+  id       String           @id @default(auto()) @map("_id") @db.ObjectId
+  configId String
+  roleId   String
+  config   TicketRoleConfig @relation(fields: [configId], references: [guildId], onDelete: Cascade)
+
+  @@unique([configId, roleId])
+}
+
+model TicketRoleAssignment {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String
+  roleId       String
+  ticketId     String
+  isPersistent Boolean   @default(false)
+  expiresAt    DateTime?
+  assignedAt   DateTime  @default(now())
+
+  @@unique([userId, roleId, ticketId])
+  @@index([ticketId])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// Ticket Templates
+model TicketTemplate {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String
+  name            String
+  description     String?
+  category        String
+  title           String
+  content         String?
+  priority        String   @default("NORMAL")
+  tags            String[] @default([])
+  autoAssignRoles String[] @default([])
+  autoAssignUsers String[] @default([])
+  isActive        Boolean  @default(true)
+  isPublic        Boolean  @default(true)
+  usageCount      Int      @default(0)
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  fields  TicketTemplateField[]
+  actions TicketTemplateAction[]
+
+  @@unique([guildId, name])
+  @@index([guildId, category])
+  @@index([guildId, isActive])
+}
+
+model TicketTemplateField {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  templateId   String         @db.ObjectId
+  template     TicketTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name         String
+  label        String
+  description  String?
+  type         String
+  required     Boolean        @default(false)
+  options      String[]       @default([])
+  defaultValue String?
+  placeholder  String?
+  validation   Json?
+  displayOrder Int            @default(0)
+
+  @@unique([templateId, name])
+  @@index([templateId])
+}
+
+model TicketTemplateAction {
+  id             String         @id @default(auto()) @map("_id") @db.ObjectId
+  templateId     String         @db.ObjectId
+  template       TicketTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name           String
+  type           String
+  trigger        String         @default("ON_CREATE")
+  delay          Int?
+  config         Json
+  conditions     Json?
+  isActive       Boolean        @default(true)
+  executionOrder Int            @default(0)
+
+  @@unique([templateId, name])
+  @@index([templateId])
+}
+
+model TicketTemplateUsage {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  templateId  String   @db.ObjectId
+  ticketId    String   @db.ObjectId
+  userId      String
+  fieldValues Json
+  usedAt      DateTime @default(now())
+
+  @@unique([templateId, ticketId])
+  @@index([templateId])
+  @@index([ticketId])
+  @@index([userId])
+}
+
+model TicketType {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId          String
+  name             String
+  description      String?
+  emoji            String?
+  color            String?  @default("#5865F2")
+  category         String
+  priority         String   @default("NORMAL")
+  estimatedTime    Int?
+  slaTime          Int?
+  autoClose        Boolean  @default(false)
+  autoCloseTime    Int?
+  requiresApproval Boolean  @default(false)
+  approvalRoles    String[] @default([])
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([guildId, name])
+  @@index([guildId, category])
+  @@index([guildId, isActive])
+}
+
+model TicketTypeTemplate {
+  id         String  @id @default(auto()) @map("_id") @db.ObjectId
+  typeId     String  @db.ObjectId
+  templateId String  @db.ObjectId
+  isDefault  Boolean @default(false)
+
+  @@unique([typeId, templateId])
+  @@index([typeId])
+  @@index([templateId])
+}
+
+model TicketTemplateCategory {
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  name        String
+  description String?
+  emoji       String?
+  color       String? @default("#5865F2")
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  @@unique([guildId, name])
+  @@index([guildId, isActive])
+}
+
+// Ticket User Management
+model TicketUser {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId    String    @db.ObjectId
+  userId      String
+  addedBy     String
+  permissions String[]  @default([])
+  addedAt     DateTime  @default(now())
+  removedAt   DateTime?
+  removedBy   String?
+  isActive    Boolean   @default(true)
+  reason      String?
+
+  @@unique([ticketId, userId])
+  @@index([ticketId])
+  @@index([userId])
+  @@index([addedBy])
+}
+
+model TicketPermissionPreset {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  name        String
+  description String?
+  permissions String[] @default([])
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, name])
+  @@index([guildId, isActive])
+}
+
+model TicketAccessRequest {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId    String    @db.ObjectId
+  userId      String
+  requestedBy String
+  reason      String?
+  status      String    @default("PENDING")
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  reviewNotes String?
+  requestedAt DateTime  @default(now())
+  expiresAt   DateTime?
+
+  @@unique([ticketId, userId])
+  @@index([ticketId])
+  @@index([userId])
+  @@index([status])
+}
+
+model TicketUserActivity {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId    String   @db.ObjectId
+  userId      String
+  action      String
+  details     Json?
+  performedBy String
+  timestamp   DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([userId])
+  @@index([timestamp])
+}
+
+model TicketSharingConfig {
+  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId               String   @unique
+  allowUserAdditions    Boolean  @default(true)
+  requireApproval       Boolean  @default(false)
+  approvalRoles         String[] @default([])
+  maxUsersPerTicket     Int      @default(10)
+  defaultPermissions    String[] @default(["VIEW", "MESSAGE"])
+  autoRemoveInactive    Boolean  @default(false)
+  inactiveThresholdDays Int      @default(7)
+  logChannel            String?
+}

@@ -1,0 +1,109 @@
+// Core Models - Basic bot configuration and user management
+
+model GuildConfig {
+  id                     String          @id @default(auto()) @map("_id") @db.ObjectId
+  guildId                String          @unique
+  maxMessagesCleared     Int             @default(100)
+  musicChannelId         String          @default("")
+  defaultRepeatMode      Int             @default(0)
+  reactionRoleChannels   String[]        @default([])
+  logReactionRoles       Boolean         @default(false)
+  welcomeChannelId       String?
+  goodbyeChannelId       String?
+  welcomeEnabled         Boolean         @default(true)
+  goodbyeEnabled         Boolean         @default(true)
+  preferredLanguage      String          @default("en")
+  // Relations
+  logSettings            LogSettings?    @relation(fields: [logSettingsId], references: [id])
+  appealSettings         AppealSettings? @relation(fields: [appealSettingsId], references: [id])
+  logSettingsId          String?         @db.ObjectId
+  appealSettingsId       String?         @db.ObjectId
+  // Moderation
+  moderatorRoleIds       String[]        @default([])
+  notify_user            Boolean         @default(false)
+  moderation_case_rules  Json?
+  reportChannelId        String?
+  reportPingRoleId       String?
+  // Ticket system basic fields
+  ticketChannelId        String?
+  ticketCategoryId       String?
+  useTicketThreads       Boolean         @default(true)
+  ticketOnCallRoleId     String?
+  ticketSilentClaim      Boolean         @default(true)
+  ticketAccessType       String?
+  ticketAccessRoleId     String?
+  ticketAccessPermission String?
+  ticketLogChannelId     String?
+  // Statistics
+  welcomeStats           Json?
+}
+
+model LogSettings {
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String        @unique
+  channelRouting  Json
+  ignoredUsers    String[]      @default([])
+  ignoredRoles    String[]      @default([])
+  ignoredChannels String[]      @default([])
+  enabledLogTypes String[]      @default([])
+  customFormats   Json?
+  filterRules     Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  GuildConfig     GuildConfig[]
+}
+
+model AppealSettings {
+  id                    String        @id @default(auto()) @map("_id") @db.ObjectId
+  guildId               String        @unique
+  discordBotEnabled     Boolean       @default(true)
+  webFormEnabled        Boolean       @default(false)
+  emailEnabled          Boolean       @default(false)
+  separateServerEnabled Boolean       @default(false)
+  appealChannelId       String?
+  appealServerId        String?
+  webFormUrl            String?
+  appealEmail           String?
+  appealReceived        String?
+  appealApproved        String?
+  appealDenied          String?
+  appealCooldown        Int           @default(86400)
+  maxAppealsPerUser     Int           @default(3)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  GuildConfig           GuildConfig[]
+}
+
+model User {
+  id             String   @id @map("_id") @db.ObjectId
+  discordId      String   @unique
+  username       String
+  discriminator  String
+  avatar         String?
+  email          String?  @unique
+  accessToken    String
+  refreshToken   String
+  tokenExpiresAt DateTime
+  lastLogin      DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model MaintenanceMode {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String   @unique
+  isEnabled    Boolean  @default(false)
+  allowedUsers String[] @default([])
+  reason       String?
+  enabledBy    String
+  enabledAt    DateTime @default(now())
+}
+
+model TokenBlacklist {
+  jti       String   @id @map("_id")
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}

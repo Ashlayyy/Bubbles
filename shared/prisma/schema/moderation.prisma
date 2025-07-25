@@ -1,0 +1,171 @@
+// Moderation System Models
+
+model ModerationCase {
+  id           String          @id @default(auto()) @map("_id") @db.ObjectId
+  caseNumber   Int
+  guildId      String
+  userId       String
+  moderatorId  String
+  type         String
+  reason       String?
+  evidence     String[]
+  duration     Int?
+  expiresAt    DateTime?
+  isActive     Boolean         @default(true)
+  severity     String          @default("LOW")
+  points       Int             @default(0)
+  canAppeal    Boolean         @default(true)
+  appealedAt   DateTime?
+  appealStatus String?
+  context      Json?
+  dmSent       Boolean         @default(false)
+  publicNote   String?
+  staffNote    String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  notes        CaseNote[]
+  appeals      CaseAppeal[]
+  logs         ModerationLog[]
+
+  @@unique([guildId, caseNumber])
+  @@index([guildId, userId])
+  @@index([guildId, type])
+  @@index([expiresAt])
+}
+
+model CaseNote {
+  id         String         @id @default(auto()) @map("_id") @db.ObjectId
+  caseId     String         @db.ObjectId
+  case       ModerationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  authorId   String
+  content    String
+  isInternal Boolean        @default(false)
+  createdAt  DateTime       @default(now())
+
+  @@index([caseId])
+}
+
+model CaseAppeal {
+  id             String         @id @default(auto()) @map("_id") @db.ObjectId
+  caseId         String         @db.ObjectId
+  case           ModerationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  userId         String
+  appealMethod   String
+  reason         String
+  status         String         @default("PENDING")
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  reviewNotes    String?
+  evidence       String[]
+  communications Json[]         @default([])
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([caseId])
+  @@index([userId, status])
+}
+
+model ModerationLog {
+  id             String          @id @default(auto()) @map("_id") @db.ObjectId
+  guildId        String
+  logType        String
+  userId         String?
+  channelId      String?
+  roleId         String?
+  caseId         String?         @db.ObjectId
+  case           ModerationCase? @relation(fields: [caseId], references: [id])
+  before         Json?
+  after          Json?
+  metadata       Json?
+  content        String?
+  attachments    String[]
+  embeds         Json[]
+  executorId     String?
+  reason         String?
+  sentToChannels String[]        @default([])
+  timestamp      DateTime        @default(now())
+
+  @@index([guildId, logType])
+  @@index([guildId, timestamp])
+  @@index([userId])
+  @@index([channelId])
+}
+
+model AutoModRule {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId        String
+  name           String
+  type           String
+  enabled        Boolean   @default(true)
+  triggers       Json
+  whitelist      String[]  @default([])
+  sensitivity    String    @default("MEDIUM")
+  actions        Json
+  escalation     Json?
+  exemptRoles    String[]  @default([])
+  exemptChannels String[]  @default([])
+  exemptUsers    String[]  @default([])
+  targetChannels String[]  @default([])
+  logChannel     String?
+  logActions     Boolean   @default(true)
+  triggerCount   Int       @default(0)
+  lastTriggered  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdBy      String
+
+  @@unique([guildId, name])
+  @@index([guildId, enabled])
+}
+
+model UserInfractions {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  userId       String
+  totalPoints  Int       @default(0)
+  strikes      Int       @default(0)
+  lastIncident DateTime?
+  pointDecay   Json?
+  restrictions Json[]    @default([])
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([guildId, totalPoints])
+}
+
+model UserReport {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  reporterId   String
+  reportedUser String
+  messageId    String
+  channelId    String
+  link         String
+  reason       String
+  status       String    @default("OPEN")
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedBy   String?
+  resolution   String?
+
+  @@index([guildId, status])
+}
+
+model ScheduledAction {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  userId       String
+  type         String
+  caseId       String?   @db.ObjectId
+  data         Json?
+  scheduledFor DateTime
+  isExecuted   Boolean   @default(false)
+  executedAt   DateTime?
+  error        String?
+  retryCount   Int       @default(0)
+  maxRetries   Int       @default(3)
+  createdAt    DateTime  @default(now())
+
+  @@index([scheduledFor, isExecuted])
+  @@index([guildId, userId])
+}
