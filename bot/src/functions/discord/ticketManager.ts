@@ -47,17 +47,19 @@ async function getNextTicketNumber(guildId: string): Promise<number> {
 // Helper function to get permission overwrites based on access control configuration
 function getTicketAccessPermissions(
   guild: Guild,
-  config: {
-    ticketAccessType?: string | null;
-    ticketAccessRoleId?: string | null;
-    ticketAccessPermission?: string | null;
-  }
+  ticketSettings: any
 ): { id: string; allow: PermissionsBitField }[] {
   const permissions: { id: string; allow: PermissionsBitField }[] = [];
 
-  if (config.ticketAccessType === "role" && config.ticketAccessRoleId) {
+  // Extract access settings from JSON structure
+  const accessConfig = ticketSettings?.access || {};
+  const accessType = accessConfig.type || "default";
+  const accessRoleId = accessConfig.roleId;
+  const accessPermission = accessConfig.permission;
+
+  if (accessType === "role" && accessRoleId) {
     // Role-based access: Only users with the specific role get access
-    const role = guild.roles.cache.get(config.ticketAccessRoleId);
+    const role = guild.roles.cache.get(accessRoleId);
     if (role) {
       permissions.push({
         id: role.id,
@@ -70,9 +72,9 @@ function getTicketAccessPermissions(
         ]),
       });
     }
-  } else if (config.ticketAccessType === "permission" && config.ticketAccessPermission) {
+  } else if (accessType === "permission" && accessPermission) {
     // Permission-based access: Users with the specific permission get access
-    const permissionFlag = PermissionFlagsBits[config.ticketAccessPermission as keyof typeof PermissionFlagsBits];
+    const permissionFlag = PermissionFlagsBits[accessPermission as keyof typeof PermissionFlagsBits];
     if (permissionFlag) {
       const rolesWithPermission = guild.roles.cache.filter((role) => role.permissions.has(permissionFlag));
 
