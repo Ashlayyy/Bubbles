@@ -22,11 +22,16 @@ model ModerationCase {
   publicNote   String?
   staffNote    String?
   
-  // Additional fields you requested
+  // Additional fields for better tracking
   channelId    String?         // Where the action was taken
   messageId    String?         // If related to a specific message
   referenceCase String?        @db.ObjectId // Link to related cases (warn -> ban)
   autoMod      Boolean         @default(false) // If triggered by automod
+  
+  // Enhanced moderation context
+  escalatedFrom String?        @db.ObjectId // Previous case that led to this
+  ipAddress    String?         // IP address if available
+  userAgent    String?         // User agent if available
   
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
