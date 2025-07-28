@@ -7,7 +7,7 @@ export type JwtFamily = 'user' | 'bot';
 
 interface CachedSigner {
 	kid: string;
-	privateKey: KeyLike;
+	privateKey: any;
 }
 
 export class JwtKeyManager {
