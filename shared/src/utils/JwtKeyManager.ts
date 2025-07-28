@@ -1,22 +1,24 @@
 import { generateKeyPairSync, createPublicKey } from 'crypto';
-import { SignJWT, jwtVerify, KeyLike } from 'jose';
-import { createRedisConnection } from '../queue/config.js';
+import { SignJWT, jwtVerify } from 'jose';
+import { RedisConnectionFactory } from './RedisConnectionFactory';
 import type { Redis } from 'ioredis';
 
 export type JwtFamily = 'user' | 'bot';
 
 interface CachedSigner {
 	kid: string;
-	privateKey: KeyLike;
+	privateKey: any;
 }
 
 export class JwtKeyManager {
 	private static instance: JwtKeyManager;
-	private redis: Redis;
+	private get redis(): Redis {
+		return RedisConnectionFactory.getSharedConnection();
+	}
 	private cache = new Map<JwtFamily, CachedSigner>();
 
-	private constructor(redis?: Redis) {
-		this.redis = redis || createRedisConnection();
+	private constructor() {
+		// Redis connection now managed by factory
 	}
 
 	static getInstance(): JwtKeyManager {
