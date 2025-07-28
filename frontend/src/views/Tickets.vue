@@ -39,6 +39,17 @@
 					Closed Tickets ({{ closedTickets.length }})
 				</button>
 				<button
+					@click="activeTab = 'assignments'"
+					:class="[
+						'py-3 px-1 border-b-2 font-medium text-sm transition-colors',
+						activeTab === 'assignments'
+							? 'border-primary text-primary'
+							: 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground',
+					]"
+				>
+					Assignments
+				</button>
+				<button
 					@click="activeTab = 'categories'"
 					:class="[
 						'py-3 px-1 border-b-2 font-medium text-sm transition-colors',
@@ -135,6 +146,11 @@
 					</button>
 				</div>
 			</div>
+		</div>
+
+		<!-- Assignments -->
+		<div v-if="activeTab === 'assignments'">
+			<TicketAssignmentManager />
 		</div>
 
 		<!-- Open/Closed Tickets -->
@@ -873,6 +889,7 @@
 <script setup lang="ts">
 import { useTickets } from '@/composables/useTickets';
 import { getPriorityColor, formatDate } from '@/lib/ticketUtils';
+import TicketAssignmentManager from '@/components/tickets/TicketAssignmentManager.vue';
 import { ref } from 'vue';
 
 const {

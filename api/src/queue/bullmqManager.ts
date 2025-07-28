@@ -1,4 +1,3 @@
-// @ts-expect-error - path alias resolution handled by tsconfig paths
 import { bullMQRegistry } from '@shared/queue';
 import { createLogger } from '../types/shared.js';
 

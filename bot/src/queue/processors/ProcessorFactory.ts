@@ -2,6 +2,7 @@ import type { BotCommandJob } from "@shared/types/queue";
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
 import { BaseProcessor, type ProcessorResult } from "./BaseProcessor.js";
+import { BulkModerationProcessor } from "./BulkModerationProcessor.js";
 import { ConfigProcessor } from "./ConfigProcessor.js";
 import { GiveawayProcessor } from "./GiveawayProcessor.js";
 import { MessageProcessor } from "./MessageProcessor.js";
@@ -31,6 +32,7 @@ export class ProcessorFactory {
 
   private initializeProcessors(): void {
     const processorInstances = [
+      new BulkModerationProcessor(this.client),
       new ModerationProcessor(this.client),
       new MessageProcessor(this.client),
       new ConfigProcessor(this.client),

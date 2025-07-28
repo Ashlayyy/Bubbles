@@ -175,6 +175,27 @@ class WarnUserCommand extends ModerationCommand {
     });
   }
 
+  private buildModerationEmbed(
+    action: string,
+    caseNumber: number,
+    targetUser: User,
+    moderator: User,
+    reason?: string
+  ): EmbedBuilder {
+    const embed = new EmbedBuilder()
+      .setColor(0xffcc00)
+      .setTitle(`✅ Warn | Case #${caseNumber}`)
+      .addFields(
+        { name: "Target", value: `<@${targetUser.id}> | ${targetUser.tag}`, inline: true },
+        { name: "Moderator", value: `<@${moderator.id}> | ${moderator.tag}`, inline: true }
+      )
+      .setTimestamp();
+    if (reason) {
+      embed.addFields({ name: "Reason", value: reason, inline: false });
+    }
+    return embed;
+  }
+
   private async handleQuickWarn(buttonInteraction: ButtonInteraction, targetUser: User): Promise<void> {
     await buttonInteraction.deferUpdate();
 
@@ -190,8 +211,7 @@ class WarnUserCommand extends ModerationCommand {
       );
 
       await buttonInteraction.editReply({
-        content: `✅ **${targetUser.tag}** has been warned.\n📋 **Case #${case_.caseNumber}** created.`,
-        embeds: [],
+        embeds: [this.buildModerationEmbed("Warn", case_.caseNumber, targetUser, this.user, reason)],
         components: [],
       });
     } catch (error) {
@@ -263,14 +283,7 @@ class WarnUserCommand extends ModerationCommand {
       );
 
       await modalInteraction.editReply({
-        content: `✅ **${targetUser.tag}** has been warned.\n📋 **Case #${case_.caseNumber}** created.`,
-      });
-
-      // Update the original interaction
-      await this.interaction.editReply({
-        content: `✅ **${targetUser.tag}** has been warned.\n📋 **Case #${case_.caseNumber}** created.`,
-        embeds: [],
-        components: [],
+        embeds: [this.buildModerationEmbed("Warn", case_.caseNumber, targetUser, modalInteraction.user, reason)],
       });
     } catch (error) {
       await modalInteraction.editReply({

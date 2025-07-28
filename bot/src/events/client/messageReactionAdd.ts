@@ -3,6 +3,7 @@ import { Events } from "discord.js";
 
 import { getReactionRoleByEmojiAndMessage } from "../../database/ReactionRoles.js";
 import { parseEmoji } from "../../functions/general/emojis.js";
+import { ComplimentWheelService } from "../../services/complimentWheelService.js";
 import { ClientEvent } from "../../structures/Event.js";
 
 export default new ClientEvent(
@@ -22,6 +23,19 @@ export default new ClientEvent(
       // Fetch partial user if needed
       if (user.partial) {
         await user.fetch();
+      }
+
+      // Check if this is a compliment wheel message
+      const wheelService = ComplimentWheelService.getInstance(client);
+      const wheelConfig = await wheelService.getWheelConfig(reaction.message.guild.id);
+
+      if (wheelConfig && wheelConfig.messageId === reaction.message.id) {
+        // Check if the reaction is for the configured emoji
+        const reactionEmoji = reaction.emoji.toString();
+        if (reactionEmoji === wheelConfig.emoji) {
+          // Add user to compliment wheel
+          await wheelService.addParticipant(reaction.message.guild.id, user.id, user.username || "Unknown User");
+        }
       }
 
       // Get emoji identifier for database lookup

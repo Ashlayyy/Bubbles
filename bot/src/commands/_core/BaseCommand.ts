@@ -12,6 +12,7 @@ import type {
   User,
   VoiceChannel,
 } from "discord.js";
+import { MessageFlags } from "discord.js";
 
 import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
@@ -61,7 +62,7 @@ export abstract class BaseCommand {
   // Can return either a Promise or direct value for flexibility
   protected abstract execute(
     ...args: any[]
-  ): Promise<CommandResult | CommandResponse> | CommandResult | CommandResponse;
+  ): Promise<CommandResult | CommandResponse | undefined> | CommandResult | CommandResponse | undefined;
 
   // Main execution method called by the command handler
   async run(client: Client, interaction: CommandInteraction): Promise<void> {
@@ -75,15 +76,17 @@ export abstract class BaseCommand {
       // Auto-defer if configured
       if (this.shouldAutoDefer() && !interaction.deferred && !interaction.replied) {
         await interaction.deferReply({
-          ephemeral: this.config.ephemeral ?? false,
+          flags: this.config.ephemeral ? MessageFlags.Ephemeral : undefined,
         });
       }
 
       // Execute the command (handle both sync and async)
       const result = await Promise.resolve(this.execute());
 
-      // Handle the result
-      await this.handleResult(result);
+      // Handle the result (undefined means no response should be sent)
+      if (result !== undefined) {
+        await this.handleResult(result);
+      }
     } catch (error) {
       await this.handleError(error as Error);
     }
@@ -127,7 +130,7 @@ export abstract class BaseCommand {
     this.checkPermissions();
 
     // Owner-only validation
-    if (this.config.ownerOnly && this.context.user.id !== process.env.OWNER_ID) {
+    if (this.config.ownerOnly && !process.env.DEVELOPER_USER_IDS?.split(",").includes(this.context.user.id)) {
       throw new CommandError("This command is restricted to the bot owner.", "OWNER_ONLY");
     }
 
@@ -210,39 +213,60 @@ export abstract class BaseCommand {
   // Response sending
   protected async sendResponse(response: CommandResponse): Promise<void> {
     const interaction = this.context.interaction;
+    const isEphemeral = response.ephemeral ?? this.config.ephemeral;
 
-    const replyOptions = {
+    const baseOptions = {
       content: response.content,
       embeds: response.embeds,
       components: response.components,
       files: response.files,
-      ephemeral: response.ephemeral ?? this.config.ephemeral ?? false,
     };
 
     try {
       if (interaction.deferred) {
-        await interaction.editReply(replyOptions);
+        // editReply doesn't support ephemeral flag
+        await interaction.editReply(baseOptions);
       } else if (!interaction.replied) {
-        await interaction.reply(replyOptions);
+        await interaction.reply({
+          ...baseOptions,
+          flags: isEphemeral ? MessageFlags.Ephemeral : undefined,
+        });
       } else {
-        await interaction.followUp(replyOptions);
+        await interaction.followUp({
+          ...baseOptions,
+          flags: isEphemeral ? MessageFlags.Ephemeral : undefined,
+        });
       }
     } catch (error) {
-      logger.error(`Failed to send response for command ${this.config.name}:`, error);
+      logger.error(`Failed to send response for command ${this.config.name}: ${error}`);
 
-      // Try to send a simple error message
+      // Try to send a more specific error message
       try {
-        const errorMessage = {
-          content: "❌ An error occurred while processing your command.",
+        let errorMessage = "❌ An error occurred while processing your command.";
+
+        if (error instanceof Error) {
+          if (error.message.includes("Missing Permissions")) {
+            errorMessage = "❌ I don't have the required permissions to perform this action.";
+          } else if (error.message.includes("Unknown Message")) {
+            errorMessage = "❌ The message was deleted or I can't access it.";
+          } else if (error.message.includes("Invalid Form Body")) {
+            errorMessage = "❌ Invalid input provided. Please check your selection.";
+          } else if (error.message.includes("Cannot send an empty message")) {
+            errorMessage = "❌ The response was empty. Please try again.";
+          }
+        }
+
+        const errorResponse = {
+          content: errorMessage,
           ephemeral: true,
         };
 
         if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply(errorMessage);
+          await interaction.reply(errorResponse);
         } else if (interaction.deferred) {
-          await interaction.editReply(errorMessage);
+          await interaction.editReply(errorResponse);
         } else {
-          await interaction.followUp(errorMessage);
+          await interaction.followUp(errorResponse);
         }
       } catch (secondaryError) {
         logger.error(`Failed to send error message for command ${this.config.name}:`, secondaryError);

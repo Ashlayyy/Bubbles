@@ -3,21 +3,23 @@ import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { DevCommand } from "../_core/specialized/DevCommand.js";
 
-interface QueueHealth {
+interface BullMQSystemHealth {
   overall: boolean;
-  protocols: Record<string, unknown>;
-  redis: boolean;
-  discord: boolean;
-  websocket: boolean;
-  overloaded: boolean;
+  queues: Record<string, any>;
   timestamp: number;
 }
 
-interface QueueMetrics {
-  workers: { activeWorkers: number };
-  queues: Record<string, unknown>;
-  message: string;
-}
+type BullMQMetrics = Record<
+  string,
+  | {
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+      delayed: number;
+    }
+  | { error: string }
+>;
 
 class QueueStatusCommand extends DevCommand {
   constructor() {
@@ -32,7 +34,7 @@ class QueueStatusCommand extends DevCommand {
     super(config);
   }
 
-  protected execute(): Promise<CommandResponse> {
+  protected async execute(): Promise<CommandResponse> {
     this.validateDevPermissions();
 
     const queueService = this.client.queueService;
@@ -41,21 +43,21 @@ class QueueStatusCommand extends DevCommand {
       const embed = new EmbedBuilder()
         .setTitle("🔧 Queue System Status")
         .setColor("Red")
-        .setDescription("❌ **Queue service not initialized**\nThe unified queue service is not available.")
+        .setDescription("❌ **Queue service not initialized**\nThe BullMQ queue service is not available.")
         .addFields({ name: "Status", value: "❌ Not Running", inline: true })
         .setTimestamp();
 
-      return Promise.resolve({ embeds: [embed], ephemeral: true });
+      return { embeds: [embed], ephemeral: true };
     }
 
     const isReady = queueService.isReady();
 
-    let health: QueueHealth;
-    let metrics: QueueMetrics;
+    let health: BullMQSystemHealth;
+    let metrics: BullMQMetrics;
 
     try {
-      health = queueService.getSystemHealth();
-      metrics = queueService.getMetrics();
+      health = await queueService.getSystemHealth();
+      metrics = await queueService.getAllQueueMetrics();
     } catch (_error) {
       const embed = new EmbedBuilder()
         .setTitle("🔧 Queue System Status")
@@ -64,12 +66,46 @@ class QueueStatusCommand extends DevCommand {
         .addFields({ name: "Status", value: "❌ Error", inline: true })
         .setTimestamp();
 
-      return Promise.resolve({ embeds: [embed], ephemeral: true });
+      return { embeds: [embed], ephemeral: true };
+    }
+
+    // Calculate total active jobs across all queues
+    let totalActive = 0;
+    let totalWaiting = 0;
+    let totalFailed = 0;
+    let hasErrors = false;
+
+    const queueStatusFields: { name: string; value: string; inline: boolean }[] = [];
+
+    for (const [queueName, queueMetrics] of Object.entries(metrics)) {
+      if ("error" in queueMetrics) {
+        hasErrors = true;
+        queueStatusFields.push({
+          name: `❌ ${queueName}`,
+          value: `Error: ${queueMetrics.error}`,
+          inline: true,
+        });
+      } else {
+        totalActive += queueMetrics.active;
+        totalWaiting += queueMetrics.waiting;
+        totalFailed += queueMetrics.failed;
+
+        const status = queueMetrics.active > 0 ? "🟡" : queueMetrics.waiting > 0 ? "🟠" : "🟢";
+        queueStatusFields.push({
+          name: `${status} ${queueName}`,
+          value: [
+            `Active: ${queueMetrics.active}`,
+            `Waiting: ${queueMetrics.waiting}`,
+            `Failed: ${queueMetrics.failed}`,
+          ].join("\n"),
+          inline: true,
+        });
+      }
     }
 
     const embed = new EmbedBuilder()
-      .setTitle("🔧 Unified Queue System Status")
-      .setColor(isReady ? "Green" : "Orange")
+      .setTitle("🔧 BullMQ Queue System Status")
+      .setColor(isReady && health.overall ? "Green" : hasErrors ? "Red" : "Orange")
       .addFields(
         { name: "Queue Service", value: isReady ? "✅ Ready" : "❌ Not Ready", inline: true },
         {
@@ -78,43 +114,39 @@ class QueueStatusCommand extends DevCommand {
           inline: true,
         },
         {
-          name: "Redis Connection",
-          value: health.redis ? "✅ Connected" : "❌ Disconnected",
+          name: "Dead Letter Queue",
+          value: queueService.deadLetterQueue ? "✅ Available" : "❌ Not Available",
           inline: true,
         },
         {
-          name: "Discord API",
-          value: health.discord ? "✅ Available" : "❌ Unavailable",
+          name: "Total Active Jobs",
+          value: totalActive.toString(),
           inline: true,
         },
         {
-          name: "WebSocket",
-          value: health.websocket ? "✅ Connected" : "❌ Disconnected",
+          name: "Total Waiting Jobs",
+          value: totalWaiting.toString(),
           inline: true,
         },
         {
-          name: "System Load",
-          value: health.overloaded ? "⚠️ Overloaded" : "✅ Normal",
+          name: "Total Failed Jobs",
+          value: totalFailed.toString(),
           inline: true,
         },
-        {
-          name: "Queue Metrics",
-          value: [`**Active Workers:** ${metrics.workers.activeWorkers}`, `**Status:** ${metrics.message}`].join("\n"),
-          inline: false,
-        }
+        ...queueStatusFields
       )
-      .setFooter({ text: "Queue system migrated to BullMQ" })
+      .setFooter({ text: "Powered by BullMQ" })
       .setTimestamp();
 
-    if (!isReady) {
+    if (!isReady || !health.overall) {
       embed.setDescription(
-        "⚠️ **Queue system not ready**\nThe unified processor may still be initializing or experiencing issues."
+        "⚠️ **Queue system issues detected**\nSome queues may be experiencing problems or still initializing."
       );
     } else {
-      embed.setDescription("✅ Unified queue system is operating normally with BullMQ integration.");
+      embed.setDescription("✅ BullMQ queue system is operating normally.");
     }
 
-    return Promise.resolve({ embeds: [embed], ephemeral: true });
+    return { embeds: [embed], ephemeral: true };
   }
 }
 

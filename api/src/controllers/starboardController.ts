@@ -3,6 +3,7 @@ import { createLogger, type ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
 import { wsManager } from '../websocket/manager.js';
+import { discordApi } from '../services/discordApiService.js';
 
 const logger = createLogger('starboard-controller');
 
@@ -308,7 +309,10 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 			if (!starboardMessage) {
 				// Create new starboard message
 				// Fetch the original message from Discord instead of trusting the client
-				const original = await discordApi.getMessage(req.body.channelId, messageId);
+				const original = await discordApi.getMessage(
+					req.body.channelId,
+					messageId
+				);
 				starboardMessage = await prisma.starboardMessage.create({
 					data: {
 						guildId,
@@ -317,7 +321,7 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 						starboardChannelId: settings.channelId,
 						authorId: original.author.id,
 						content: original.content ?? '',
-						attachments: original.attachments.map(a => a.url),
+						attachments: original.attachments.map((a: any) => a.url),
 						embeds: original.embeds,
 						starCount: 1,
 					},

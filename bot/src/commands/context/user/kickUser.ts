@@ -186,6 +186,21 @@ class KickUserCommand extends ModerationCommand {
     });
   }
 
+  private buildModerationEmbed(caseNumber: number, targetUser: User, moderator: User, reason?: string): EmbedBuilder {
+    const embed = new EmbedBuilder()
+      .setColor(0xf39c12)
+      .setTitle(`✅ Kick | Case #${caseNumber}`)
+      .addFields(
+        { name: "Target", value: `<@${targetUser.id}> | ${targetUser.tag}`, inline: true },
+        { name: "Moderator", value: `<@${moderator.id}> | ${moderator.tag}`, inline: true }
+      )
+      .setTimestamp();
+    if (reason) {
+      embed.addFields({ name: "Reason", value: reason, inline: false });
+    }
+    return embed;
+  }
+
   private async handleQuickKick(buttonInteraction: ButtonInteraction, targetUser: User): Promise<void> {
     await buttonInteraction.deferUpdate();
 
@@ -201,8 +216,7 @@ class KickUserCommand extends ModerationCommand {
       );
 
       await buttonInteraction.editReply({
-        content: `✅ **${targetUser.tag}** has been kicked.\n📋 **Case #${case_.caseNumber}** created.`,
-        embeds: [],
+        embeds: [this.buildModerationEmbed(case_.caseNumber, targetUser, this.user, reason)],
         components: [],
       });
     } catch (error) {
@@ -274,14 +288,7 @@ class KickUserCommand extends ModerationCommand {
       );
 
       await modalInteraction.editReply({
-        content: `✅ **${targetUser.tag}** has been kicked.\n📋 **Case #${case_.caseNumber}** created.`,
-      });
-
-      // Update the original interaction
-      await this.interaction.editReply({
-        content: `✅ **${targetUser.tag}** has been kicked.\n📋 **Case #${case_.caseNumber}** created.`,
-        embeds: [],
-        components: [],
+        embeds: [this.buildModerationEmbed(case_.caseNumber, targetUser, modalInteraction.user, reason)],
       });
     } catch (error) {
       await modalInteraction.editReply({

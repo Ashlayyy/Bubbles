@@ -22,17 +22,24 @@ export class CommandLoader {
 
   async loadCommands(): Promise<{ commands: Collection<string, BaseCommand | Command>; commandCategories: string[] }> {
     logger.info("Loading commands");
+    logger.info(`Dev mode: ${this.devMode}`);
 
     const commandsDir = this.devMode ? "./src/commands" : "./build/bot/src/commands";
+    logger.info(`Commands directory: ${commandsDir}`);
+
     const loadedCommandFiles = new Set<string>();
 
     const processCommandFile = async (commandFilePath: string, category: string) => {
+      logger.debug(`Processing command file: ${commandFilePath} (category: ${category})`);
+
       if (loadedCommandFiles.has(commandFilePath)) {
+        logger.debug(`Skipping already loaded: ${commandFilePath}`);
         return;
       }
 
       // Skip helper directories
-      if (category === "_core" || category === "_shared") {
+      if (category === "_core" || category === "_shared" || category === "setup-wizards") {
+        logger.debug(`Skipping helper directory: ${category}`);
         return;
       }
 
@@ -41,22 +48,28 @@ export class CommandLoader {
         process.exit(1);
       }
 
-      // Check for lazy loading metadata
-      const command = await importDefaultESM(commandFilePath, isCommand);
-      const metadata = (command as BaseCommand & { metadata?: CommandMetadata }).metadata;
+      try {
+        // Check for lazy loading metadata
+        const command = await importDefaultESM(commandFilePath, isCommand);
+        logger.debug(`Imported command from: ${commandFilePath}`);
 
-      if (metadata?.lazy) {
-        // Store for lazy loading
-        const commandName = await this.getCommandName(command, category, commandFilePath);
-        this.lazyCommands.set(commandName, commandFilePath);
-        logger.debug(`\t\t${commandName} (lazy)`);
+        const metadata = (command as BaseCommand & { metadata?: CommandMetadata }).metadata;
+
+        if (metadata?.lazy) {
+          // Store for lazy loading
+          const commandName = await this.getCommandName(command, category, commandFilePath);
+          this.lazyCommands.set(commandName, commandFilePath);
+          logger.debug(`\t\t${commandName} (lazy)`);
+          loadedCommandFiles.add(commandFilePath);
+          return;
+        }
+
+        // Load immediately
+        await this.loadSingleCommand(command, category, commandFilePath);
         loadedCommandFiles.add(commandFilePath);
-        return;
+      } catch (error) {
+        logger.error(`Failed to process command file ${commandFilePath}:`, error);
       }
-
-      // Load immediately
-      await this.loadSingleCommand(command, category, commandFilePath);
-      loadedCommandFiles.add(commandFilePath);
     };
 
     // Load top-level command categories
@@ -67,6 +80,14 @@ export class CommandLoader {
     await forNestedDirsFiles(contextMenuDir, processCommandFile);
 
     logger.debug("Successfully loaded commands");
+    logger.info(`Total commands loaded: ${this.commands.size}`);
+    logger.info(`Total lazy commands: ${this.lazyCommands.size}`);
+    logger.info(`Command categories: ${this.commandCategories.join(", ")}`);
+
+    if (this.commands.size === 0) {
+      logger.warn("⚠️ No commands were loaded! This might indicate a problem with command discovery.");
+    }
+
     return { commands: this.commands, commandCategories: this.commandCategories };
   }
 

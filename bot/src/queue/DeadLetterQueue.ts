@@ -1,5 +1,5 @@
 import type { BotCommandJob } from "@shared/types/queue";
-import type Bull from "bull";
+import type { Job } from "bullmq";
 import logger from "../logger.js";
 import type Client from "../structures/Client.js";
 
@@ -78,7 +78,7 @@ export class DeadLetterQueue {
     ];
   }
 
-  handleFailedJob(job: Bull.Job<BotCommandJob>, error: Error): void {
+  handleFailedJob(job: Job<BotCommandJob>, error: Error): void {
     const jobKey = this.generateJobKey(job);
     const now = Date.now();
 
@@ -88,7 +88,7 @@ export class DeadLetterQueue {
       if (!entry) {
         entry = {
           id: jobKey,
-          originalJobId: job.id.toString() || "unknown",
+          originalJobId: job.id?.toString() || "unknown",
           jobData: job.data,
           failureReason: error.message,
           failureCount: 1,
@@ -136,7 +136,7 @@ export class DeadLetterQueue {
       }
 
       logger.warn("Job added to dead letter queue", {
-        jobId: job.id,
+        jobId: job.id || "unknown",
         jobType: job.data.type,
         failureCount: entry.failureCount,
         isPoisonPill: entry.isPoisonPill,
@@ -151,7 +151,7 @@ export class DeadLetterQueue {
     }
   }
 
-  private generateJobKey(job: Bull.Job<BotCommandJob>): string {
+  private generateJobKey(job: Job<BotCommandJob>): string {
     // Create a key that groups similar jobs together
     const data = job.data;
     const dataString = "data" in data ? JSON.stringify(data.data).slice(0, 100) : "no-data";

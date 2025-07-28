@@ -7,6 +7,22 @@ import { wsManager } from '../websocket/manager.js';
 
 const logger = createLogger('tickets-controller');
 
+// Helper function to create WebSocket message
+function createWebSocketMessage(event: string, data: any) {
+	return {
+		type: 'SYSTEM',
+		event: event,
+		data,
+		timestamp: Date.now(),
+		messageId: generateId(),
+	};
+}
+
+// Helper function to generate ID
+function generateId(): string {
+	return Math.random().toString(36).substr(2, 9);
+}
+
 // Get ticket settings
 export const getTicketSettings = async (req: AuthRequest, res: Response) => {
 	try {
@@ -192,7 +208,7 @@ export const getTickets = async (req: AuthRequest, res: Response) => {
 				? {
 						id: ticket.messages[0].id,
 						content: ticket.messages[0].content,
-						authorId: ticket.messages[0].authorId,
+						userId: ticket.messages[0].userId,
 						createdAt: ticket.messages[0].createdAt,
 				  }
 				: null,
@@ -258,10 +274,11 @@ export const getTicket = async (req: AuthRequest, res: Response) => {
 			messages: ticket.messages.map((message: any) => ({
 				id: message.id,
 				content: message.content,
-				authorId: message.authorId,
-				isStaff: message.isStaff,
-				isInternal: message.isInternal,
+				userId: message.userId,
+				userIcon: message.userIcon,
+				isSystemMsg: message.isSystemMsg,
 				attachments: message.attachments,
+				embeds: message.embeds,
 				createdAt: message.createdAt,
 			})),
 		};
@@ -300,7 +317,7 @@ export const createTicket = async (req: AuthRequest, res: Response) => {
 			where: {
 				guildId,
 				userId,
-				status: { in: ['OPEN', 'IN_PROGRESS'] },
+				status: { in: ['OPEN', 'CLAIMED'] },
 			},
 		});
 
@@ -382,10 +399,13 @@ export const createTicket = async (req: AuthRequest, res: Response) => {
 		await prisma.ticketMessage.create({
 			data: {
 				ticketId: ticket.id,
+				messageId: 'system',
+				userId: userId,
+				userIcon: '',
 				content: description || 'No description provided',
-				authorId: userId,
-				isStaff: false,
-				isInternal: false,
+				attachments: [],
+				embeds: [],
+				isSystemMsg: false,
 			},
 		});
 
@@ -516,7 +536,7 @@ export const claimTicket = async (req: AuthRequest, res: Response) => {
 			},
 			data: {
 				assignedTo: req.user?.id || 'unknown',
-				status: 'IN_PROGRESS',
+				status: 'CLAIMED',
 				lastActivity: new Date(),
 				updatedAt: new Date(),
 			},
@@ -603,8 +623,8 @@ export const getTicketStatistics = async (req: AuthRequest, res: Response) => {
 				open:
 					statusCounts.find((s: any) => s.status === 'OPEN')?._count.status ||
 					0,
-				inProgress:
-					statusCounts.find((s: any) => s.status === 'IN_PROGRESS')?._count
+				claimed:
+					statusCounts.find((s: any) => s.status === 'CLAIMED')?._count
 						.status || 0,
 				closed:
 					statusCounts.find((s: any) => s.status === 'CLOSED')?._count.status ||
@@ -627,10 +647,498 @@ export const getTicketStatistics = async (req: AuthRequest, res: Response) => {
 	}
 };
 
-// Helper function
+// Assign ticket to staff member
+export const assignTicket = async (req: AuthRequest, res: Response) => {
+	try {
+		const { guildId, ticketId } = req.params;
+		const { assignedTo, reason } = req.body;
+		const assignerId = req.user?.id;
+		const prisma = getPrismaClient();
+
+		// Get the ticket
+		const ticket = await prisma.ticket.findFirst({
+			where: { id: ticketId, guildId },
+		});
+
+		if (!ticket) {
+			return res.failure('Ticket not found', 404);
+		}
+
+		// Check if already assigned
+		if (ticket.assignedTo && ticket.assignedTo === assignedTo) {
+			return res.failure('Ticket is already assigned to this user', 400);
+		}
+
+		// Update ticket assignment
+		const updatedTicket = await prisma.ticket.update({
+			where: { id: ticketId },
+			data: {
+				assignedTo,
+				updatedAt: new Date(),
+			},
+		});
+
+		// Log the assignment
+		await prisma.ticketMessage.create({
+			data: {
+				ticketId,
+				messageId: 'system',
+				userId: assignerId || 'system',
+				userIcon: '',
+				content: `Ticket assigned to <@${assignedTo}>${
+					reason ? ` - ${reason}` : ''
+				}`,
+				attachments: [],
+				embeds: [],
+				isSystemMsg: true,
+			},
+		});
+
+		// Broadcast assignment update
+		wsManager.broadcastToGuild(
+			guildId,
+			createWebSocketMessage('ticketAssigned', {
+				ticketId,
+				assignedTo,
+				assignedBy: assignerId,
+				reason,
+			})
+		);
+
+		logger.info(`Ticket ${ticketId} assigned to ${assignedTo}`, {
+			guildId,
+			assignerId,
+		});
+
+		res.success({
+			message: 'Ticket assigned successfully',
+			data: updatedTicket,
+		});
+	} catch (error) {
+		logger.error('Error assigning ticket:', error);
+		res.failure('Failed to assign ticket', 500);
+	}
+};
+
+// Unassign ticket
+export const unassignTicket = async (req: AuthRequest, res: Response) => {
+	try {
+		const { guildId, ticketId } = req.params;
+		const { reason } = req.body;
+		const unassignerId = req.user?.id;
+		const prisma = getPrismaClient();
+
+		// Get the ticket
+		const ticket = await prisma.ticket.findFirst({
+			where: { id: ticketId, guildId },
+		});
+
+		if (!ticket) {
+			return res.failure('Ticket not found', 404);
+		}
+
+		if (!ticket.assignedTo) {
+			return res.failure('Ticket is not assigned', 400);
+		}
+
+		const previousAssignee = ticket.assignedTo;
+
+		// Update ticket assignment
+		const updatedTicket = await prisma.ticket.update({
+			where: { id: ticketId },
+			data: {
+				assignedTo: null,
+				updatedAt: new Date(),
+			},
+		});
+
+		// Log the unassignment
+		await prisma.ticketMessage.create({
+			data: {
+				ticketId,
+				messageId: 'system',
+				userId: unassignerId || 'system',
+				userIcon: '',
+				content: `Ticket unassigned from <@${previousAssignee}>${
+					reason ? ` - ${reason}` : ''
+				}`,
+				attachments: [],
+				embeds: [],
+				isSystemMsg: true,
+			},
+		});
+
+		// Broadcast unassignment update
+		wsManager.broadcastToGuild(
+			guildId,
+			createWebSocketMessage('ticketUnassigned', {
+				ticketId,
+				previousAssignee,
+				unassignedBy: unassignerId,
+				reason,
+			})
+		);
+
+		logger.info(`Ticket ${ticketId} unassigned from ${previousAssignee}`, {
+			guildId,
+			unassignerId,
+		});
+
+		res.success({
+			message: 'Ticket unassigned successfully',
+			data: updatedTicket,
+		});
+	} catch (error) {
+		logger.error('Error unassigning ticket:', error);
+		res.failure('Failed to unassign ticket', 500);
+	}
+};
+
+// Bulk assign tickets
+export const bulkAssignTickets = async (req: AuthRequest, res: Response) => {
+	try {
+		const { guildId } = req.params;
+		const { ticketIds, assignedTo, reason } = req.body;
+		const assignerId = req.user?.id;
+		const prisma = getPrismaClient();
+
+		if (!Array.isArray(ticketIds) || ticketIds.length === 0) {
+			return res.failure('Ticket IDs array is required', 400);
+		}
+
+		if (ticketIds.length > 50) {
+			return res.failure('Cannot assign more than 50 tickets at once', 400);
+		}
+
+		// Get tickets to assign
+		const tickets = await prisma.ticket.findMany({
+			where: {
+				id: { in: ticketIds },
+				guildId,
+				status: { in: ['OPEN', 'CLAIMED'] },
+			},
+		});
+
+		if (tickets.length === 0) {
+			return res.failure('No valid tickets found to assign', 400);
+		}
+
+		// Update all tickets
+		const updatedTickets = await prisma.ticket.updateMany({
+			where: {
+				id: { in: tickets.map((t: any) => t.id) },
+			},
+			data: {
+				assignedTo,
+				updatedAt: new Date(),
+			},
+		});
+
+		// Log assignments
+		const logMessages = tickets.map((ticket: any) => ({
+			ticketId: ticket.id,
+			messageId: 'system',
+			userId: assignerId || 'system',
+			userIcon: '',
+			content: `Ticket assigned to <@${assignedTo}> (bulk assignment)${
+				reason ? ` - ${reason}` : ''
+			}`,
+			attachments: [],
+			embeds: [],
+			isSystemMsg: true,
+		}));
+
+		await prisma.ticketMessage.createMany({
+			data: logMessages,
+		});
+
+		// Broadcast bulk assignment
+		wsManager.broadcastToGuild(
+			guildId,
+			createWebSocketMessage('ticketsBulkAssigned', {
+				ticketIds: tickets.map((t: any) => t.id),
+				assignedTo,
+				assignedBy: assignerId,
+				count: tickets.length,
+				reason,
+			})
+		);
+
+		logger.info(`Bulk assigned ${tickets.length} tickets to ${assignedTo}`, {
+			guildId,
+			assignerId,
+		});
+
+		res.success({
+			message: `Successfully assigned ${tickets.length} tickets`,
+			data: {
+				assignedCount: tickets.length,
+				skippedCount: ticketIds.length - tickets.length,
+			},
+		});
+	} catch (error) {
+		logger.error('Error bulk assigning tickets:', error);
+		res.failure('Failed to bulk assign tickets', 500);
+	}
+};
+
+// Auto-assign tickets based on workload
+export const autoAssignTickets = async (req: AuthRequest, res: Response) => {
+	try {
+		const { guildId } = req.params;
+		const { staffIds, maxAssignments = 5 } = req.body;
+		const assignerId = req.user?.id;
+		const prisma = getPrismaClient();
+
+		if (!Array.isArray(staffIds) || staffIds.length === 0) {
+			return res.failure('Staff IDs array is required', 400);
+		}
+
+		// Get unassigned tickets
+		const unassignedTickets = await prisma.ticket.findMany({
+			where: {
+				guildId,
+				assignedTo: null,
+				status: { in: ['OPEN', 'CLAIMED'] },
+			},
+			orderBy: { createdAt: 'asc' },
+		});
+
+		if (unassignedTickets.length === 0) {
+			return res.failure('No unassigned tickets found', 400);
+		}
+
+		// Get current workload for each staff member
+		const staffWorkloads = await Promise.all(
+			staffIds.map(async (staffId: string) => {
+				const assignedCount = await prisma.ticket.count({
+					where: {
+						guildId,
+						assignedTo: staffId,
+						status: { in: ['OPEN', 'CLAIMED'] },
+					},
+				});
+				return { staffId, assignedCount };
+			})
+		);
+
+		// Sort staff by workload (ascending)
+		staffWorkloads.sort((a, b) => a.assignedCount - b.assignedCount);
+
+		const assignments: { ticketId: string; staffId: string }[] = [];
+		let staffIndex = 0;
+
+		// Assign tickets in round-robin fashion
+		for (const ticket of unassignedTickets) {
+			const staff = staffWorkloads[staffIndex];
+
+			if (staff.assignedCount < maxAssignments) {
+				assignments.push({ ticketId: ticket.id, staffId: staff.staffId });
+				staff.assignedCount++;
+
+				// Move to next staff member
+				staffIndex = (staffIndex + 1) % staffWorkloads.length;
+			} else {
+				// All staff members are at max capacity
+				break;
+			}
+		}
+
+		if (assignments.length === 0) {
+			return res.failure('All staff members are at maximum capacity', 400);
+		}
+
+		// Execute assignments
+		const updatePromises = assignments.map(({ ticketId, staffId }) =>
+			prisma.ticket.update({
+				where: { id: ticketId },
+				data: {
+					assignedTo: staffId,
+					updatedAt: new Date(),
+				},
+			})
+		);
+
+		await Promise.all(updatePromises);
+
+		// Log assignments
+		const logMessages = assignments.map(({ ticketId, staffId }) => ({
+			ticketId,
+			messageId: 'system',
+			userId: assignerId || 'system',
+			userIcon: '',
+			content: `Ticket auto-assigned to <@${staffId}>`,
+			attachments: [],
+			embeds: [],
+			isSystemMsg: true,
+		}));
+
+		await prisma.ticketMessage.createMany({
+			data: logMessages,
+		});
+
+		// Broadcast auto-assignments
+		wsManager.broadcastToGuild(
+			guildId,
+			createWebSocketMessage('ticketsAutoAssigned', {
+				assignments,
+				assignedBy: assignerId,
+				count: assignments.length,
+			})
+		);
+
+		logger.info(`Auto-assigned ${assignments.length} tickets`, {
+			guildId,
+			assignerId,
+		});
+
+		res.success({
+			message: `Successfully auto-assigned ${assignments.length} tickets`,
+			data: {
+				assignments,
+				assignedCount: assignments.length,
+				remainingUnassigned: unassignedTickets.length - assignments.length,
+			},
+		});
+	} catch (error) {
+		logger.error('Error auto-assigning tickets:', error);
+		res.failure('Failed to auto-assign tickets', 500);
+	}
+};
+
+// Get assignment statistics
+export const getAssignmentStatistics = async (
+	req: AuthRequest,
+	res: Response
+) => {
+	try {
+		const { guildId } = req.params;
+		const { period = '7d' } = req.query;
+		const prisma = getPrismaClient();
+
+		const periodMs = parsePeriod(period as string);
+		const startDate = new Date(Date.now() - periodMs);
+
+		// Get staff workloads
+		const staffWorkloads = await prisma.ticket.groupBy({
+			by: ['assignedTo'],
+			where: {
+				guildId,
+				assignedTo: { not: null },
+				status: { in: ['OPEN', 'CLAIMED'] },
+			},
+			_count: { assignedTo: true },
+		});
+
+		// Get assignment history
+		const assignmentHistory = await prisma.ticketMessage.findMany({
+			where: {
+				ticket: { guildId },
+				content: { contains: 'assigned' },
+				isSystemMsg: true,
+				createdAt: { gte: startDate },
+			},
+			include: {
+				ticket: {
+					select: {
+						id: true,
+						assignedTo: true,
+						status: true,
+						category: true,
+					},
+				},
+			},
+			orderBy: { createdAt: 'desc' },
+		});
+
+		// Calculate response times for assigned tickets
+		const assignedTickets = await prisma.ticket.findMany({
+			where: {
+				guildId,
+				assignedTo: { not: null },
+				status: 'CLOSED',
+				createdAt: { gte: startDate },
+			},
+			include: {
+				messages: {
+					where: { isSystemMsg: false },
+					orderBy: { createdAt: 'asc' },
+					take: 1,
+				},
+			},
+		});
+
+		const responseTimeData = assignedTickets
+			.filter((ticket: any) => ticket.messages.length > 0)
+			.map((ticket: any) => {
+				const firstResponse = ticket.messages[0];
+				const responseTime =
+					firstResponse.createdAt.getTime() - ticket.createdAt.getTime();
+				return {
+					ticketId: ticket.id,
+					assignedTo: ticket.assignedTo,
+					responseTime,
+					category: ticket.category,
+				};
+			});
+
+		// Calculate average response times by staff
+		const staffResponseTimes = responseTimeData.reduce(
+			(acc: any, data: any) => {
+				if (!acc[data.assignedTo!]) {
+					acc[data.assignedTo!] = [];
+				}
+				acc[data.assignedTo!].push(data.responseTime);
+				return acc;
+			},
+			{} as Record<string, number[]>
+		);
+
+		const staffAverages = Object.entries(staffResponseTimes).map(
+			([staffId, times]: [string, any]) => ({
+				staffId,
+				averageResponseTime:
+					(times as number[]).reduce((a: number, b: number) => a + b, 0) /
+					(times as number[]).length,
+				ticketCount: (times as number[]).length,
+			})
+		);
+
+		// Get unassigned tickets count
+		const unassignedCount = await prisma.ticket.count({
+			where: {
+				guildId,
+				assignedTo: null,
+				status: { in: ['OPEN', 'CLAIMED'] },
+			},
+		});
+
+		const statistics = {
+			period: period as string,
+			workloads: staffWorkloads.map((w: any) => ({
+				staffId: w.assignedTo,
+				activeTickets: w._count.assignedTo,
+			})),
+			averageResponseTimes: staffAverages,
+			assignmentHistory: assignmentHistory.slice(0, 50), // Last 50 assignments
+			unassignedTickets: unassignedCount,
+			totalAssignedTickets: staffWorkloads.reduce(
+				(sum: number, w: any) => sum + w._count.assignedTo,
+				0
+			),
+		};
+
+		res.success(statistics);
+	} catch (error) {
+		logger.error('Error fetching assignment statistics:', error);
+		res.failure('Failed to fetch assignment statistics', 500);
+	}
+};
+
+// Helper function to parse period
 function parsePeriod(period: string): number {
 	const match = period.match(/^(\d+)([dwmy])$/);
-	if (!match) return 7 * 24 * 60 * 60 * 1000;
+	if (!match) return 7 * 24 * 60 * 60 * 1000; // Default 7 days
 
 	const [, amount, unit] = match;
 	const num = parseInt(amount);

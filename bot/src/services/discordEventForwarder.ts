@@ -10,6 +10,7 @@ export class DiscordEventForwarder {
   constructor(client: Client, wsService: WebSocketService) {
     this.client = client;
     this.wsService = wsService;
+    if (process.env.DISABLE_API === "true") return;
     this.setupEventForwarding();
   }
 
