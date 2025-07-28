@@ -17,7 +17,7 @@ class AvatarCommand extends GeneralCommand {
       name: "avatar",
       description: "Display a user's avatar in high quality",
       category: "general",
-      ephemeral: false,
+      ephemeral: true,
       guildOnly: true,
     };
 
@@ -91,7 +91,7 @@ class AvatarCommand extends GeneralCommand {
 
       await this.logCommandUsage("avatar", { target: targetUser.id, size, format: format ?? "auto" });
 
-      return { embeds: [embed], components: row.components.length ? [row] : [], ephemeral: false };
+      return { embeds: [embed], components: row.components.length ? [row] : [], ephemeral: true };
     } catch (error) {
       logger.error("Error in avatar command:", error);
       return this.createGeneralError("Error", "Failed to fetch avatar. Please try again.");

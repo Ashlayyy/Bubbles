@@ -1,23 +1,27 @@
 import type {
   CategoryChannel,
   ChatInputCommandInteraction,
-  ContextMenuCommandInteraction,
   ForumChannel,
   Guild,
   GuildMember,
   MediaChannel,
+  MessageContextMenuCommandInteraction,
   NewsChannel,
   PermissionResolvable,
   StageChannel,
   TextChannel,
   User,
+  UserContextMenuCommandInteraction,
   VoiceChannel,
 } from "discord.js";
 import type Client from "../../structures/Client.js";
 import type { PermissionLevel } from "../../structures/PermissionTypes.js";
 
 // Core command types
-export type CommandInteraction = ChatInputCommandInteraction | ContextMenuCommandInteraction;
+export type CommandInteraction =
+  | ChatInputCommandInteraction
+  | MessageContextMenuCommandInteraction
+  | UserContextMenuCommandInteraction;
 export type SlashCommandInteraction = ChatInputCommandInteraction;
 
 export interface CommandContext {

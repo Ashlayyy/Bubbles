@@ -527,7 +527,7 @@ export const getModerationCase = async (req: AuthRequest, res: Response) => {
 export const updateModerationCase = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, caseId } = req.params;
-		const { reason, status, notes } = req.body;
+		const { reason, status, notes, evidence: newEvidence } = req.body;
 		const prisma = getPrismaClient();
 
 		// Ensure case exists & belongs to guild
@@ -546,6 +546,13 @@ export const updateModerationCase = async (req: AuthRequest, res: Response) => {
 			if (typeof status === 'string') {
 				updateData.isActive = status.toUpperCase() === 'ACTIVE';
 			}
+		}
+
+		// Merge new evidence entries if provided
+		if (Array.isArray(newEvidence) && newEvidence.length > 0) {
+			updateData.evidence = Array.from(
+				new Set([...(existing.evidence || []), ...newEvidence])
+			);
 		}
 
 		const updatedCase = await prisma.moderationCase.update({
@@ -1045,17 +1052,282 @@ export const deleteModeratorNote = async (req: AuthRequest, res: Response) => {
 		const { guildId, noteId } = req.params;
 		const prisma = getPrismaClient();
 
-		const existing = await prisma.caseNote.findFirst({
-			where: { id: noteId, case: { guildId } },
+		const note = await prisma.caseNote.findFirst({
+			where: { id: noteId },
+			include: { case: { select: { guildId: true } } },
 		});
-		if (!existing) {
+
+		if (!note || note.case.guildId !== guildId) {
 			return res.failure('Note not found', 404);
 		}
 
 		await prisma.caseNote.delete({ where: { id: noteId } });
-		return res.success({ message: 'Moderator note deleted successfully' });
+
+		return res.success({ message: 'Note deleted successfully' });
 	} catch (error) {
 		logger.error('Error deleting moderator note:', error);
-		return res.failure('Failed to delete moderator note', 500);
+		return res.failure('Failed to delete note', 500);
+	}
+};
+
+// Bulk moderation operations
+export const bulkBanUsers = async (req: AuthRequest, res: Response) => {
+	try {
+		const { guildId } = req.params;
+		const { userIds, reason, deleteMessages, duration } = req.body;
+
+		if (!Array.isArray(userIds) || userIds.length === 0) {
+			return res.failure('userIds must be a non-empty array', 400);
+		}
+
+		if (userIds.length > 100) {
+			return res.failure('Cannot ban more than 100 users at once', 400);
+		}
+
+		const prisma = getPrismaClient();
+		const results = [];
+
+		// Check for existing bans
+		const existingBans = await prisma.moderationCase.findMany({
+			where: {
+				guildId,
+				userId: { in: userIds },
+				type: 'BAN',
+				isActive: true,
+			},
+			select: { userId: true },
+		});
+
+		const bannedUserIds = new Set(existingBans.map((ban: any) => ban.userId));
+		const usersToProcess = userIds.filter((id) => !bannedUserIds.has(id));
+
+		// Queue bulk ban job
+		const jobData = {
+			guildId,
+			userIds: usersToProcess,
+			reason: reason || 'Bulk ban operation',
+			deleteMessages: deleteMessages || false,
+			duration,
+			moderatorId: req.user?.id || 'unknown',
+		};
+
+		const job = await bullMQManager.addJob(
+			'bulk-moderation',
+			'BULK_BAN',
+			jobData
+		);
+
+		// Create pending cases
+		const casePromises = usersToProcess.map(async (userId) => {
+			const caseNumber = await getNextCaseNumber(guildId);
+			let expiresAt = null;
+			if (duration) {
+				expiresAt = new Date(Date.now() + duration * 1000);
+			}
+
+			return prisma.moderationCase.create({
+				data: {
+					caseNumber,
+					guildId,
+					type: 'BAN',
+					userId,
+					moderatorId: req.user?.id || 'unknown',
+					reason: reason || 'Bulk ban operation',
+					duration,
+					expiresAt,
+					severity: 'HIGH',
+					points: 100,
+					context: { bulkOperation: true, jobId: job },
+				},
+			});
+		});
+
+		const cases = await Promise.all(casePromises);
+
+		res.success(
+			{
+				message: `Bulk ban operation queued for ${usersToProcess.length} users`,
+				jobId: job,
+				cases: cases.map((c) => ({
+					id: c.id,
+					caseNumber: c.caseNumber,
+					userId: c.userId,
+				})),
+				skipped: userIds.length - usersToProcess.length,
+			},
+			202
+		);
+	} catch (error) {
+		logger.error('Error in bulk ban operation:', error);
+		res.failure('Failed to queue bulk ban operation', 500);
+	}
+};
+
+export const bulkKickUsers = async (req: AuthRequest, res: Response) => {
+	try {
+		const { guildId } = req.params;
+		const { userIds, reason } = req.body;
+
+		if (!Array.isArray(userIds) || userIds.length === 0) {
+			return res.failure('userIds must be a non-empty array', 400);
+		}
+
+		if (userIds.length > 100) {
+			return res.failure('Cannot kick more than 100 users at once', 400);
+		}
+
+		const prisma = getPrismaClient();
+
+		// Queue bulk kick job
+		const jobData = {
+			guildId,
+			userIds,
+			reason: reason || 'Bulk kick operation',
+			moderatorId: req.user?.id || 'unknown',
+		};
+
+		const job = await bullMQManager.addJob(
+			'bulk-moderation',
+			'BULK_KICK',
+			jobData
+		);
+
+		// Create pending cases
+		const casePromises = userIds.map(async (userId) => {
+			const caseNumber = await getNextCaseNumber(guildId);
+
+			return prisma.moderationCase.create({
+				data: {
+					caseNumber,
+					guildId,
+					type: 'KICK',
+					userId,
+					moderatorId: req.user?.id || 'unknown',
+					reason: reason || 'Bulk kick operation',
+					severity: 'MEDIUM',
+					points: 25,
+					context: { bulkOperation: true, jobId: job },
+				},
+			});
+		});
+
+		const cases = await Promise.all(casePromises);
+
+		res.success(
+			{
+				message: `Bulk kick operation queued for ${userIds.length} users`,
+				jobId: job,
+				cases: cases.map((c) => ({
+					id: c.id,
+					caseNumber: c.caseNumber,
+					userId: c.userId,
+				})),
+			},
+			202
+		);
+	} catch (error) {
+		logger.error('Error in bulk kick operation:', error);
+		res.failure('Failed to queue bulk kick operation', 500);
+	}
+};
+
+export const bulkTimeoutUsers = async (req: AuthRequest, res: Response) => {
+	try {
+		const { guildId } = req.params;
+		const { userIds, reason, duration } = req.body;
+
+		if (!Array.isArray(userIds) || userIds.length === 0) {
+			return res.failure('userIds must be a non-empty array', 400);
+		}
+
+		if (userIds.length > 100) {
+			return res.failure('Cannot timeout more than 100 users at once', 400);
+		}
+
+		if (!duration || duration < 60 || duration > 2419200) {
+			return res.failure(
+				'Duration must be between 60 seconds and 28 days',
+				400
+			);
+		}
+
+		const prisma = getPrismaClient();
+
+		// Queue bulk timeout job
+		const jobData = {
+			guildId,
+			userIds,
+			reason: reason || 'Bulk timeout operation',
+			duration,
+			moderatorId: req.user?.id || 'unknown',
+		};
+
+		const job = await bullMQManager.addJob(
+			'bulk-moderation',
+			'BULK_TIMEOUT',
+			jobData
+		);
+
+		// Create pending cases
+		const casePromises = userIds.map(async (userId) => {
+			const caseNumber = await getNextCaseNumber(guildId);
+			const expiresAt = new Date(Date.now() + duration * 1000);
+
+			return prisma.moderationCase.create({
+				data: {
+					caseNumber,
+					guildId,
+					type: 'TIMEOUT',
+					userId,
+					moderatorId: req.user?.id || 'unknown',
+					reason: reason || 'Bulk timeout operation',
+					duration,
+					expiresAt,
+					severity: 'MEDIUM',
+					points: 10,
+					context: { bulkOperation: true, jobId: job },
+				},
+			});
+		});
+
+		const cases = await Promise.all(casePromises);
+
+		res.success(
+			{
+				message: `Bulk timeout operation queued for ${userIds.length} users`,
+				jobId: job,
+				cases: cases.map((c) => ({
+					id: c.id,
+					caseNumber: c.caseNumber,
+					userId: c.userId,
+				})),
+			},
+			202
+		);
+	} catch (error) {
+		logger.error('Error in bulk timeout operation:', error);
+		res.failure('Failed to queue bulk timeout operation', 500);
+	}
+};
+
+export const getBulkOperationStatus = async (
+	req: AuthRequest,
+	res: Response
+) => {
+	try {
+		const { jobId } = req.params;
+
+		const jobStatus = await bullMQManager.getJobStatus(
+			'bulk-moderation',
+			jobId
+		);
+		if (jobStatus.status === 'not_found') {
+			return res.failure('Job not found', 404);
+		}
+
+		res.success(jobStatus);
+	} catch (error) {
+		logger.error('Error getting bulk operation status:', error);
+		res.failure('Failed to get operation status', 500);
 	}
 };

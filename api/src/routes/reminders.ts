@@ -1,109 +1,39 @@
 import { Router } from 'express';
-import {
-	getReminders,
-	getReminder,
-	createReminder,
-	updateReminder,
-	deleteReminder,
-	cancelReminder,
-	testReminder,
-	getReminderStatistics,
-} from '../controllers/remindersController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import {
-	validateGuildId,
-	validateGuildAccess,
-	validateReminder,
-	validatePagination,
-} from '../middleware/validation.js';
-import { generalRateLimit } from '../middleware/rateLimiting.js';
-import { addRoute } from '../utils/secureRoute.js';
+	createReminder,
+	getReminders,
+	getReminder,
+	updateReminder,
+	deleteReminder,
+	completeReminder,
+	getReminderStatistics,
+} from '../controllers/reminderController.js';
 
-const router = Router({ mergeParams: true });
+const router = Router();
 
-router.use('/', validateGuildId, authenticateToken, validateGuildAccess);
+// All routes require authentication
+router.use(authenticateToken);
 
-// List reminders
-addRoute(
-	router,
-	'get',
-	'/',
-	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
-	validatePagination,
-	generalRateLimit,
-	getReminders
-);
+// Create a reminder
+router.post('/:guildId', createReminder);
 
-// Single reminder
-addRoute(
-	router,
-	'get',
-	'/:reminderId',
-	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
-	generalRateLimit,
-	getReminder
-);
+// Get reminders
+router.get('/:guildId', getReminders);
 
-// Create reminder
-addRoute(
-	router,
-	'post',
-	'/',
-	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
-	validateReminder,
-	generalRateLimit,
-	createReminder
-);
+// Get reminder statistics
+router.get('/:guildId/statistics', getReminderStatistics);
 
-// Update
-addRoute(
-	router,
-	'put',
-	'/:reminderId',
-	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
-	validateReminder,
-	generalRateLimit,
-	updateReminder
-);
+// Get single reminder
+router.get('/:guildId/:reminderId', getReminder);
 
-// Delete
-addRoute(
-	router,
-	'delete',
-	'/:reminderId',
-	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
-	generalRateLimit,
-	deleteReminder
-);
+// Update reminder
+router.put('/:guildId/:reminderId', updateReminder);
 
-// Cancel
-addRoute(
-	router,
-	'post',
-	'/:reminderId/cancel',
-	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
-	generalRateLimit,
-	cancelReminder
-);
+// Delete reminder
+router.delete('/:guildId/:reminderId', deleteReminder);
 
-// Test
-addRoute(
-	router,
-	'post',
-	'/:reminderId/test',
-	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
-	generalRateLimit,
-	testReminder
-);
-
-// Stats
-addRoute(
-	router,
-	'get',
-	'/statistics',
-	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
-	generalRateLimit,
-	getReminderStatistics
-);
+// Complete reminder
+router.patch('/:guildId/:reminderId/complete', completeReminder);
 
 export default router;

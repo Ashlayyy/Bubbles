@@ -3,6 +3,7 @@ import type { Message } from "discord.js";
 import { Events } from "discord.js";
 
 import { prisma } from "../../database/index.js";
+import logger from "../../logger.js";
 import { ClientEvent } from "../../structures/Event.js";
 
 export default new ClientEvent(Events.MessageCreate, async (message: Message) => {
@@ -31,6 +32,7 @@ export default new ClientEvent(Events.MessageCreate, async (message: Message) =>
           ticketId: ticket.id,
           messageId: message.id,
           userId: message.author.id,
+          userIcon: message.author.displayAvatarURL({ extension: "png" }),
           content: message.content || "",
           attachments: message.attachments.map((att) => att.url),
           embeds: message.embeds.map((embed) => embed.toJSON()) as Prisma.InputJsonValue[],
@@ -44,7 +46,7 @@ export default new ClientEvent(Events.MessageCreate, async (message: Message) =>
         data: { lastActivity: new Date() },
       });
     } catch (error) {
-      console.error("Failed to log ticket message:", error);
+      logger.error("Failed to log ticket message:", error);
     }
   }
 
@@ -52,8 +54,12 @@ export default new ClientEvent(Events.MessageCreate, async (message: Message) =>
   const { AutoModService } = await import("../../services/autoModService.js");
   await AutoModService.processMessage(client, message);
 
+  // Award XP for leveling system
+  const { levelingService } = await import("../../services/levelingService.js");
+  await levelingService.handleMessage(message);
+
   // Log the message creation to general logging system
-  await client.logManager.log(message.guild.id, "MESSAGE_CREATE", {
+  await client.logManager.log(message.guild.id, "messageCreate", {
     userId: message.author.id,
     channelId: message.channel.id,
     content: message.content,

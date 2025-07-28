@@ -1,6 +1,6 @@
 import { generateKeyPairSync, createPublicKey } from 'crypto';
-import { SignJWT, jwtVerify } from 'jose';
-import { RedisConnectionFactory } from './RedisConnectionFactory';
+import { SignJWT, jwtVerify, KeyLike } from 'jose';
+import { RedisConnectionFactory } from './RedisConnectionFactory.js';
 import type { Redis } from 'ioredis';
 
 export type JwtFamily = 'user' | 'bot';

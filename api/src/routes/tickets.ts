@@ -9,6 +9,11 @@ import {
 	closeTicket,
 	claimTicket,
 	getTicketStatistics,
+	assignTicket,
+	unassignTicket,
+	bulkAssignTickets,
+	autoAssignTickets,
+	getAssignmentStatistics,
 } from '../controllers/ticketsController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import {
@@ -53,6 +58,52 @@ addRoute(
 	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	guildTicketsRateLimit,
 	getTicketStatistics
+);
+
+// Assignment routes
+addRoute(
+	router,
+	'post',
+	'/:ticketId/assign',
+	{ discordPermissions: ['MANAGE_MESSAGES'], permissionsOverride: true },
+	guildTicketsRateLimit,
+	assignTicket
+);
+
+addRoute(
+	router,
+	'post',
+	'/:ticketId/unassign',
+	{ discordPermissions: ['MANAGE_MESSAGES'], permissionsOverride: true },
+	guildTicketsRateLimit,
+	unassignTicket
+);
+
+addRoute(
+	router,
+	'post',
+	'/bulk-assign',
+	{ discordPermissions: ['MANAGE_MESSAGES'], permissionsOverride: true },
+	guildTicketsRateLimit,
+	bulkAssignTickets
+);
+
+addRoute(
+	router,
+	'post',
+	'/auto-assign',
+	{ discordPermissions: ['MANAGE_MESSAGES'], permissionsOverride: true },
+	guildTicketsRateLimit,
+	autoAssignTickets
+);
+
+addRoute(
+	router,
+	'get',
+	'/assignment-statistics',
+	{ discordPermissions: ['MANAGE_GUILD'], permissionsOverride: true },
+	guildTicketsRateLimit,
+	getAssignmentStatistics
 );
 
 addRoute(

@@ -1,7 +1,7 @@
 import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import { BaseCommand } from "../_core/BaseCommand.js";
-import type { CommandResponse } from "../_core/types.js";
+import type { CommandConfig, CommandResponse } from "../_core/types.js";
 
 export const builder = new SlashCommandBuilder()
   .setName("reload")
@@ -19,8 +19,20 @@ export const builder = new SlashCommandBuilder()
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-export default class ReloadCommand extends BaseCommand {
+class ReloadCommand extends BaseCommand {
   enabledOnDev = true;
+
+  constructor() {
+    const config: CommandConfig = {
+      name: "reload",
+      description: "[DEV] Hot-reload commands and events",
+      category: "dev",
+      ephemeral: true,
+      guildOnly: false,
+    };
+
+    super(config);
+  }
 
   protected async execute(): Promise<CommandResponse> {
     // Only allow in development mode
@@ -126,3 +138,5 @@ export default class ReloadCommand extends BaseCommand {
     logger.debug(`Invalidated ${eventModules.length} event modules from cache`);
   }
 }
+
+export default new ReloadCommand();

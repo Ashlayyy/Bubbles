@@ -249,6 +249,76 @@ export const LOG_CATEGORIES = {
   CHANNEL_PINS: ["CHANNEL_PINS_UPDATE"],
 } as const;
 
+// Enhanced log type definitions with visual indicators
+export const LOG_TYPE_INDICATORS = {
+  // Member events
+  MEMBER_JOIN: { emoji: "🟢", color: 0x2ecc71, title: "Member Joined", category: "MEMBER" },
+  MEMBER_LEAVE: { emoji: "🔴", color: 0xe74c3c, title: "Member Left", category: "MEMBER" },
+  MEMBER_BAN: { emoji: "🚫", color: 0xc0392b, title: "Member Banned", category: "MEMBER" },
+  MEMBER_UNBAN: { emoji: "✅", color: 0x27ae60, title: "Member Unbanned", category: "MEMBER" },
+  MEMBER_KICK: { emoji: "👢", color: 0xe67e22, title: "Member Kicked", category: "MEMBER" },
+  MEMBER_TIMEOUT: { emoji: "⏰", color: 0xf1c40f, title: "Member Timed Out", category: "MEMBER" },
+  MEMBER_TIMEOUT_REMOVE: { emoji: "⏰", color: 0x3498db, title: "Timeout Removed", category: "MEMBER" },
+  MEMBER_UPDATE: { emoji: "👤", color: 0x9b59b6, title: "Member Updated", category: "MEMBER" },
+  MEMBER_ROLE_ADD: { emoji: "➕", color: 0x2ecc71, title: "Role Added", category: "MEMBER" },
+  MEMBER_ROLE_REMOVE: { emoji: "➖", color: 0xe67e22, title: "Role Removed", category: "MEMBER" },
+  MEMBER_NICKNAME_CHANGE: { emoji: "📝", color: 0x9b59b6, title: "Nickname Changed", category: "MEMBER" },
+  MEMBER_AVATAR_CHANGE: { emoji: "🖼️", color: 0x9b59b6, title: "Avatar Changed", category: "MEMBER" },
+
+  // Message events
+  MESSAGE_DELETE: { emoji: "🗑️", color: 0xe74c3c, title: "Message Deleted", category: "MESSAGE" },
+  MESSAGE_EDIT: { emoji: "✏️", color: 0xe67e22, title: "Message Edited", category: "MESSAGE" },
+  MESSAGE_BULK_DELETE: { emoji: "🗑️", color: 0xc0392b, title: "Messages Bulk Deleted", category: "MESSAGE" },
+  MESSAGE_PIN: { emoji: "📌", color: 0xf39c12, title: "Message Pinned", category: "MESSAGE" },
+  MESSAGE_UNPIN: { emoji: "📌", color: 0x95a5a6, title: "Message Unpinned", category: "MESSAGE" },
+
+  // Role events
+  ROLE_CREATE: { emoji: "🆕", color: 0x1abc9c, title: "Role Created", category: "ROLE" },
+  ROLE_DELETE: { emoji: "🗑️", color: 0xe74c3c, title: "Role Deleted", category: "ROLE" },
+  ROLE_UPDATE: { emoji: "⚙️", color: 0xf39c12, title: "Role Updated", category: "ROLE" },
+  ROLE_PERMISSION_CHANGE: { emoji: "🔐", color: 0xf39c12, title: "Role Permissions Changed", category: "ROLE" },
+  ROLE_COLOR_CHANGE: { emoji: "🎨", color: 0xf39c12, title: "Role Color Changed", category: "ROLE" },
+  ROLE_NAME_CHANGE: { emoji: "📝", color: 0xf39c12, title: "Role Name Changed", category: "ROLE" },
+
+  // Channel events
+  CHANNEL_CREATE: { emoji: "📝", color: 0x1abc9c, title: "Channel Created", category: "CHANNEL" },
+  CHANNEL_DELETE: { emoji: "🗑️", color: 0xe74c3c, title: "Channel Deleted", category: "CHANNEL" },
+  CHANNEL_UPDATE: { emoji: "⚙️", color: 0xf39c12, title: "Channel Updated", category: "CHANNEL" },
+
+  // Voice events
+  VOICE_JOIN: { emoji: "🎤", color: 0x2ecc71, title: "Voice Joined", category: "VOICE" },
+  VOICE_LEAVE: { emoji: "🎤", color: 0xe74c3c, title: "Voice Left", category: "VOICE" },
+  VOICE_MOVE: { emoji: "🔄", color: 0x3498db, title: "Voice Moved", category: "VOICE" },
+
+  // Moderation events
+  MOD_BAN: { emoji: "🚫", color: 0xc0392b, title: "User Banned", category: "MODERATION" },
+  MOD_UNBAN: { emoji: "✅", color: 0x27ae60, title: "User Unbanned", category: "MODERATION" },
+  MOD_KICK: { emoji: "👢", color: 0xe67e22, title: "User Kicked", category: "MODERATION" },
+  MOD_TIMEOUT: { emoji: "⏰", color: 0xf1c40f, title: "User Timed Out", category: "MODERATION" },
+  MOD_TIMEOUT_REMOVE: { emoji: "⏰", color: 0x3498db, title: "Timeout Removed", category: "MODERATION" },
+  MOD_WARN: { emoji: "⚠️", color: 0xf39c12, title: "User Warned", category: "MODERATION" },
+
+  // User events
+  USER_UPDATE: { emoji: "👤", color: 0x9b59b6, title: "User Updated", category: "USER" },
+
+  // System events
+  RATE_LIMIT_HIT: { emoji: "🚦", color: 0xe74c3c, title: "Rate Limit Hit", category: "SYSTEM" },
+  SHARD_ERROR: { emoji: "💥", color: 0xe74c3c, title: "Shard Error", category: "SYSTEM" },
+  SHARD_READY: { emoji: "✅", color: 0x2ecc71, title: "Shard Ready", category: "SYSTEM" },
+
+  // Ticket events
+  TICKET_CREATE: { emoji: "🎫", color: 0x1abc9c, title: "Ticket Created", category: "TICKET" },
+  TICKET_CLOSE: { emoji: "🔒", color: 0xe74c3c, title: "Ticket Closed", category: "TICKET" },
+
+  // Reaction role events
+  REACTION_ROLE_ADDED: { emoji: "➕", color: 0x2ecc71, title: "Reaction Role Added", category: "REACTION_ROLE" },
+  REACTION_ROLE_REMOVED: { emoji: "➖", color: 0xe67e22, title: "Reaction Role Removed", category: "REACTION_ROLE" },
+
+  // Automod events
+  AUTOMOD_RULE_TRIGGER: { emoji: "🛡️", color: 0xe74c3c, title: "AutoMod Triggered", category: "AUTOMOD" },
+  AUTOMOD_ACTION_EXECUTE: { emoji: "⚡", color: 0xf39c12, title: "AutoMod Action", category: "AUTOMOD" },
+} as const;
+
 // Flatten all log types for easy validation
 export const ALL_LOG_TYPES = Object.values(LOG_CATEGORIES).flat();
 
@@ -321,8 +391,27 @@ export default class LogManager {
   private settingsCache = new Map<string, LogSettings>();
   private readonly cacheTimeout = 5 * 60 * 1000; // 5 minutes
 
+  // Log batching system for performance
+  private logBatch = new Map<string, LogEntry[]>();
+  private batchTimeout = 2000; // 2 seconds
+  private batchSize = 10; // Max logs per batch
+  private batchTimers = new Map<string, NodeJS.Timeout>();
+
+  // Performance tracking
+  private performanceMetrics = {
+    totalLogs: 0,
+    batchedLogs: 0,
+    averageProcessingTime: 0,
+    slowLogs: 0,
+  };
+
   constructor(client: Client) {
     this.client = client;
+
+    // Start performance monitoring
+    setInterval(() => {
+      this.logPerformanceMetrics();
+    }, 60000); // Every minute
   }
 
   /**
@@ -330,6 +419,8 @@ export default class LogManager {
    * Just call: logManager.log(guildId, "MESSAGE_DELETE", { userId, content, etc... })
    */
   async log(guildId: string, logType: string, data: Partial<LogEvent> = {}): Promise<void> {
+    const startTime = Date.now();
+
     try {
       const isModerationLog = /^MOD_[A-Z_]+$/.test(logType);
       if (!ALL_LOG_TYPES.includes(logType as (typeof ALL_LOG_TYPES)[number]) && !isModerationLog) {
@@ -357,8 +448,16 @@ export default class LogManager {
         ? this.createStubLogEntry(guildId, logType, data)
         : await this.createLogEntry(guildId, logType, data);
 
-      // Send to appropriate channel(s)
-      await this.sendToLogChannels(guildId, logType, logEntry, settings);
+      // Add performance tracking to metadata
+      if (logEntry.metadata && typeof logEntry.metadata === "object") {
+        (logEntry.metadata as any).processingTime = Date.now() - startTime;
+      }
+
+      // Use batching for better performance
+      await this.addToBatch(guildId, logType, logEntry, settings);
+
+      // Update performance metrics
+      this.updatePerformanceMetrics(Date.now() - startTime);
     } catch (error) {
       logger.error("Error in LogManager.log:", error);
     }
@@ -372,7 +471,7 @@ export default class LogManager {
 
     try {
       // Try cache first
-      const cached = await cacheService.get<LogSettings>(cacheKey, "default");
+      const cached = await cacheService.get<LogSettings>(cacheKey);
       if (cached) {
         return cached;
       }
@@ -393,7 +492,7 @@ export default class LogManager {
       };
 
       // Cache result
-      await cacheService.set(cacheKey, logSettings, "default");
+      cacheService.set(cacheKey, logSettings, 5 * 60 * 1000); // 5 minutes
 
       return logSettings;
     } catch (error) {
@@ -412,7 +511,7 @@ export default class LogManager {
    * Invalidate log settings cache
    */
   static async invalidateLogSettingsCache(guildId: string): Promise<void> {
-    await cacheService.delete(`logs:settings:${guildId}`);
+    cacheService.delete(`logs:settings:${guildId}`);
   }
 
   /**
@@ -447,7 +546,7 @@ export default class LogManager {
    */
   private createStubLogEntry(guildId: string, logType: string, data: Partial<LogEvent>): LogEntry {
     return {
-      id: `stub_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      id: `stub_${String(Date.now().toString(36))}${String(Math.random().toString(36).slice(2, 6))}`,
       guildId,
       logType,
       userId: data.userId ?? null,
@@ -467,7 +566,150 @@ export default class LogManager {
   }
 
   /**
-   * Send log message to appropriate channels
+   * Add log entry to batch for efficient processing
+   */
+  private async addToBatch(guildId: string, logType: string, logEntry: LogEntry, settings: LogSettings) {
+    const batchKey = `${guildId}:${this.getLogCategory(logType)}`;
+
+    if (!this.logBatch.has(batchKey)) {
+      this.logBatch.set(batchKey, []);
+    }
+
+    const batch = this.logBatch.get(batchKey)!;
+    batch.push(logEntry);
+
+    // Clear existing timer
+    if (this.batchTimers.has(batchKey)) {
+      clearTimeout(this.batchTimers.get(batchKey));
+    }
+
+    // Process batch immediately if it's full
+    if (batch.length >= this.batchSize) {
+      await this.processBatch(batchKey, settings);
+    } else {
+      // Set timer to process batch after timeout
+      const timer = setTimeout(() => {
+        this.processBatch(batchKey, settings);
+      }, this.batchTimeout);
+
+      this.batchTimers.set(batchKey, timer);
+    }
+  }
+
+  /**
+   * Process a batch of log entries
+   */
+  private async processBatch(batchKey: string, settings: LogSettings) {
+    const batch = this.logBatch.get(batchKey);
+    if (!batch || batch.length === 0) return;
+
+    try {
+      const [guildId, category] = batchKey.split(":");
+
+      // Determine channel for this batch
+      const channelId = this.getLogChannelId(guildId, category, settings);
+      if (!channelId) return;
+
+      const channel = await this.client.channels.fetch(channelId);
+      if (!channel?.isTextBased()) return;
+
+      // Create enhanced batch embed
+      const embed = this.createBatchEmbed(batch, category);
+
+      // Send the batch
+      await (channel as TextChannel).send({ embeds: [embed] });
+
+      // Update metrics
+      this.performanceMetrics.batchedLogs += batch.length;
+
+      // Clear the batch
+      this.logBatch.delete(batchKey);
+      if (this.batchTimers.has(batchKey)) {
+        clearTimeout(this.batchTimers.get(batchKey));
+        this.batchTimers.delete(batchKey);
+      }
+    } catch (error) {
+      logger.error("Error processing log batch:", error);
+    }
+  }
+
+  /**
+   * Create enhanced batch embed
+   */
+  private createBatchEmbed(batch: LogEntry[], category: string): EmbedBuilder {
+    const embed = new DiscordEmbedBuilder()
+      .setTitle(`📊 ${category} Activity Summary`)
+      .setColor(this.getCategoryColor(category))
+      .setTimestamp()
+      .setFooter({
+        text: `${batch.length} events • ${new Date().toLocaleString()}`,
+        iconURL: this.client.user?.displayAvatarURL(),
+      });
+
+    // Group events by type
+    const eventCounts = new Map<string, number>();
+    const recentEvents: { type: string; user: string; details: string }[] = [];
+
+    for (const entry of batch) {
+      const count = eventCounts.get(entry.logType) || 0;
+      eventCounts.set(entry.logType, count + 1);
+
+      // Add recent events to description
+      if (recentEvents.length < 5) {
+        const indicator = LOG_TYPE_INDICATORS[entry.logType as keyof typeof LOG_TYPE_INDICATORS];
+        const emoji = indicator?.emoji || "📝";
+        const user = entry.userId ? `<@${entry.userId}>` : "Unknown User";
+        const details = this.getEventSummary(entry);
+
+        recentEvents.push({
+          type: entry.logType,
+          user,
+          details: `${emoji} ${user}: ${details}`,
+        });
+      }
+    }
+
+    // Add event summary
+    const eventSummary = [...eventCounts.entries()]
+      .map(([type, count]) => {
+        const indicator = LOG_TYPE_INDICATORS[type as keyof typeof LOG_TYPE_INDICATORS];
+        const emoji = indicator?.emoji || "📝";
+        return `${emoji} ${type}: ${count}`;
+      })
+      .join("\n");
+
+    embed.addFields(
+      { name: "📈 Event Summary", value: eventSummary, inline: false },
+      { name: "🕒 Recent Activity", value: recentEvents.map((e) => e.details).join("\n"), inline: false }
+    );
+
+    return embed;
+  }
+
+  /**
+   * Get event summary for batch display
+   */
+  private getEventSummary(entry: LogEntry): string {
+    switch (entry.logType) {
+      case "MEMBER_JOIN":
+        return "Joined the server";
+      case "MEMBER_LEAVE":
+        return "Left the server";
+      case "MESSAGE_DELETE":
+        return "Message deleted";
+      case "MESSAGE_EDIT":
+        return "Message edited";
+      case "MEMBER_ROLE_ADD":
+        return "Role added";
+      case "MEMBER_ROLE_REMOVE":
+        return "Role removed";
+      default:
+        return entry.logType.replace(/_/g, " ").toLowerCase();
+    }
+  }
+
+  /**
+   * Send log message to appropriate channels (legacy method for immediate sends)
    */
   private async sendToLogChannels(guildId: string, logType: string, logEntry: LogEntry, settings: LogSettings) {
     try {
@@ -540,7 +782,7 @@ export default class LogManager {
   }
 
   /**
-   * Create a beautiful embed for the log entry
+   * Create a beautiful embed for the log entry with enhanced visual indicators
    */
   private createLogEmbed(logType: string, logEntry: LogEntry, user?: User): EmbedBuilder {
     const embed = new DiscordEmbedBuilder().setTimestamp(logEntry.timestamp).setFooter({
@@ -548,14 +790,23 @@ export default class LogManager {
       iconURL: this.client.user?.displayAvatarURL(),
     });
 
-    // Set color based on category/severity
-    const category = this.getLogCategory(logType);
-    const color = this.getCategoryColor(category, logType);
-    embed.setColor(color);
+    // Get enhanced log type indicator
+    const indicator = LOG_TYPE_INDICATORS[logType as keyof typeof LOG_TYPE_INDICATORS];
 
-    // Set title and description based on log type
-    const { title, description, emoji } = this.getLogContent(logType, logEntry);
-    embed.setTitle(`${emoji} ${title}`);
+    if (indicator) {
+      // Use enhanced indicator
+      embed.setColor(indicator.color);
+      embed.setTitle(`${indicator.emoji} ${indicator.title}`);
+    } else {
+      // Fallback to category-based color
+      const category = this.getLogCategory(logType);
+      const color = this.getCategoryColor(category, logType);
+      embed.setColor(color);
+      embed.setTitle(`📝 ${logType.replace(/_/g, " ")}`);
+    }
+
+    // Set description based on log type
+    const description = this.getEnhancedLogDescription(logType, logEntry);
     if (description) embed.setDescription(description);
 
     // Add author field with user info if available
@@ -592,6 +843,9 @@ export default class LogManager {
     // Add metadata information
     this.addMetadataToEmbed(embed, logEntry, logType);
 
+    // Add performance metrics if available
+    this.addPerformanceMetricsToEmbed(embed, logEntry);
+
     return embed;
   }
 
@@ -609,6 +863,43 @@ export default class LogManager {
         MESSAGE_UNPIN: 0x95a5a6, // Gray - unpinned messages
       };
       return messageColors[logType as keyof typeof messageColors] || 0x3498db; // Default blue
+    }
+
+    // Member-specific colors
+    if (category === "MEMBER" && logType) {
+      const memberColors = {
+        MEMBER_JOIN: 0x2ecc71, // Green - join
+        MEMBER_LEAVE: 0x95a5a6, // Gray - leave
+        MEMBER_BAN: 0xe74c3c, // Red - ban
+        MEMBER_UNBAN: 0x27ae60, // Green - unban
+        MEMBER_KICK: 0xe67e22, // Orange - kick
+        MEMBER_TIMEOUT: 0xf1c40f, // Yellow - timeout
+        MEMBER_TIMEOUT_REMOVE: 0x3498db, // Blue - timeout removed
+        MEMBER_UPDATE: 0x9b59b6, // Purple - member update
+      };
+      return memberColors[logType as keyof typeof memberColors] || 0x2ecc71;
+    }
+
+    // Role-specific colors
+    if (category === "ROLE" && logType) {
+      const roleColors = {
+        ROLE_CREATE: 0x1abc9c, // Teal - role created
+        ROLE_DELETE: 0xe74c3c, // Red - role deleted
+        ROLE_UPDATE: 0xf39c12, // Gold - role updated
+        MEMBER_ROLE_ADD: 0x2ecc71, // Green - role added
+        MEMBER_ROLE_REMOVE: 0xe67e22, // Orange - role removed
+      };
+      return roleColors[logType as keyof typeof roleColors] || 0x9b59b6;
+    }
+
+    // Channel-specific colors
+    if (category === "CHANNEL" && logType) {
+      const channelColors = {
+        CHANNEL_CREATE: 0x1abc9c, // Teal - channel created
+        CHANNEL_DELETE: 0xe74c3c, // Red - channel deleted
+        CHANNEL_UPDATE: 0xf39c12, // Gold - channel updated
+      };
+      return channelColors[logType as keyof typeof channelColors] || 0xe67e22;
     }
 
     const colors = {
@@ -640,19 +931,62 @@ export default class LogManager {
   }
 
   /**
-   * Get title, description, and emoji for log type
+   * Get enhanced description for log type
    */
-  private getLogContent(logType: string, logEntry: LogEntry): { title: string; description?: string; emoji: string } {
+  private getEnhancedLogDescription(logType: string, logEntry: LogEntry): string | undefined {
     const userMention = logEntry.userId ? `<@${logEntry.userId}>` : "Unknown User";
     const channelMention = logEntry.channelId ? `<#${logEntry.channelId}>` : "Unknown Channel";
+    const executorMention = logEntry.executorId ? `<@${logEntry.executorId}>` : null;
 
     switch (logType) {
+      case "MEMBER_JOIN": {
+        const metadata = logEntry.metadata as any;
+        const accountAge = metadata?.accountAge || "Unknown";
+        const isSuspicious = metadata?.isSuspiciousAccount ? "⚠️ **Suspicious Account**" : "";
+
+        return `${userMention} joined the server\n**Account Age:** ${accountAge}${isSuspicious ? `\n${isSuspicious}` : ""}`;
+      }
+
+      case "MEMBER_LEAVE":
+        return `${userMention} left the server`;
+
+      case "MEMBER_BAN":
+        return `${userMention} was banned${executorMention ? ` by ${executorMention}` : ""}${logEntry.reason ? `\n**Reason:** ${logEntry.reason}` : ""}`;
+
+      case "MEMBER_UNBAN":
+        return `${userMention} was unbanned${executorMention ? ` by ${executorMention}` : ""}${logEntry.reason ? `\n**Reason:** ${logEntry.reason}` : ""}`;
+
+      case "MEMBER_KICK":
+        return `${userMention} was kicked${executorMention ? ` by ${executorMention}` : ""}${logEntry.reason ? `\n**Reason:** ${logEntry.reason}` : ""}`;
+
+      case "MEMBER_TIMEOUT":
+        return `${userMention} was timed out${executorMention ? ` by ${executorMention}` : ""}${logEntry.reason ? `\n**Reason:** ${logEntry.reason}` : ""}`;
+
+      case "MEMBER_TIMEOUT_REMOVE":
+        return `${userMention}'s timeout was removed${executorMention ? ` by ${executorMention}` : ""}`;
+
+      case "MEMBER_UPDATE": {
+        const metadata = logEntry.metadata as any;
+        const changes = metadata?.changes || [];
+        const changeText = changes.map((change: string) => `• ${change}`).join("\n");
+        return `${userMention} was updated\n**Changes:**\n${changeText}`;
+      }
+
+      case "MEMBER_ROLE_ADD": {
+        const metadata = logEntry.metadata as any;
+        const roleName = metadata?.roleName || "Unknown Role";
+        return `${userMention} was given the **${roleName}** role${executorMention ? ` by ${executorMention}` : ""}`;
+      }
+
+      case "MEMBER_ROLE_REMOVE": {
+        const metadata = logEntry.metadata as any;
+        const roleName = metadata?.roleName || "Unknown Role";
+        return `${userMention} had the **${roleName}** role removed${executorMention ? ` by ${executorMention}` : ""}`;
+      }
+
       case "MESSAGE_DELETE": {
-        // Enhanced deletion attribution
         const metadata = logEntry.metadata as { deletionMethod?: string } | undefined;
         const deletionMethod = metadata?.deletionMethod ?? "unknown";
-        const executorMention = logEntry.executorId ? `<@${logEntry.executorId}>` : null;
-
         let description = `A message by ${userMention} was deleted in ${channelMention}`;
 
         if (executorMention && deletionMethod === "moderator") {
@@ -663,238 +997,51 @@ export default class LogManager {
           description += `\n**Deleted by:** System/Bot`;
         }
 
-        return {
-          title: "Message Deleted",
-          description,
-          emoji: "🗑️",
-        };
+        return description;
       }
 
       case "MESSAGE_EDIT":
-        return {
-          title: "Message Edited",
-          description: `${userMention} edited a message in ${channelMention}`,
-          emoji: "✏️",
-        };
+        return `${userMention} edited a message in ${channelMention}`;
 
       case "MESSAGE_BULK_DELETE": {
-        const metadata = logEntry.metadata as { deletedCount?: number } | undefined;
-        const deletedCount = metadata?.deletedCount ?? "multiple";
-        const executorMention = logEntry.executorId ? `<@${logEntry.executorId}>` : "Unknown User";
-        return {
-          title: "Bulk Message Delete",
-          description: `${deletedCount} messages were bulk deleted in ${channelMention}\n**Deleted by:** ${executorMention}`,
-          emoji: "🗑️",
-        };
+        const metadata = logEntry.metadata as any;
+        const count = metadata?.messageCount || "Unknown";
+        return `${count} messages were bulk deleted in ${channelMention}${executorMention ? ` by ${executorMention}` : ""}`;
       }
 
-      case "MEMBER_JOIN":
-        return {
-          title: "Member Joined",
-          description: `${userMention} joined the server`,
-          emoji: "👋",
-        };
+      case "USER_UPDATE": {
+        const metadata = logEntry.metadata as any;
+        const changes = metadata?.changes || [];
+        const changeText = changes.map((change: string) => `• ${change}`).join("\n");
+        return `${userMention} updated their profile\n**Changes:**\n${changeText}`;
+      }
 
-      case "MEMBER_LEAVE":
-        return {
-          title: "Member Left",
-          description: `${userMention} left the server`,
-          emoji: "👋",
-        };
+      case "ROLE_CREATE": {
+        const metadata = logEntry.metadata as any;
+        const roleName = metadata?.roleName || "Unknown Role";
+        return `Role **${roleName}** was created${executorMention ? ` by ${executorMention}` : ""}`;
+      }
 
-      case "MEMBER_BAN":
-        return {
-          title: "Member Banned",
-          description: `${userMention} was banned from the server`,
-          emoji: "🔨",
-        };
+      case "ROLE_DELETE": {
+        const metadata = logEntry.metadata as any;
+        const roleName = metadata?.roleName || "Unknown Role";
+        return `Role **${roleName}** was deleted${executorMention ? ` by ${executorMention}` : ""}`;
+      }
 
-      case "MEMBER_UNBAN":
-        return {
-          title: "Member Unbanned",
-          description: `${userMention} was unbanned from the server`,
-          emoji: "🔓",
-        };
-
-      case "MEMBER_KICK":
-        return {
-          title: "Member Kicked",
-          description: `${userMention} was kicked from the server`,
-          emoji: "👢",
-        };
-
-      case "MEMBER_TIMEOUT":
-        return {
-          title: "Member Timed Out",
-          description: `${userMention} was timed out`,
-          emoji: "⏰",
-        };
-
-      case "MEMBER_TIMEOUT_REMOVE":
-        return {
-          title: "Timeout Removed",
-          description: `Timeout was removed from ${userMention}`,
-          emoji: "🔊",
-        };
-
-      case "MEMBER_ROLE_ADD":
-        return {
-          title: "Role Added",
-          description: `Role was added to ${userMention}`,
-          emoji: "➕",
-        };
-
-      case "MEMBER_ROLE_REMOVE":
-        return {
-          title: "Role Removed",
-          description: `Role was removed from ${userMention}`,
-          emoji: "➖",
-        };
-
-      case "ROLE_CREATE":
-        return {
-          title: "Role Created",
-          description: `A new role was created`,
-          emoji: "🎭",
-        };
-
-      case "ROLE_DELETE":
-        return {
-          title: "Role Deleted",
-          description: `A role was deleted`,
-          emoji: "🗑️",
-        };
-
-      case "CHANNEL_CREATE":
-        return {
-          title: "Channel Created",
-          description: `${channelMention} was created`,
-          emoji: "📝",
-        };
+      case "CHANNEL_CREATE": {
+        const metadata = logEntry.metadata as any;
+        const channelName = metadata?.channelName || "Unknown Channel";
+        return `Channel **${channelName}** was created${executorMention ? ` by ${executorMention}` : ""}`;
+      }
 
       case "CHANNEL_DELETE": {
-        const metadata = logEntry.metadata as { channelName?: string } | undefined;
-        const channelName = metadata?.channelName ?? "unknown";
-        return {
-          title: "Channel Deleted",
-          description: `Channel #${channelName} was deleted`,
-          emoji: "🗑️",
-        };
-      }
-
-      case "VOICE_JOIN":
-        return {
-          title: "Voice Channel Joined",
-          description: `${userMention} joined ${channelMention}`,
-          emoji: "🎤",
-        };
-
-      case "VOICE_LEAVE":
-        return {
-          title: "Voice Channel Left",
-          description: `${userMention} left ${channelMention}`,
-          emoji: "🔇",
-        };
-
-      case "MESSAGE_REACTION_ADD":
-        return {
-          title: "Reaction Added",
-          description: `${userMention} added a reaction in ${channelMention}`,
-          emoji: "👍",
-        };
-
-      case "MESSAGE_REACTION_REMOVE":
-        return {
-          title: "Reaction Removed",
-          description: `${userMention} removed a reaction in ${channelMention}`,
-          emoji: "👎",
-        };
-
-      // Reaction Role Events
-      case "REACTION_ROLE_ADDED": {
-        const metadata = logEntry.metadata as { roleName?: string; emoji?: string } | undefined;
-        const roleName = metadata?.roleName ?? "Unknown Role";
-        const emoji = metadata?.emoji ?? "❓";
-        return {
-          title: "Reaction Role Added",
-          description: `${userMention} gained the role **${roleName}** via reaction ${emoji}`,
-          emoji: "✅",
-        };
-      }
-
-      case "REACTION_ROLE_REMOVED": {
-        const metadata = logEntry.metadata as { roleName?: string; emoji?: string } | undefined;
-        const roleName = metadata?.roleName ?? "Unknown Role";
-        const emoji = metadata?.emoji ?? "❓";
-        return {
-          title: "Reaction Role Removed",
-          description: `${userMention} lost the role **${roleName}** via reaction ${emoji}`,
-          emoji: "❌",
-        };
-      }
-
-      case "REACTION_ROLE_CONFIG_ADD": {
-        const metadata = logEntry.metadata as { roleName?: string; emoji?: string } | undefined;
-        const roleName = metadata?.roleName ?? "Unknown Role";
-        const emoji = metadata?.emoji ?? "❓";
-        return {
-          title: "Reaction Role Configuration Added",
-          description: `New reaction role configuration: ${emoji} → **${roleName}**`,
-          emoji: "⚙️",
-        };
-      }
-
-      case "REACTION_ROLE_CONFIG_REMOVE": {
-        const metadata = logEntry.metadata as { roleName?: string; emoji?: string } | undefined;
-        const roleName = metadata?.roleName ?? "Unknown Role";
-        const emoji = metadata?.emoji ?? "❓";
-        return {
-          title: "Reaction Role Configuration Removed",
-          description: `Removed reaction role configuration: ${emoji} → **${roleName}**`,
-          emoji: "🗑️",
-        };
-      }
-
-      case "REACTION_ROLE_MESSAGE_CREATE":
-        return {
-          title: "Reaction Role Message Created",
-          description: `New reaction role message created in ${channelMention}`,
-          emoji: "📝",
-        };
-
-      case "REACTION_ROLE_MESSAGE_UPDATE":
-        return {
-          title: "Reaction Role Message Updated",
-          description: `Reaction role message updated in ${channelMention}`,
-          emoji: "✏️",
-        };
-
-      case "REACTION_ROLE_MESSAGE_DELETE":
-        return {
-          title: "Reaction Role Message Deleted",
-          description: `Reaction role message deleted from ${channelMention}`,
-          emoji: "🗑️",
-        };
-
-      case "REACTION_ROLE_ERROR": {
-        const metadata = logEntry.metadata as { error?: string } | undefined;
-        const error = metadata?.error ?? "Unknown error";
-        return {
-          title: "Reaction Role Error",
-          description: `Error processing reaction role: ${error}`,
-          emoji: "⚠️",
-        };
+        const metadata = logEntry.metadata as any;
+        const channelName = metadata?.channelName || "Unknown Channel";
+        return `Channel **${channelName}** was deleted${executorMention ? ` by ${executorMention}` : ""}`;
       }
 
       default:
-        return {
-          title: logType
-            .replace(/_/g, " ")
-            .toLowerCase()
-            .replace(/\b\w/g, (l) => l.toUpperCase()),
-          description: `Log event occurred`,
-          emoji: "📊",
-        };
+        return undefined;
     }
   }
 
@@ -927,6 +1074,91 @@ export default class LogManager {
         value: `<@${logEntry.executorId}> (\`${logEntry.executorId}\`)`,
         inline: true,
       });
+    }
+
+    // --- MEMBER_UPDATE: Added/Removed Roles as Mentions ---
+    if (logType === "MEMBER_UPDATE" && logEntry.metadata) {
+      const metadata = logEntry.metadata as Record<string, any>;
+      if (Array.isArray(metadata.addedRoles) && metadata.addedRoles.length > 0) {
+        const addedMentions = metadata.addedRoles.map((role: any) => `<@&${role.id}>`).join(", ");
+        embed.addFields({
+          name: "➕ Roles Added",
+          value: addedMentions,
+          inline: false,
+        });
+      }
+      if (Array.isArray(metadata.removedRoles) && metadata.removedRoles.length > 0) {
+        const removedMentions = metadata.removedRoles.map((role: any) => `<@&${role.id}>`).join(", ");
+        embed.addFields({
+          name: "➖ Roles Removed",
+          value: removedMentions,
+          inline: false,
+        });
+      }
+      // Username change
+      if (
+        metadata.changes &&
+        Array.isArray(metadata.changes) &&
+        metadata.changes.includes("username") &&
+        logEntry.before &&
+        logEntry.after
+      ) {
+        const before = JSON.parse(logEntry.before as string);
+        const after = JSON.parse(logEntry.after as string);
+        embed.addFields({
+          name: "📝 Username Changed",
+          value: `Before: **${before.username ?? "Unknown"}**\nAfter: **${after.username ?? "Unknown"}**`,
+          inline: false,
+        });
+      }
+      // Nickname change
+      if (
+        metadata.changes &&
+        Array.isArray(metadata.changes) &&
+        metadata.changes.includes("nickname") &&
+        logEntry.before &&
+        logEntry.after
+      ) {
+        const before = JSON.parse(logEntry.before as string);
+        const after = JSON.parse(logEntry.after as string);
+        embed.addFields({
+          name: "🏷️ Nickname Changed",
+          value: `Before: **${before.nickname ?? "None"}**\nAfter: **${after.nickname ?? "None"}**`,
+          inline: false,
+        });
+      }
+      // Avatar change
+      if (
+        metadata.changes &&
+        Array.isArray(metadata.changes) &&
+        metadata.changes.includes("avatar") &&
+        logEntry.before &&
+        logEntry.after
+      ) {
+        const before = JSON.parse(logEntry.before as string);
+        const after = JSON.parse(logEntry.after as string);
+        embed.addFields({
+          name: "🖼️ Avatar Changed",
+          value: `[Before Avatar](https://cdn.discordapp.com/avatars/${logEntry.userId}/${before.avatar}.png) → [After Avatar](https://cdn.discordapp.com/avatars/${logEntry.userId}/${after.avatar}.png)`,
+          inline: false,
+        });
+      }
+      // Timeout change
+      if (
+        metadata.changes &&
+        Array.isArray(metadata.changes) &&
+        metadata.changes.includes("timeout") &&
+        logEntry.before &&
+        logEntry.after
+      ) {
+        const before = JSON.parse(logEntry.before as string);
+        const after = JSON.parse(logEntry.after as string);
+        embed.addFields({
+          name: "⏰ Timeout Changed",
+          value: `Before: **${before.communicationDisabledUntil ?? "None"}**\nAfter: **${after.communicationDisabledUntil ?? "None"}**`,
+          inline: false,
+        });
+      }
     }
 
     // Case information for moderation actions
@@ -983,7 +1215,7 @@ export default class LogManager {
         if (before) {
           const beforeContent = before.length > 500 ? `${before.substring(0, 500)}...` : before;
           embed.addFields({
-            name: "📜 Before",
+            name: "📜 Before Content",
             value: `\`\`\`${beforeContent}\`\`\``,
             inline: false,
           });
@@ -992,10 +1224,38 @@ export default class LogManager {
         if (after) {
           const afterContent = after.length > 500 ? `${after.substring(0, 500)}...` : after;
           embed.addFields({
-            name: "📝 After",
+            name: "📝 After Content",
             value: `\`\`\`${afterContent}\`\`\``,
             inline: false,
           });
+        }
+      }
+      // Role update diff
+      if (logType === "ROLE_UPDATE" && logEntry.before && logEntry.after) {
+        const before = typeof logEntry.before === "string" ? JSON.parse(logEntry.before) : logEntry.before;
+        const after = typeof logEntry.after === "string" ? JSON.parse(logEntry.after) : logEntry.after;
+        for (const key of Object.keys(before)) {
+          if (before[key] !== after[key]) {
+            embed.addFields({
+              name: `🔄 ${key.charAt(0).toUpperCase() + key.slice(1)} Changed`,
+              value: `Before: **${before[key]}**\nAfter: **${after[key]}**`,
+              inline: false,
+            });
+          }
+        }
+      }
+      // Channel update diff
+      if (logType === "CHANNEL_UPDATE" && logEntry.before && logEntry.after) {
+        const before = typeof logEntry.before === "string" ? JSON.parse(logEntry.before) : logEntry.before;
+        const after = typeof logEntry.after === "string" ? JSON.parse(logEntry.after) : logEntry.after;
+        for (const key of Object.keys(before)) {
+          if (before[key] !== after[key]) {
+            embed.addFields({
+              name: `🔄 ${key.charAt(0).toUpperCase() + key.slice(1)} Changed`,
+              value: `Before: **${before[key]}**\nAfter: **${after[key]}**`,
+              inline: false,
+            });
+          }
         }
       }
     }
@@ -1140,6 +1400,61 @@ export default class LogManager {
       logger.error("Error setting up category logging:", error);
       return false;
     }
+  }
+
+  /**
+   * Add performance metrics to embed
+   */
+  private addPerformanceMetricsToEmbed(embed: EmbedBuilder, logEntry: LogEntry): void {
+    const metadata = logEntry.metadata as any;
+    if (metadata?.processingTime) {
+      const processingTime = metadata.processingTime;
+      const isSlow = processingTime > 1000;
+
+      embed.addFields({
+        name: isSlow ? "⚠️ Slow Processing" : "⚡ Processing Time",
+        value: `${processingTime}ms`,
+        inline: true,
+      });
+    }
+  }
+
+  /**
+   * Update performance metrics
+   */
+  private updatePerformanceMetrics(processingTime: number): void {
+    this.performanceMetrics.totalLogs++;
+    this.performanceMetrics.averageProcessingTime =
+      (this.performanceMetrics.averageProcessingTime * (this.performanceMetrics.totalLogs - 1) + processingTime) /
+      this.performanceMetrics.totalLogs;
+
+    if (processingTime > 1000) {
+      this.performanceMetrics.slowLogs++;
+    }
+  }
+
+  /**
+   * Log performance metrics
+   */
+  private logPerformanceMetrics(): void {
+    if (this.performanceMetrics.totalLogs > 0) {
+      logger.info(
+        `LogManager Performance Metrics ${JSON.stringify({
+          totalLogs: this.performanceMetrics.totalLogs,
+          batchedLogs: this.performanceMetrics.batchedLogs,
+          averageProcessingTime: Math.round(this.performanceMetrics.averageProcessingTime),
+          slowLogs: this.performanceMetrics.slowLogs,
+          slowLogPercentage: Math.round((this.performanceMetrics.slowLogs / this.performanceMetrics.totalLogs) * 100),
+        })}`
+      );
+    }
+  }
+
+  /**
+   * Get performance metrics
+   */
+  getPerformanceMetrics() {
+    return { ...this.performanceMetrics };
   }
 
   /**

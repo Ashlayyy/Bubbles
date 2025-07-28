@@ -1,11 +1,13 @@
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import type Client from "../structures/Client.js";
+import { ComplimentWheelService } from "./complimentWheelService.js";
 
 export class ScheduledActionService {
   private interval: NodeJS.Timeout | null = null;
   private readonly checkIntervalMs = 60_000; // 1 minute
   private client: Client;
+  private lastComplimentCheck = new Date();
 
   constructor(client: Client) {
     this.client = client;
@@ -27,6 +29,10 @@ export class ScheduledActionService {
   private async checkAndExecute(): Promise<void> {
     try {
       const now = new Date();
+
+      // Check for daily compliments (00:00)
+      await this.checkDailyCompliments(now);
+
       const dueActions = (await prisma.scheduledAction.findMany({
         where: {
           isExecuted: false,
@@ -59,6 +65,50 @@ export class ScheduledActionService {
       }
     } catch (error) {
       logger.error("ScheduledActionService cycle error:", error);
+    }
+  }
+
+  private async checkDailyCompliments(now: Date): Promise<void> {
+    try {
+      // Only check once per day
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const lastCheck = new Date(
+        this.lastComplimentCheck.getFullYear(),
+        this.lastComplimentCheck.getMonth(),
+        this.lastComplimentCheck.getDate()
+      );
+
+      if (today.getTime() === lastCheck.getTime()) {
+        return; // Already checked today
+      }
+
+      // Check if it's around 00:00 (within 1 minute)
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+
+      if (hour === 0 && minute <= 1) {
+        logger.info("Running daily compliment check...");
+
+        const wheelService = ComplimentWheelService.getInstance(this.client);
+
+        // Get all active wheels
+        const activeWheels = await prisma.complimentWheel.findMany({
+          where: { isActive: true },
+        });
+
+        for (const wheel of activeWheels) {
+          try {
+            await wheelService.sendDailyCompliment(wheel.guildId);
+          } catch (error) {
+            logger.error(`Failed to send daily compliment for guild ${wheel.guildId}:`, error);
+          }
+        }
+
+        this.lastComplimentCheck = now;
+        logger.info(`Daily compliment check completed for ${activeWheels.length} guilds`);
+      }
+    } catch (error) {
+      logger.error("Error in daily compliment check:", error);
     }
   }
 

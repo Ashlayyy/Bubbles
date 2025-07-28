@@ -27,15 +27,20 @@ export default new ClientEvent("interactionCreate", async (interaction: Interact
       return;
     }
 
-    // Handle other ticket interactions (close, priority, etc.)
-    if (interaction.customId.startsWith("ticket_")) {
+    // Handle ticket functionality (but exclude setup wizard interactions)
+    if (
+      interaction.customId.startsWith("ticket_") &&
+      !interaction.customId.startsWith("ticket_enable_threads") &&
+      !interaction.customId.startsWith("ticket_disable_threads") &&
+      !interaction.customId.startsWith("ticket_create_panel")
+    ) {
       await handleTicketButtonInteraction(interaction);
       return;
     }
 
     // Handle logging configuration button interactions
     if (interaction.customId.startsWith("logging_") || interaction.customId.startsWith("channel_config_")) {
-      const { handleLoggingButtonInteraction } = await import("../../commands/admin/logging.js");
+      const { handleLoggingButtonInteraction } = await import("../../commands/admin/setup-wizards/logging-setup.js");
       await handleLoggingButtonInteraction(interaction);
       return;
     }
@@ -49,9 +54,22 @@ export default new ClientEvent("interactionCreate", async (interaction: Interact
 
     // Handle logging channel selection
     if (interaction.customId.startsWith("logging_channel_select_")) {
-      const { handleLoggingButtonInteraction } = await import("../../commands/admin/logging.js");
+      const { handleLoggingButtonInteraction } = await import("../../commands/admin/setup-wizards/logging-setup.js");
       await handleLoggingButtonInteraction(interaction);
       return;
     }
+
+    // Handle ticket setup channel selection (exclude from global handler)
+    if (interaction.customId === "ticket_channel_select") {
+      // This is handled by the setup wizard collector
+      return;
+    }
+  }
+
+  // Handle role select menu interactions
+  if (interaction.isRoleSelectMenu()) {
+    if (!interaction.inGuild()) return;
+
+    // Future role select menu logic will go here.
   }
 });
