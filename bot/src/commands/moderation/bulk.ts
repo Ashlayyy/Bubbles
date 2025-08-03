@@ -1,4 +1,4 @@
-import { bullMQRegistry } from "@shared/queue";
+import { bullMQRegistry } from "@shared/queue/index.js";
 import { SlashCommandBuilder, type User } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { type CommandConfig, type CommandResponse, type SlashCommandInteraction } from "../_core/index.js";

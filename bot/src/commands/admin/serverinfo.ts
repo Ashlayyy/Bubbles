@@ -8,7 +8,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 
-import { PermissionLevel } from "bot/src/structures/PermissionTypes.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { AdminCommand } from "../_core/specialized/AdminCommand.js";

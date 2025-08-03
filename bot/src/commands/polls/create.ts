@@ -1,4 +1,4 @@
-import { PermissionLevel } from "bot/src/structures/PermissionTypes.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import { pollApiService } from "../../services/pollApiService.js";
