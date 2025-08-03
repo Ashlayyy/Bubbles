@@ -32,9 +32,15 @@ export async function forNestedDirsFiles(
     }
 
     const files = await readdir(subDirPath);
+    logger.debug(`📁 Found ${String(files.length)} files in ${subDirPath}: ${files.join(", ")}`);
+
     const esmFiles = files.filter(
-      (f) => f.endsWith(".ts") || f.endsWith(".js") || f.endsWith(".mts") || f.endsWith(".mjs")
+      (f) =>
+        (f.endsWith(".ts") && !f.endsWith(".d.ts")) || f.endsWith(".js") || f.endsWith(".mts") || f.endsWith(".mjs")
     );
+
+    logger.debug(`🎯 Filtered to ${String(esmFiles.length)} ESM files: ${esmFiles.join(", ")}`);
+
     if (esmFiles.length < 1) {
       logger.verbose(`Skipping sub-directory with no ESM files: "${subDirPath}"`);
       continue;
@@ -46,6 +52,8 @@ export async function forNestedDirsFiles(
       if (!esmFileStats.isFile()) {
         throw new Error(`Unexpected file system entity at "${esmFilePath}"`);
       }
+
+      logger.debug(`📄 Processing file: ${esmFile}`);
 
       // Normalize path separators to forward slashes before calling callback
       const normalizedPath = esmFilePath.replace(/\\/g, "/");
