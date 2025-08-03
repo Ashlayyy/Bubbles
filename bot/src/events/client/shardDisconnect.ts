@@ -4,8 +4,7 @@ import { ClientEvent } from "../../structures/Event.js";
 
 export default new ClientEvent(Events.ShardDisconnect, async (event, shardId) => {
   // Get client from global instance
-  const Client = (await import("../../structures/Client.js")).default;
-  const client = await Client.get();
+  const client = await import("../../structures/Client.js").then((m) => m.default.get());
 
   console.error(`Shard ${shardId} disconnected`);
 

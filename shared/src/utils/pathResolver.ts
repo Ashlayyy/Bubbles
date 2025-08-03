@@ -1,6 +1,9 @@
 import { dirname, resolve, join } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
+import { createConsoleLogger } from './logger.js';
+
+const logger = createConsoleLogger('PathResolver');
 
 /**
  * Centralized path resolution utility for consistent path handling across the codebase
@@ -41,21 +44,46 @@ export class PathResolver {
 	 */
 	static findProjectRoot(startDir?: string): string {
 		let currentDir = startDir || process.cwd();
+		logger.debug(
+			`🔍 PathResolver: Searching for project root starting from: ${currentDir}`
+		);
 
 		while (currentDir !== dirname(currentDir)) {
+			logger.debug(`🔍 PathResolver: Checking directory: ${currentDir}`);
+
 			if (existsSync(join(currentDir, 'package.json'))) {
+				logger.debug(`📦 PathResolver: Found package.json in: ${currentDir}`);
+
 				// Check if this is the monorepo root (has multiple package.json files in subdirs)
 				const hasMultipleProjects = ['bot', 'api', 'frontend', 'shared'].some(
-					(subdir) => existsSync(join(currentDir, subdir, 'package.json'))
+					(subdir) => {
+						const hasSubProject = existsSync(
+							join(currentDir, subdir, 'package.json')
+						);
+						if (hasSubProject) {
+							logger.debug(`📦 PathResolver: Found sub-project: ${subdir}`);
+						}
+						return hasSubProject;
+					}
 				);
 
 				if (hasMultipleProjects) {
+					logger.debug(`✅ PathResolver: Found monorepo root: ${currentDir}`);
 					return currentDir;
+				} else {
+					logger.debug(
+						`⚠️ PathResolver: Not a monorepo root (no sub-projects found)`
+					);
 				}
 			}
 			currentDir = dirname(currentDir);
 		}
 
+		logger.error(
+			`❌ PathResolver: Could not find project root starting from: ${
+				startDir || process.cwd()
+			}`
+		);
 		throw new Error(
 			'Could not find project root - no package.json found in directory tree'
 		);
@@ -80,16 +108,30 @@ export class PathResolver {
 		baseDir: string;
 	}): string {
 		const targetPath = options.isDevMode ? options.devPath : options.prodPath;
-		return resolve(options.baseDir, targetPath);
+		const resolvedPath = resolve(options.baseDir, targetPath);
+
+		logger.debug(`🎯 PathResolver: Environment resolution:`, {
+			isDevMode: options.isDevMode,
+			baseDir: options.baseDir,
+			devPath: options.devPath,
+			prodPath: options.prodPath,
+			selectedPath: targetPath,
+			resolvedPath,
+		});
+
+		return resolvedPath;
 	}
 
 	/**
 	 * Get paths to common directories in the monorepo
 	 */
 	static getCommonPaths(importMetaUrl: string) {
+		logger.debug(
+			`🗺️ PathResolver: Getting common paths for module: ${importMetaUrl}`
+		);
 		const projectRoot = this.getProjectRootFromModule(importMetaUrl);
 
-		return {
+		const paths = {
 			projectRoot,
 			botRoot: join(projectRoot, 'bot'),
 			apiRoot: join(projectRoot, 'api'),
@@ -100,6 +142,15 @@ export class PathResolver {
 			envFile: join(projectRoot, '.env'),
 			docsRoot: join(projectRoot, 'documentation'),
 		};
+
+		logger.debug(`🗺️ PathResolver: Resolved common paths:`, {
+			projectRoot: paths.projectRoot,
+			botRoot: paths.botRoot,
+			botSrc: paths.botSrc,
+			botBuild: paths.botBuild,
+		});
+
+		return paths;
 	}
 
 	/**

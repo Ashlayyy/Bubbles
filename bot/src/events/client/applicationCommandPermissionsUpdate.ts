@@ -8,8 +8,7 @@ export default new ClientEvent(
     if (!data.guildId) return;
 
     // Get client from global instance since data doesn't have guild object
-    const Client = (await import("../../structures/Client.js")).default;
-    const client = await Client.get();
+    const client = await import("../../structures/Client.js").then((m) => m.default.get());
 
     // Log the application command permissions update
     await client.logManager.log(data.guildId, "APPLICATION_COMMAND_PERMISSIONS_UPDATE", {
