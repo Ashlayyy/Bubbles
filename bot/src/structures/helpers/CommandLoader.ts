@@ -81,7 +81,7 @@ export class CommandLoader {
         logger.error(`  File exists: ${existsSync(commandFilePath)}`);
         logger.error(`  File path: ${commandFilePath}`);
         logger.error(`  Category: ${category}`);
-        logger.error(`  Error details:`, error);
+        logger.error(`  Error details: ${error}`);
       }
     };
 
