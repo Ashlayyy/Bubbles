@@ -7,7 +7,7 @@
   "main": "build/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.prod.json",
+    "build": "tsc -p tsconfig.prod.json && tsc-alias -p tsconfig.prod.json",
     "postbuild": "node build/src/scripts/generateConfig.js",
     "dev": "nodemon",
     "dev:shard": "tsx shard.ts",
@@ -80,6 +80,7 @@
     "nodemon": "^3.1.9",
     "prettier": "^3.5.3",
     "prettier-plugin-organize-imports": "^4.1.0",
+    "tsc-alias": "^1.8.16",
     "tslib": "^2.8.1",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
