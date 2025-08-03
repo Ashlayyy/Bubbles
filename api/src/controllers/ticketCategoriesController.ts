@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '@shared/database';
+import { getPrismaClient } from '../services/databaseService.js';
 // import { validateRequest } from '../validation/zodValidate.js';
+
+const prisma = getPrismaClient();
 
 // Validation schemas
 const createCategorySchema = z.object({
@@ -612,7 +614,7 @@ export const getCategoryStatistics = async (
 							where: { categoryId },
 							select: { id: true },
 						})
-					).map((w) => w.id),
+					).map((w: { id: string }) => w.id),
 				},
 			},
 			_count: {
@@ -627,10 +629,16 @@ export const getCategoryStatistics = async (
 				activeTickets,
 				closedTickets,
 				avgResponseTime: avgResponseTime._avg.ticketNumber || 0,
-				workflowStats: workflowStats.reduce((acc, stat) => {
-					acc[stat.status] = stat._count.id;
-					return acc;
-				}, {} as Record<string, number>),
+				workflowStats: workflowStats.reduce(
+					(
+						acc: Record<string, number>,
+						stat: { status: string; _count: { id: number } }
+					) => {
+						acc[stat.status] = stat._count.id;
+						return acc;
+					},
+					{} as Record<string, number>
+				),
 			},
 		});
 	} catch (error) {
@@ -707,11 +715,17 @@ export const executeWorkflow = async (
 				ticketId,
 				workflowId,
 				stepExecutions: {
-					create: workflow.steps.map((step) => ({
-						stepId: step.id,
-						stepOrder: step.stepOrder,
-						status: step.autoExecute ? 'RUNNING' : 'PENDING',
-					})),
+					create: workflow.steps.map(
+						(step: {
+							id: string;
+							stepOrder: number;
+							autoExecute: boolean;
+						}) => ({
+							stepId: step.id,
+							stepOrder: step.stepOrder,
+							status: step.autoExecute ? 'RUNNING' : 'PENDING',
+						})
+					),
 				},
 			},
 			include: {

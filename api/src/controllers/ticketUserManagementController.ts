@@ -3,6 +3,13 @@ import { z } from 'zod';
 import { getPrismaClient } from '../services/databaseService.js';
 import type { AuthRequest } from '../middleware/auth.js';
 
+const prisma = getPrismaClient();
+
+// Helper function to validate request
+function validateRequest<T>(schema: z.ZodSchema<T>, data: any) {
+	return schema.safeParse(data);
+}
+
 // Validation schemas
 const addUserSchema = z.object({
 	userId: z.string().min(1),
@@ -55,7 +62,7 @@ const updateSharingConfigSchema = z.object({
  * Get all users in a ticket
  */
 export const getTicketUsers = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
@@ -105,7 +112,7 @@ export const getTicketUsers = async (
  * Add a user to a ticket
  */
 export const addUserToTicket = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
@@ -231,7 +238,7 @@ export const addUserToTicket = async (
 				userId,
 				addedBy: req.user?.id || 'system',
 				permissions:
-					permissions.length > 0
+					permissions && permissions.length > 0
 						? permissions
 						: sharingConfig?.defaultPermissions || ['VIEW', 'MESSAGE'],
 				reason,
@@ -269,7 +276,7 @@ export const addUserToTicket = async (
  * Update user permissions in a ticket
  */
 export const updateUserPermissions = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
@@ -360,7 +367,7 @@ export const updateUserPermissions = async (
  * Remove a user from a ticket
  */
 export const removeUserFromTicket = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
@@ -453,7 +460,7 @@ export const removeUserFromTicket = async (
  * Create an access request
  */
 export const createAccessRequest = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
@@ -547,7 +554,7 @@ export const createAccessRequest = async (
  * Get access requests for a ticket
  */
 export const getAccessRequests = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
@@ -597,7 +604,7 @@ export const getAccessRequests = async (
  * Review an access request
  */
 export const reviewAccessRequest = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
@@ -702,7 +709,7 @@ export const reviewAccessRequest = async (
  * Get ticket user activity
  */
 export const getTicketUserActivity = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
@@ -753,7 +760,7 @@ export const getTicketUserActivity = async (
  * Get permission presets
  */
 export const getPermissionPresets = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
@@ -784,7 +791,7 @@ export const getPermissionPresets = async (
  * Create a permission preset
  */
 export const createPermissionPreset = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
@@ -851,7 +858,7 @@ export const createPermissionPreset = async (
  * Get sharing configuration
  */
 export const getSharingConfig = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {
@@ -878,7 +885,7 @@ export const getSharingConfig = async (
  * Update sharing configuration
  */
 export const updateSharingConfig = async (
-	req: Request,
+	req: AuthRequest,
 	res: Response
 ): Promise<void> => {
 	try {

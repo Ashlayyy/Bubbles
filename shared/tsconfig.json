@@ -14,10 +14,12 @@
 		"outDir": "./dist",
 		"rootDir": "./src",
 		"skipLibCheck": true,
+		"skipDefaultLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
 		"types": ["node"],
-		"composite": true
+		"composite": true,
+		"downlevelIteration": true
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist"]

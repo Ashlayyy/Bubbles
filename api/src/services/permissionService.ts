@@ -1,8 +1,9 @@
-import { prisma } from '@shared/database.js';
+import { getPrismaClient } from './databaseService.js';
 import Redis from 'ioredis';
 import { createLogger } from '../types/shared.js';
 
 const logger = createLogger('permission-service');
+const prisma = getPrismaClient();
 const redis = new Redis({
 	host: process.env.REDIS_HOST || 'localhost',
 	port: parseInt(process.env.REDIS_PORT || '6379', 10),

@@ -1,7 +1,8 @@
-import { prisma } from '@shared/database.js';
+import { getPrismaClient } from './databaseService.js';
 import { createLogger } from '../types/shared.js';
 
 const logger = createLogger('event-store');
+const prisma = getPrismaClient();
 
 type DiscordEventPayload = Record<string, unknown>;
 
