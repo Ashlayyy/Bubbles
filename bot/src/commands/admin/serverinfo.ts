@@ -1,210 +1,177 @@
-import { ChannelType, EmbedBuilder, GuildPremiumTier, PermissionsBitField, SlashCommandBuilder } from "discord.js";
+import {
+  ChannelType,
+  EmbedBuilder,
+  GuildDefaultMessageNotifications,
+  GuildExplicitContentFilter,
+  GuildMFALevel,
+  PermissionsBitField,
+  SlashCommandBuilder,
+} from "discord.js";
+
+import { PermissionLevel } from "bot/src/structures/PermissionTypes.js";
 import logger from "../../logger.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
-import { type CommandConfig, type CommandResponse } from "../_core/index.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-/**
- * Server Info Command - Get detailed server information
- */
-export class ServerInfoCommand extends AdminCommand {
+class ServerInfoCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "serverinfo",
-      description: "Get detailed server information",
+      description: "Display detailed information about the current server",
       category: "admin",
       permissions: {
         level: PermissionLevel.ADMIN,
         discordPermissions: [PermissionsBitField.Flags.Administrator],
-        isConfigurable: true,
+        isConfigurable: false,
       },
-      ephemeral: true,
       guildOnly: true,
+      ephemeral: true,
     };
 
     super(config);
   }
 
   protected async execute(): Promise<CommandResponse> {
-    if (!this.isSlashCommand()) {
-      throw new Error("This command only supports slash command format");
-    }
-
     try {
       const guild = this.guild;
+      await guild.fetch();
 
-      // Fetch owner and additional guild data
-      const owner = await guild.fetchOwner().catch(() => null);
-      const channels = await guild.channels.fetch();
-      const roles = await guild.roles.fetch();
-      const emojis = await guild.emojis.fetch();
+      const members = await guild.members.fetch();
+      const online = members.filter((m) => m.presence?.status === "online").size;
+      const idle = members.filter((m) => m.presence?.status === "idle").size;
+      const dnd = members.filter((m) => m.presence?.status === "dnd").size;
+      const offline = members.size - online - idle - dnd;
+
+      const textChannels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText).size;
+      const voiceChannels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildVoice).size;
+      const categories = guild.channels.cache.filter((c) => c.type === ChannelType.GuildCategory).size;
+      const threadChannels = guild.channels.cache.filter((c) => c.isThread()).size;
+
+      const verificationLevels = {
+        0: "None",
+        1: "Low",
+        2: "Medium",
+        3: "High",
+        4: "Very High",
+      } as const;
+
+      const boostTier = guild.premiumTier;
+      const boostCount = guild.premiumSubscriptionCount ?? 0;
+
+      const features = guild.features
+        .map((f) => f.toLowerCase().replace(/_/g, " "))
+        .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+        .slice(0, 10);
 
       const embed = new EmbedBuilder()
-        .setTitle(`🏰 ${guild.name}`)
-        .setColor(0x3498db)
+        .setTitle(`📊 ${guild.name}`)
+        .setColor(0x5865f2)
         .setThumbnail(guild.iconURL({ size: 256 }))
         .setTimestamp()
-        .setFooter({
-          text: `Server ID: ${guild.id}`,
-          iconURL: this.user.displayAvatarURL(),
-        });
+        .setFooter({ text: `Server ID: ${guild.id}`, iconURL: this.user.displayAvatarURL() });
 
-      // Basic server info
+      const bannerUrl = guild.bannerURL({ size: 1024 });
+      if (bannerUrl) embed.setImage(bannerUrl);
+
       embed.addFields(
-        {
-          name: "👑 Owner",
-          value: owner ? `${owner.user.username} (${owner.user.id})` : "Unknown",
-          inline: true,
-        },
+        { name: "👑 Owner", value: `<@${guild.ownerId}>`, inline: true },
         {
           name: "📅 Created",
-          value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:F>\n<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`,
+          value: `<t:${String(Math.floor(guild.createdTimestamp / 1000))}:F>\n(<t:${String(Math.floor(guild.createdTimestamp / 1000))}:R>)`,
           inline: true,
         },
-        {
-          name: "🆔 Server ID",
-          value: guild.id,
-          inline: true,
-        }
+        { name: "🌍 Region", value: guild.preferredLocale, inline: true }
       );
 
-      // Member statistics
-      const totalMembers = guild.memberCount;
-      const onlineMembers = guild.members.cache.filter(
-        (member) => member.presence?.status && member.presence.status !== "offline"
-      ).size;
-
-      embed.addFields(
-        {
-          name: "👥 Members",
-          value: `**Total:** ${totalMembers}\n**Online:** ${onlineMembers}`,
-          inline: true,
-        },
-        {
-          name: "🤖 Bots",
-          value: guild.members.cache.filter((member) => member.user.bot).size.toString(),
-          inline: true,
-        },
-        {
-          name: "🔒 Verification",
-          value: guild.verificationLevel.toString(),
-          inline: true,
-        }
-      );
-
-      // Channel statistics
-      const channelStats = {
-        text: channels.filter((channel) => channel?.type === ChannelType.GuildText).size,
-        voice: channels.filter((channel) => channel?.type === ChannelType.GuildVoice).size,
-        category: channels.filter((channel) => channel?.type === ChannelType.GuildCategory).size,
-        stage: channels.filter((channel) => channel?.type === ChannelType.GuildStageVoice).size,
-        forum: channels.filter((channel) => channel?.type === ChannelType.GuildForum).size,
-        announcement: channels.filter((channel) => channel?.type === ChannelType.GuildAnnouncement).size,
-      };
-
-      const channelText = [
-        `💬 Text: ${channelStats.text}`,
-        `🔊 Voice: ${channelStats.voice}`,
-        `📁 Categories: ${channelStats.category}`,
-        channelStats.stage > 0 ? `🎭 Stage: ${channelStats.stage}` : null,
-        channelStats.forum > 0 ? `🗣️ Forum: ${channelStats.forum}` : null,
-        channelStats.announcement > 0 ? `📢 Announcement: ${channelStats.announcement}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n");
+      const humanMembers = members.filter((m) => !m.user.bot).size;
+      const botMembers = members.filter((m) => m.user.bot).size;
 
       embed.addFields({
-        name: `📋 Channels (${channels.size})`,
-        value: channelText,
+        name: "👥 Members",
+        value: [
+          `**Total:** ${String(guild.memberCount.toLocaleString())}`,
+          `**Humans:** ${String(humanMembers.toLocaleString())}`,
+          `**Bots:** ${String(botMembers.toLocaleString())}`,
+          "",
+          `🟢 Online: ${String(online)}`,
+          `🟡 Idle: ${String(idle)}`,
+          `🔴 DND: ${String(dnd)}`,
+          `⚪ Offline: ${String(offline)}`,
+        ].join("\n"),
         inline: true,
       });
 
-      // Role and emoji information
-      embed.addFields(
-        {
-          name: `🎭 Roles (${roles.size})`,
-          value: `Highest: ${guild.roles.highest.name}`,
-          inline: true,
-        },
-        {
-          name: `😀 Emojis (${emojis.size})`,
-          value: `Static: ${emojis.filter((emoji) => !emoji.animated).size}\nAnimated: ${emojis.filter((emoji) => emoji.animated).size}`,
-          inline: true,
-        }
-      );
-
-      // Server features
-      if (guild.features.length > 0) {
-        const featureNames: Record<string, string> = {
-          ANIMATED_BANNER: "🎬 Animated Banner",
-          ANIMATED_ICON: "🎭 Animated Icon",
-          BANNER: "🏴 Server Banner",
-          COMMERCE: "🛒 Commerce",
-          COMMUNITY: "🏘️ Community Server",
-          DISCOVERABLE: "🔍 Server Discovery",
-          FEATURABLE: "⭐ Featurable",
-          INVITE_SPLASH: "🌊 Invite Splash",
-          MEMBER_VERIFICATION_GATE_ENABLED: "✋ Membership Screening",
-          NEWS: "📰 News Channels",
-          PARTNERED: "🤝 Discord Partner",
-          PREVIEW_ENABLED: "👀 Preview Enabled",
-          VANITY_URL: "🔗 Custom Invite Link",
-          VERIFIED: "✅ Verified",
-          VIP_REGIONS: "⚡ VIP Voice Regions",
-          WELCOME_SCREEN_ENABLED: "👋 Welcome Screen",
-        };
-
-        const features = guild.features
-          .map((feature) => featureNames[feature] || feature)
-          .slice(0, 10) // Limit to prevent embed overflow
-          .join("\n");
-
-        embed.addFields({
-          name: `✨ Features (${guild.features.length})`,
-          value: features + (guild.features.length > 10 ? "\n*...and more*" : ""),
-          inline: false,
-        });
-      }
-
-      // Boost information
-      if (guild.premiumTier !== GuildPremiumTier.None) {
-        embed.addFields({
-          name: "💎 Nitro Boost",
-          value: `**Level:** ${guild.premiumTier}\n**Boosts:** ${guild.premiumSubscriptionCount ?? 0}`,
-          inline: true,
-        });
-      }
-
-      // Set banner if available
-      if (guild.bannerURL()) {
-        embed.setImage(guild.bannerURL({ size: 1024 }));
-      }
-
-      // Log command usage
-      await this.client.logManager.log(guild.id, "COMMAND_SERVERINFO", {
-        userId: this.user.id,
-        channelId: this.interaction.channel?.id,
-        metadata: {
-          guildName: guild.name,
-          memberCount: totalMembers,
-          channelCount: channels.size,
-          roleCount: roles.size,
-        },
+      embed.addFields({
+        name: "📝 Channels",
+        value: [
+          `**Total:** ${String(guild.channels.cache.size)}`,
+          `**Text:** ${String(textChannels)}`,
+          `**Voice:** ${String(voiceChannels)}`,
+          `**Categories:** ${String(categories)}`,
+          `**Threads:** ${String(threadChannels)}`,
+        ].join("\n"),
+        inline: true,
       });
 
-      return { embeds: [embed], ephemeral: true };
+      const explicitFilter =
+        guild.explicitContentFilter === GuildExplicitContentFilter.Disabled
+          ? "Disabled"
+          : guild.explicitContentFilter === GuildExplicitContentFilter.MembersWithoutRoles
+            ? "Members without roles"
+            : "All members";
+
+      const notifications =
+        guild.defaultMessageNotifications === GuildDefaultMessageNotifications.AllMessages
+          ? "All messages"
+          : "Only mentions";
+
+      embed.addFields({
+        name: "⚙️ Settings",
+        value: [
+          `**Verification:** ${verificationLevels[guild.verificationLevel as keyof typeof verificationLevels]}`,
+          `**Explicit Filter:** ${explicitFilter}`,
+          `**Default Notifications:** ${notifications}`,
+          `**2FA Required:** ${guild.mfaLevel === GuildMFALevel.Elevated ? "Yes" : "No"}`,
+        ].join("\n"),
+        inline: true,
+      });
+
+      embed.addFields({
+        name: "🚀 Boosts & Features",
+        value: [
+          `**Boost Tier:** ${String(boostTier)}`,
+          `**Boost Count:** ${String(boostCount)}`,
+          `**Roles:** ${String(guild.roles.cache.size)}`,
+          `**Emojis:** ${String(guild.emojis.cache.size)}`,
+          `**Stickers:** ${String(guild.stickers.cache.size)}`,
+        ].join("\n"),
+        inline: true,
+      });
+
+      if (features.length)
+        embed.addFields({
+          name: "✨ Features",
+          value:
+            features.join(", ") +
+            (guild.features.length > 10 ? ` and ${String(guild.features.length - 10)} more...` : ""),
+          inline: false,
+        });
+
+      if (guild.description) embed.setDescription(`*${guild.description}*`);
+
+      await this.logCommandUsage("serverinfo");
+
+      return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error in serverinfo command:", error);
-      return this.createAdminError("Server Info Error", "Failed to fetch server information. Please try again.");
+      return this.createAdminError("Error", "Failed to fetch server info. Please try again.");
     }
   }
 }
 
-// Export the command instance
 export default new ServerInfoCommand();
 
-// Export the Discord command builder for registration
 export const builder = new SlashCommandBuilder()
   .setName("serverinfo")
-  .setDescription("Get detailed server information")
-  .setDefaultMemberPermissions(0); // Hide from all regular users
+  .setDescription("Display detailed information about the current server")
+  .setDefaultMemberPermissions(0);

@@ -1,17 +1,15 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import { ComplimentWheelService } from "../../services/complimentWheelService.js";
-import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import type { CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-export class ComplimentCommand extends GeneralCommand {
+export class ComplimentCommand extends AdminCommand {
   constructor() {
     super({
       name: "compliment",
       description: "Manage the compliment wheel system",
       category: "admin",
-      permissions: { level: PermissionLevel.ADMIN },
       guildOnly: true,
       ephemeral: true,
     });

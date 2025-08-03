@@ -395,7 +395,7 @@ class MusicService {
     const player = this.audioPlayers.get(guildId);
     const queue = await this.getQueue(guildId);
 
-    if (!player || !queue || !queue.isPaused) {
+    if (!player || !queue?.isPaused) {
       return false;
     }
 
@@ -525,7 +525,7 @@ class MusicService {
 
     // Apply to current resource
     const resource = this.currentResources.get(guildId);
-    if (resource && resource.volume) {
+    if (resource?.volume) {
       resource.volume.setVolume(volume / 100);
     }
 

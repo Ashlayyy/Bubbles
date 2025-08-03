@@ -2,9 +2,9 @@ import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.
 import logger from "../../logger.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class LevelRewardsCommand extends GeneralCommand {
+class LevelRewardsCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "rewards",
@@ -37,11 +37,11 @@ class LevelRewardsCommand extends GeneralCommand {
         const removeOnDemotion = this.getBooleanOption("remove-on-demotion") ?? false;
 
         if (!level || !role) {
-          return this.createGeneralError("Invalid Input", "Please specify both level and role.");
+          return this.createAdminError("Invalid Input", "Please specify both level and role.");
         }
 
         if (level < 1 || level > 1000) {
-          return this.createGeneralError("Invalid Level", "Level must be between 1 and 1000.");
+          return this.createAdminError("Invalid Level", "Level must be between 1 and 1000.");
         }
 
         return await this.addReward(customApiUrl, guildId, level, role.id, removeOnDemotion);
@@ -50,7 +50,7 @@ class LevelRewardsCommand extends GeneralCommand {
         const role = this.getRoleOption("role");
 
         if (!level && !role) {
-          return this.createGeneralError("Invalid Input", "Please specify either level or role to remove.");
+          return this.createAdminError("Invalid Input", "Please specify either level or role to remove.");
         }
 
         return await this.removeReward(customApiUrl, guildId, level ?? undefined, role?.id);
@@ -58,13 +58,10 @@ class LevelRewardsCommand extends GeneralCommand {
         return await this.clearAllRewards(customApiUrl, guildId);
       }
 
-      return this.createGeneralError("Invalid Action", "Unknown action specified.");
+      return this.createAdminError("Invalid Action", "Unknown action specified.");
     } catch (error) {
       logger.error("Error in level rewards command:", error);
-      return this.createGeneralError(
-        "Error",
-        "An error occurred while managing level rewards. Please try again later."
-      );
+      return this.createAdminError("Error", "An error occurred while managing level rewards. Please try again later.");
     }
   }
 
@@ -82,7 +79,7 @@ class LevelRewardsCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to fetch rewards.");
+      return this.createAdminError("API Error", data.error || "Failed to fetch rewards.");
     }
 
     const rewards = data.data;
@@ -182,12 +179,12 @@ class LevelRewardsCommand extends GeneralCommand {
     // Check if role exists and bot can manage it
     const role = await this.guild.roles.fetch(roleId);
     if (!role) {
-      return this.createGeneralError("Invalid Role", "The specified role was not found.");
+      return this.createAdminError("Invalid Role", "The specified role was not found.");
     }
 
     const botMember = await this.guild.members.fetch(this.interaction.client.user.id);
     if (role.position >= (botMember.roles.highest.position || 0)) {
-      return this.createGeneralError(
+      return this.createAdminError(
         "Permission Error",
         "I cannot manage this role. Please ensure the role is below my highest role in the server settings."
       );
@@ -208,11 +205,11 @@ class LevelRewardsCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to add reward.");
+      return this.createAdminError("API Error", data.error || "Failed to add reward.");
     }
 
     await this.logCommandUsage("rewards", { action: "add", level, roleId, removeOnDemotion, guildId });
-    return this.createGeneralSuccess(
+    return this.createAdminSuccess(
       "Reward Added",
       `Successfully added <@&${roleId}> as a reward for reaching level **${level}**.${
         removeOnDemotion ? "\n\n⚠️ This role will be removed if the user's level drops below this threshold." : ""
@@ -244,16 +241,16 @@ class LevelRewardsCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to remove reward.");
+      return this.createAdminError("API Error", data.error || "Failed to remove reward.");
     }
 
     const removedCount = data.data?.removedCount || 0;
     if (removedCount === 0) {
-      return this.createGeneralError("Not Found", "No matching rewards found to remove.");
+      return this.createAdminError("Not Found", "No matching rewards found to remove.");
     }
 
     await this.logCommandUsage("rewards", { action: "remove", level, roleId, removedCount, guildId });
-    return this.createGeneralSuccess(
+    return this.createAdminSuccess(
       "Reward Removed",
       `Successfully removed ${removedCount} reward${removedCount > 1 ? "s" : ""}.${
         level ? ` (Level ${level})` : ""
@@ -276,16 +273,16 @@ class LevelRewardsCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to clear rewards.");
+      return this.createAdminError("API Error", data.error || "Failed to clear rewards.");
     }
 
     const removedCount = data.data?.removedCount || 0;
     if (removedCount === 0) {
-      return this.createGeneralError("No Rewards", "No rewards found to remove.");
+      return this.createAdminError("No Rewards", "No rewards found to remove.");
     }
 
     await this.logCommandUsage("rewards", { action: "clear", removedCount, guildId });
-    return this.createGeneralSuccess(
+    return this.createAdminSuccess(
       "Rewards Cleared",
       `Successfully removed all ${removedCount} level reward${removedCount > 1 ? "s" : ""} from this server.`
     );

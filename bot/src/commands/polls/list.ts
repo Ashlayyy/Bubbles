@@ -1,9 +1,10 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { PermissionLevel } from "bot/src/structures/PermissionTypes.js";
+import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class ListPollsCommand extends GeneralCommand {
+class ListPollsCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "poll-list",
@@ -11,6 +12,11 @@ class ListPollsCommand extends GeneralCommand {
       category: "polls",
       ephemeral: false,
       guildOnly: true,
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
+        discordPermissions: [PermissionsBitField.Flags.Administrator],
+      },
     };
 
     super(config);
@@ -24,7 +30,7 @@ class ListPollsCommand extends GeneralCommand {
 
     // Validate page number
     if (page < 1) {
-      return this.createGeneralError("Invalid Page", "Page number must be greater than 0.");
+      return this.createAdminError("Invalid Page", "Page number must be greater than 0.");
     }
 
     try {
@@ -60,7 +66,7 @@ class ListPollsCommand extends GeneralCommand {
       const result = (await response.json()) as any;
 
       if (!result.success) {
-        return this.createGeneralError("Polls Error", result.error || "Failed to fetch polls");
+        return this.createAdminError("Polls Error", result.error || "Failed to fetch polls");
       }
 
       const { polls, pagination } = result.data;
@@ -119,7 +125,7 @@ class ListPollsCommand extends GeneralCommand {
             value:
               `**Total Polls:** ${pagination.total}\n` +
               `**Status Filter:** ${status.charAt(0).toUpperCase() + status.slice(1)}\n` +
-              `**Total Votes:** ${polls.reduce((sum: number, p: any) => sum + (p.voteCount || 0), 0)}`,
+              `**Total Votes:** ${polls.reduce((sum: number, p: any) => sum + ((p.voteCount as number) || 0), 0)}`,
             inline: true,
           },
           {
@@ -172,7 +178,7 @@ class ListPollsCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing poll-list command:", error);
-      return this.createGeneralError("Error", "An error occurred while fetching polls. Please try again.");
+      return this.createAdminError("Error", "An error occurred while fetching polls. Please try again.");
     }
   }
 }

@@ -547,7 +547,7 @@ export default class ModerationManager {
           }
 
           // Check if queue operation was successful
-          if (queueResult && queueResult.success) {
+          if (queueResult?.success) {
             success = true;
             logger.info(`Processed Discord action ${action.type} via unified queue system`);
           } else {

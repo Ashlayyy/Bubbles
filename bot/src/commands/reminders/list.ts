@@ -1,16 +1,22 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { PermissionLevel } from "bot/src/structures/PermissionTypes.js";
+import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class ListRemindersCommand extends GeneralCommand {
+class ListRemindersCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "reminder-list",
       description: "List all reminders in this server",
       category: "reminders",
-      ephemeral: false,
+      ephemeral: true,
       guildOnly: true,
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
+        discordPermissions: [PermissionsBitField.Flags.Administrator],
+      },
     };
 
     super(config);
@@ -61,7 +67,7 @@ class ListRemindersCommand extends GeneralCommand {
       const data = (await response.json()) as any;
 
       if (!data.success) {
-        return this.createGeneralError("API Error", data.error || "Failed to fetch reminders.");
+        return this.createAdminError("API Error", data.error || "Failed to fetch reminders.");
       }
 
       const { reminders, pagination } = data.data;
@@ -141,7 +147,7 @@ class ListRemindersCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error listing reminders:", error);
-      return this.createGeneralError("Error", "An error occurred while fetching reminders. Please try again later.");
+      return this.createAdminError("Error", "An error occurred while fetching reminders. Please try again later.");
     }
   }
 

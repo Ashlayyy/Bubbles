@@ -157,7 +157,7 @@ export class ComplimentWheelService {
         where: { guildId },
       });
 
-      if (!wheel || !wheel.isActive) {
+      if (!wheel?.isActive) {
         return null;
       }
 

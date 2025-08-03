@@ -97,6 +97,18 @@ export abstract class AdminCommand extends BaseCommand {
     return this.responseBuilder.success(title, description).ephemeral(true).build();
   }
 
+  protected async logCommandUsage(commandName: string, additionalData?: Record<string, any>): Promise<void> {
+    try {
+      await this.client.logManager.log(this.guild.id, "COMMAND_USAGE", {
+        userId: this.user.id,
+        channelId: this.channel.id,
+        metadata: { commandName, ...additionalData },
+      });
+    } catch (_error) {
+      // Don't throw on logging errors, just silently continue
+    }
+  }
+
   /**
    * Create admin error response
    */

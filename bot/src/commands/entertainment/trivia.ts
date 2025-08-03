@@ -57,8 +57,8 @@ export class TriviaCommand extends PublicCommand {
       description: "Start interactive trivia games with multiple categories and difficulties",
       category: "entertainment",
       permissions: {
-        level: PermissionLevel.PUBLIC,
-        isConfigurable: true,
+        level: PermissionLevel.MODERATOR,
+        isConfigurable: false,
       },
       ephemeral: false,
       guildOnly: true,

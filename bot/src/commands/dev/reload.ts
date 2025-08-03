@@ -1,7 +1,7 @@
 import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
-import { BaseCommand } from "../_core/BaseCommand.js";
-import type { CommandConfig, CommandResponse } from "../_core/types.js";
+import type { CommandConfig, CommandResponse } from "../_core/index.js";
+import { DevCommand } from "../_core/specialized/DevCommand.js";
 
 export const builder = new SlashCommandBuilder()
   .setName("reload")
@@ -19,7 +19,7 @@ export const builder = new SlashCommandBuilder()
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-class ReloadCommand extends BaseCommand {
+class ReloadCommand extends DevCommand {
   enabledOnDev = true;
 
   constructor() {

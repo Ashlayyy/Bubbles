@@ -388,4 +388,8 @@ export abstract class BaseCommand {
     if (!this.isSlashCommand()) return null;
     return (this.interaction as SlashCommandInteraction).options.getAttachment(name, required);
   }
+
+  protected formatUserDisplay(user: { displayName?: string; username?: string }): string {
+    return user.displayName ?? user.username ?? "Unknown User";
+  }
 }

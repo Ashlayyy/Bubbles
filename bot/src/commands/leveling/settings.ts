@@ -2,9 +2,9 @@ import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.
 import logger from "../../logger.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class LevelingSettingsCommand extends GeneralCommand {
+class LevelingSettingsCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "settings",
@@ -13,7 +13,7 @@ class LevelingSettingsCommand extends GeneralCommand {
       permissions: {
         level: PermissionLevel.ADMIN,
         discordPermissions: [PermissionsBitField.Flags.Administrator],
-        isConfigurable: true,
+        isConfigurable: false,
       },
       ephemeral: true,
       guildOnly: true,
@@ -36,37 +36,37 @@ class LevelingSettingsCommand extends GeneralCommand {
       } else if (action === "set-xp-rate") {
         const xpRate = this.getIntegerOption("xp-rate");
         if (!xpRate || xpRate < 1 || xpRate > 100) {
-          return this.createGeneralError("Invalid Value", "XP rate must be between 1 and 100.");
+          return this.createAdminError("Invalid Value", "XP rate must be between 1 and 100.");
         }
         return await this.setXpRate(customApiUrl, guildId, xpRate);
       } else if (action === "set-cooldown") {
         const cooldown = this.getIntegerOption("cooldown");
         if (!cooldown || cooldown < 10 || cooldown > 300) {
-          return this.createGeneralError("Invalid Value", "Cooldown must be between 10 and 300 seconds.");
+          return this.createAdminError("Invalid Value", "Cooldown must be between 10 and 300 seconds.");
         }
         return await this.setCooldown(customApiUrl, guildId, cooldown);
       } else if (action === "ignore-channel") {
         const channel = this.getChannelOption("channel");
         if (!channel) {
-          return this.createGeneralError("Invalid Input", "Please specify a channel to ignore.");
+          return this.createAdminError("Invalid Input", "Please specify a channel to ignore.");
         }
         return await this.toggleIgnoredChannel(customApiUrl, guildId, channel.id, true);
       } else if (action === "unignore-channel") {
         const channel = this.getChannelOption("channel");
         if (!channel) {
-          return this.createGeneralError("Invalid Input", "Please specify a channel to unignore.");
+          return this.createAdminError("Invalid Input", "Please specify a channel to unignore.");
         }
         return await this.toggleIgnoredChannel(customApiUrl, guildId, channel.id, false);
       } else if (action === "ignore-role") {
         const role = this.getRoleOption("role");
         if (!role) {
-          return this.createGeneralError("Invalid Input", "Please specify a role to ignore.");
+          return this.createAdminError("Invalid Input", "Please specify a role to ignore.");
         }
         return await this.toggleIgnoredRole(customApiUrl, guildId, role.id, true);
       } else if (action === "unignore-role") {
         const role = this.getRoleOption("role");
         if (!role) {
-          return this.createGeneralError("Invalid Input", "Please specify a role to unignore.");
+          return this.createAdminError("Invalid Input", "Please specify a role to unignore.");
         }
         return await this.toggleIgnoredRole(customApiUrl, guildId, role.id, false);
       } else if (action === "set-level-up-channel") {
@@ -75,15 +75,15 @@ class LevelingSettingsCommand extends GeneralCommand {
       } else if (action === "set-level-up-message") {
         const message = this.getStringOption("message");
         if (!message) {
-          return this.createGeneralError("Invalid Input", "Please specify a level-up message.");
+          return this.createAdminError("Invalid Input", "Please specify a level-up message.");
         }
         return await this.setLevelUpMessage(customApiUrl, guildId, message);
       }
 
-      return this.createGeneralError("Invalid Action", "Unknown action specified.");
+      return this.createAdminError("Invalid Action", "Unknown action specified.");
     } catch (error) {
       logger.error("Error in leveling settings command:", error);
-      return this.createGeneralError(
+      return this.createAdminError(
         "Error",
         "An error occurred while managing leveling settings. Please try again later."
       );
@@ -104,7 +104,7 @@ class LevelingSettingsCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to fetch settings.");
+      return this.createAdminError("API Error", data.error || "Failed to fetch settings.");
     }
 
     const settings = data.data;
@@ -200,11 +200,11 @@ class LevelingSettingsCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to update settings.");
+      return this.createAdminError("API Error", data.error || "Failed to update settings.");
     }
 
     await this.logCommandUsage("settings", { action: enabled ? "enable" : "disable", guildId });
-    return this.createGeneralSuccess(
+    return this.createAdminSuccess(
       "Settings Updated",
       `Leveling system has been **${enabled ? "enabled" : "disabled"}** for this server.`
     );
@@ -226,11 +226,11 @@ class LevelingSettingsCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to update settings.");
+      return this.createAdminError("API Error", data.error || "Failed to update settings.");
     }
 
     await this.logCommandUsage("settings", { action: "set-xp-rate", xpRate, guildId });
-    return this.createGeneralSuccess("Settings Updated", `XP rate has been set to **${xpRate}** per message.`);
+    return this.createAdminSuccess("Settings Updated", `XP rate has been set to **${xpRate}** per message.`);
   }
 
   private async setCooldown(apiUrl: string, guildId: string, cooldown: number): Promise<CommandResponse> {
@@ -249,11 +249,11 @@ class LevelingSettingsCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to update settings.");
+      return this.createAdminError("API Error", data.error || "Failed to update settings.");
     }
 
     await this.logCommandUsage("settings", { action: "set-cooldown", cooldown, guildId });
-    return this.createGeneralSuccess("Settings Updated", `XP cooldown has been set to **${cooldown}** seconds.`);
+    return this.createAdminSuccess("Settings Updated", `XP cooldown has been set to **${cooldown}** seconds.`);
   }
 
   private async toggleIgnoredChannel(
@@ -282,7 +282,7 @@ class LevelingSettingsCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to update settings.");
+      return this.createAdminError("API Error", data.error || "Failed to update settings.");
     }
 
     await this.logCommandUsage("settings", {
@@ -290,7 +290,7 @@ class LevelingSettingsCommand extends GeneralCommand {
       channelId,
       guildId,
     });
-    return this.createGeneralSuccess(
+    return this.createAdminSuccess(
       "Settings Updated",
       `Channel <#${channelId}> has been ${ignore ? "added to" : "removed from"} the ignored channels list.`
     );
@@ -322,11 +322,11 @@ class LevelingSettingsCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to update settings.");
+      return this.createAdminError("API Error", data.error || "Failed to update settings.");
     }
 
     await this.logCommandUsage("settings", { action: ignore ? "ignore-role" : "unignore-role", roleId, guildId });
-    return this.createGeneralSuccess(
+    return this.createAdminSuccess(
       "Settings Updated",
       `Role <@&${roleId}> has been ${ignore ? "added to" : "removed from"} the ignored roles list.`
     );
@@ -348,11 +348,11 @@ class LevelingSettingsCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to update settings.");
+      return this.createAdminError("API Error", data.error || "Failed to update settings.");
     }
 
     await this.logCommandUsage("settings", { action: "set-level-up-channel", channelId, guildId });
-    return this.createGeneralSuccess(
+    return this.createAdminSuccess(
       "Settings Updated",
       channelId
         ? `Level-up messages will now be sent to <#${channelId}>.`
@@ -376,11 +376,11 @@ class LevelingSettingsCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to update settings.");
+      return this.createAdminError("API Error", data.error || "Failed to update settings.");
     }
 
     await this.logCommandUsage("settings", { action: "set-level-up-message", message, guildId });
-    return this.createGeneralSuccess(
+    return this.createAdminSuccess(
       "Settings Updated",
       `Level-up message has been updated.\n\nAvailable placeholders: {user}, {level}, {xp}`
     );

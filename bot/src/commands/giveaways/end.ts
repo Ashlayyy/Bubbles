@@ -204,10 +204,6 @@ class EndGiveawayCommand extends AdminCommand {
     }
     return `${minutes}m`;
   }
-
-  private formatUserDisplay(user: { displayName?: string; username?: string }): string {
-    return user.displayName ?? user.username ?? "Unknown User";
-  }
 }
 
 export default new EndGiveawayCommand();

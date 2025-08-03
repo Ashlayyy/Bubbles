@@ -43,6 +43,146 @@ async function getNextTicketNumber(guildId: string): Promise<number> {
   return (lastTicket?.ticketNumber ?? 0) + 1;
 }
 
+// Helper function to get users with specific roles
+async function getUsersWithRole(guild: Guild, roleId: string): Promise<GuildMember[]> {
+  const role = guild.roles.cache.get(roleId);
+  if (!role) return [];
+
+  return Array.from(role.members.values());
+}
+
+// Helper function to get users with specific permissions
+async function getUsersWithPermission(guild: Guild, permission: bigint): Promise<GuildMember[]> {
+  const members = await guild.members.fetch();
+  return Array.from(members.filter((member) => member.permissions.has(permission)).values());
+}
+
+// Helper function to add users to ticket (thread or channel)
+async function addUsersToTicket(
+  ticketChannel: ThreadChannel | TextChannel,
+  users: GuildMember[],
+  ticketNumber: number,
+  category: string
+): Promise<{ success: string[]; failed: string[] }> {
+  const success: string[] = [];
+  const failed: string[] = [];
+
+  // Debug: Check bot permissions if it's a thread
+  if (ticketChannel.isThread()) {
+    const botMember = ticketChannel.guild.members.cache.get(ticketChannel.client.user.id);
+    if (botMember) {
+      logger.info(`Bot permissions in thread ${ticketChannel.id}: ${botMember.permissions.toArray().join(", ")}`);
+      logger.info(`Bot has MANAGE_THREADS: ${botMember.permissions.has(PermissionFlagsBits.ManageThreads)}`);
+      logger.info(
+        `Bot has CREATE_PRIVATE_THREADS: ${botMember.permissions.has(PermissionFlagsBits.CreatePrivateThreads)}`
+      );
+    }
+  }
+
+  for (const user of users) {
+    try {
+      if (ticketChannel.isThread()) {
+        // For threads, use the thread's add method
+        await ticketChannel.members.add(user.id);
+        success.push(user.user.tag);
+      } else if (ticketChannel.isTextBased()) {
+        // For channels, update permissions (already handled by permission overwrites)
+        // But we can log that the user has access
+        success.push(user.user.tag);
+      }
+    } catch (error) {
+      logger.error(
+        `Failed to add user ${user.user.tag} (${user.id}) to ticket #${ticketNumber} (${category}): ${error instanceof Error ? error.message : String(error)}`
+      );
+      if (error instanceof Error && error.stack) {
+        logger.error(`Error stack for ${user.user.tag}: ${error.stack}`);
+      }
+      // If it's a thread and we get a permission error, try to add the user via the parent channel
+      if (ticketChannel.isThread() && error instanceof Error && error.message.includes("Missing Access")) {
+        try {
+          logger.info(`Attempting to add user ${user.user.tag} via parent channel permissions...`);
+          const parentChannel = ticketChannel.parent;
+          if (parentChannel && parentChannel.isTextBased()) {
+            // Try to add the user to the parent channel first, which might give them access to the thread
+            await parentChannel.permissionOverwrites.create(user.id, {
+              ViewChannel: true,
+              SendMessages: true,
+              ReadMessageHistory: true,
+            });
+            logger.info(
+              `Successfully added user ${user.user.tag} to parent channel, they should now have access to the thread`
+            );
+            success.push(user.user.tag);
+            continue; // Skip adding to failed list since we found an alternative
+          }
+        } catch (parentError) {
+          logger.error(
+            `Failed to add user ${user.user.tag} via parent channel: ${parentError instanceof Error ? parentError.message : String(parentError)}`
+          );
+        }
+      }
+
+      failed.push(user.user.tag);
+    }
+  }
+
+  // Log the results
+  if (success.length > 0) {
+    logger.info(`Added ${success.length} users to ticket #${ticketNumber} (${category}): ${success.join(", ")}`);
+  }
+  if (failed.length > 0) {
+    logger.warn(`Failed to add ${failed.length} users to ticket #${ticketNumber} (${category}): ${failed.join(", ")}`);
+  }
+
+  return { success, failed };
+}
+
+// Helper function to get users that should be added to a ticket based on configuration
+async function getUsersForTicket(
+  guild: Guild,
+  config: {
+    ticketAccessType?: string | null;
+    ticketAccessRoleId?: string | null;
+    ticketAccessPermission?: string | null;
+    ticketOnCallRoleId?: string | null;
+  },
+  category: string
+): Promise<GuildMember[]> {
+  const users: GuildMember[] = [];
+
+  if (category === "admin") {
+    // For admin tickets
+    if (config.ticketAccessRoleId) {
+      // If admin role is configured, add all users with that role
+      const adminUsers = await getUsersWithRole(guild, config.ticketAccessRoleId);
+      users.push(...adminUsers);
+    } else {
+      // If no admin role configured, add all users with Administrator permissions
+      const adminUsers = await getUsersWithPermission(guild, PermissionFlagsBits.Administrator);
+      users.push(...adminUsers);
+    }
+  } else {
+    // For normal tickets
+    if (config.ticketOnCallRoleId) {
+      // If support role is configured, add all users with that role
+      const supportUsers = await getUsersWithRole(guild, config.ticketOnCallRoleId);
+      users.push(...supportUsers);
+    } else {
+      // If no support role configured, add all users with Timeout permissions (ManageMessages)
+      const timeoutUsers = await getUsersWithPermission(guild, PermissionFlagsBits.ManageMessages);
+      users.push(...timeoutUsers);
+    }
+  }
+
+  // Remove duplicates (users might have multiple roles)
+  const uniqueUsers = new Map<string, GuildMember>();
+  for (const user of users) {
+    uniqueUsers.set(user.id, user);
+  }
+
+  return Array.from(uniqueUsers.values());
+}
+
 // Helper function to get permission overwrites based on access control configuration
 function getTicketAccessPermissions(
   guild: Guild,
@@ -341,28 +481,29 @@ async function handleTicketCreation(interaction: ModalSubmitInteraction): Promis
     return;
   }
 
-  // Check if user already has an open ticket
-  const existingTicket = await prisma.ticket.findFirst({
+  // Check if user has too many concurrent tickets in this category (max 5 per category)
+  const userTicketsInCategory = await prisma.ticket.count({
     where: {
       guildId: interaction.guild.id,
       userId: interaction.user.id,
+      category: categoryId,
       status: { in: ["OPEN", "PENDING"] },
     },
   });
 
-  if (existingTicket) {
+  if (userTicketsInCategory >= 5) {
     await interaction.editReply({
       embeds: [
         new EmbedBuilder()
-          .setColor(0xf39c12)
-          .setTitle("⚠️ Ticket Already Exists")
+          .setColor(0xe74c3c)
+          .setTitle("⚠️ Too Many Tickets in Category")
           .setDescription(
-            `You already have an open ticket: **${existingTicket.title}**\n\n` +
-              `Please use your existing ticket or close it before creating a new one.`
+            `You already have **${userTicketsInCategory}** open tickets in the **${category.name}** category.\n\n` +
+              `You can have at most **5 concurrent tickets** per category. Please close some existing tickets before creating a new one in this category.`
           )
           .addFields({
-            name: "Existing Ticket",
-            value: config.useTicketThreads ? `<#${existingTicket.channelId}>` : `<#${existingTicket.channelId}>`,
+            name: "Current Limit",
+            value: `${userTicketsInCategory}/5 tickets in ${category.name}`,
             inline: true,
           })
           .setTimestamp(),
@@ -472,10 +613,7 @@ async function handleTicketCreation(interaction: ModalSubmitInteraction): Promis
       ticketEmbed.addFields({ name: "📄 Description", value: description, inline: false });
     }
 
-    ticketEmbed.addFields(
-      { name: "🆔 Status", value: "🟢 Open", inline: true },
-      { name: "👨‍💼 Assigned", value: "❌ Unassigned", inline: true }
-    );
+    ticketEmbed.addFields({ name: "👨‍💼 Assigned", value: "❌ Unassigned", inline: true });
 
     // Create action buttons with claim functionality
     const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -492,16 +630,37 @@ async function handleTicketCreation(interaction: ModalSubmitInteraction): Promis
     );
 
     // Send welcome message in ticket channel
+    let welcomeContent: string;
+    let allowedMentions: { users: string[]; roles?: string[] };
+
+    if (categoryId === "admin") {
+      // For admin tickets, only ping the admin role if configured
+      if (config.ticketAccessRoleId) {
+        welcomeContent = `<@${interaction.user.id}> Welcome to your admin ticket!\n<@&${String(config.ticketAccessRoleId)}>`;
+        allowedMentions = { users: [interaction.user.id], roles: [String(config.ticketAccessRoleId)] };
+      } else {
+        welcomeContent = `<@${interaction.user.id}> Welcome to your admin ticket!`;
+        allowedMentions = { users: [interaction.user.id] };
+      }
+    } else {
+      // For normal tickets, ping the support role if configured
+      if (config.ticketOnCallRoleId) {
+        welcomeContent = `<@${interaction.user.id}> Welcome to your support ticket!\n<@&${String(config.ticketOnCallRoleId)}>`;
+        allowedMentions = { users: [interaction.user.id], roles: [String(config.ticketOnCallRoleId)] };
+      } else {
+        welcomeContent = `<@${interaction.user.id}> Welcome to your support ticket!`;
+        allowedMentions = { users: [interaction.user.id] };
+      }
+    }
+
     await ticketChannel.send({
-      content: config.ticketOnCallRoleId
-        ? `<@${interaction.user.id}> Welcome to your support ticket!\n<@&${String(config.ticketOnCallRoleId)}>`
-        : `<@${interaction.user.id}> Welcome to your support ticket!`,
+      content: welcomeContent,
       embeds: [ticketEmbed],
       components: [actionRow],
-      allowedMentions: config.ticketOnCallRoleId
-        ? { users: [interaction.user.id], roles: [String(config.ticketOnCallRoleId)] }
-        : { users: [interaction.user.id] },
+      allowedMentions,
     });
+
+    // User additions are logged to terminal only - no embed sent to channel
 
     // Send confirmation to user
     await interaction.editReply({
@@ -745,8 +904,8 @@ async function handleTicketCloseWithReason(interaction: ModalSubmitInteraction):
           const role = interaction.guild.roles.cache.get(id);
 
           // Keep administrators
-          if (member && member.permissions.has(PermissionFlagsBits.Administrator)) continue;
-          if (role && role.permissions.has(PermissionFlagsBits.Administrator)) continue;
+          if (member?.permissions.has(PermissionFlagsBits.Administrator)) continue;
+          if (role?.permissions.has(PermissionFlagsBits.Administrator)) continue;
 
           // Remove the overwrite
           await textChannel.permissionOverwrites.delete(id);
@@ -909,10 +1068,7 @@ async function handleTicketClaim(interaction: ButtonInteraction): Promise<void> 
     updatedEmbed.addFields({ name: "📄 Description", value: ticket.description, inline: false });
   }
 
-  updatedEmbed.addFields(
-    { name: "🆔 Status", value: "🟡 Pending", inline: true },
-    { name: "👨‍💼 Assigned", value: `<@${interaction.user.id}>`, inline: true }
-  );
+  updatedEmbed.addFields({ name: "👨‍💼 Assigned", value: `<@${interaction.user.id}>`, inline: true });
 
   // Keep the same buttons but update the message
   const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(

@@ -1,15 +1,15 @@
 import type { AutoModRule } from "@shared/types";
-import { SlashCommandBuilder, type User } from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
 import { prisma } from "../../database/index.js";
 import { AutoModService } from "../../services/autoModService.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { type CommandResponse } from "../_core/index.js";
-import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
 /**
  * Advanced AutoMod Command - Create and manage advanced AutoMod rules
  */
-export class AutoModAdvancedCommand extends ModerationCommand {
+export class AutoModAdvancedCommand extends AdminCommand {
   constructor() {
     super({
       name: "automod-advanced",
@@ -22,11 +22,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
 
   protected async execute(): Promise<CommandResponse> {
     if (!this.isSlashCommand()) {
-      return this.createModerationError(
-        "use automod-advanced",
-        { username: "N/A", id: "unknown" } as User,
-        "This command only works as a slash command."
-      );
+      return this.createAdminError("use automod-advanced", "This command only works as a slash command.");
     }
 
     const subcommand = this.getSubcommand();
@@ -45,11 +41,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
       case "stats":
         return await this.handleRuleStats();
       default:
-        return this.createModerationError(
-          "use automod-advanced",
-          { username: "N/A", id: "unknown" } as User,
-          `Unknown subcommand: ${subcommand}`
-        );
+        return this.createAdminError("use automod-advanced", `Unknown subcommand: ${subcommand}`);
     }
   }
 
@@ -89,11 +81,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
       this.validatePatterns(ruleType, patterns);
       this.validateActions(actions);
     } catch (error) {
-      return this.createModerationError(
-        "create automod rule",
-        { username: "N/A", id: "unknown" } as User,
-        error instanceof Error ? error.message : "Validation failed"
-      );
+      return this.createAdminError("create automod rule", error instanceof Error ? error.message : "Validation failed");
     }
 
     // Check if rule name already exists
@@ -102,11 +90,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
     });
 
     if (existingRule) {
-      return this.createModerationError(
-        "create automod rule",
-        { username: "N/A", id: "unknown" } as User,
-        "A rule with this name already exists."
-      );
+      return this.createAdminError("create automod rule", "A rule with this name already exists.");
     }
 
     try {
@@ -166,11 +150,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
       return { embeds: [embed], ephemeral: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      return this.createModerationError(
-        "create automod rule",
-        { username: "N/A", id: "unknown" } as User,
-        errorMessage
-      );
+      return this.createAdminError("create automod rule", errorMessage);
     }
   }
 
@@ -181,11 +161,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
     });
 
     if (rules.length === 0) {
-      return this.createModerationError(
-        "list automod rules",
-        { username: "N/A", id: "unknown" } as User,
-        "No AutoMod rules found for this server."
-      );
+      return this.createAdminError("list automod rules", "No AutoMod rules found for this server.");
     }
 
     const embed = this.client.genEmbed({
@@ -212,11 +188,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
     });
 
     if (!rule) {
-      return this.createModerationError(
-        "edit automod rule",
-        { username: "N/A", id: "unknown" } as User,
-        "AutoMod rule not found."
-      );
+      return this.createAdminError("edit automod rule", "AutoMod rule not found.");
     }
 
     const updateData: Record<string, unknown> = {};
@@ -227,11 +199,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
         break;
       case "sensitivity":
         if (!["LOW", "MEDIUM", "HIGH"].includes(value)) {
-          return this.createModerationError(
-            "edit automod rule",
-            { username: "N/A", id: "unknown" } as User,
-            "Invalid sensitivity level. Use: LOW, MEDIUM, HIGH"
-          );
+          return this.createAdminError("edit automod rule", "Invalid sensitivity level. Use: LOW, MEDIUM, HIGH");
         }
         updateData.sensitivity = value;
         break;
@@ -239,11 +207,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
         updateData.enabled = value.toLowerCase() === "true";
         break;
       default:
-        return this.createModerationError(
-          "edit automod rule",
-          { username: "N/A", id: "unknown" } as User,
-          "Invalid field. Use: name, sensitivity, enabled"
-        );
+        return this.createAdminError("edit automod rule", "Invalid field. Use: name, sensitivity, enabled");
     }
 
     await prisma.autoModRule.update({
@@ -275,11 +239,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
     });
 
     if (!rule) {
-      return this.createModerationError(
-        "delete automod rule",
-        { username: "N/A", id: "unknown" } as User,
-        "AutoMod rule not found."
-      );
+      return this.createAdminError("delete automod rule", "AutoMod rule not found.");
     }
 
     await prisma.autoModRule.delete({
@@ -307,11 +267,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
     });
 
     if (!rule) {
-      return this.createModerationError(
-        "test automod rule",
-        { username: "N/A", id: "unknown" } as User,
-        "AutoMod rule not found."
-      );
+      return this.createAdminError("test automod rule", "AutoMod rule not found.");
     }
 
     // Convert database rule to AutoModRule type
@@ -363,11 +319,7 @@ export class AutoModAdvancedCommand extends ModerationCommand {
     });
 
     if (!rule) {
-      return this.createModerationError(
-        "rule stats",
-        { username: "N/A", id: "unknown" } as User,
-        "AutoMod rule not found."
-      );
+      return this.createAdminError("rule stats", "AutoMod rule not found.");
     }
 
     const embed = this.client.genEmbed({

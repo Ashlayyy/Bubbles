@@ -1,9 +1,10 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class ClosePollCommand extends GeneralCommand {
+class ClosePollCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "poll-close",
@@ -11,6 +12,11 @@ class ClosePollCommand extends GeneralCommand {
       category: "polls",
       ephemeral: false,
       guildOnly: true,
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
+        discordPermissions: [PermissionsBitField.Flags.Administrator],
+      },
     };
 
     super(config);
@@ -21,7 +27,7 @@ class ClosePollCommand extends GeneralCommand {
     const confirm = this.getBooleanOption("confirm") ?? false;
 
     if (!confirm) {
-      return this.createGeneralError(
+      return this.createAdminError(
         "Confirmation Required",
         "You must set `confirm` to `true` to close a poll. This action cannot be undone!"
       );
@@ -40,7 +46,7 @@ class ClosePollCommand extends GeneralCommand {
 
       if (!pollResponse.ok) {
         if (pollResponse.status === 404) {
-          return this.createGeneralError("Poll Not Found", "The specified poll was not found.");
+          return this.createAdminError("Poll Not Found", "The specified poll was not found.");
         }
         throw new Error(`API request failed: ${pollResponse.status}`);
       }
@@ -48,20 +54,20 @@ class ClosePollCommand extends GeneralCommand {
       const pollResult = (await pollResponse.json()) as any;
 
       if (!pollResult.success) {
-        return this.createGeneralError("Error", pollResult.error || "Failed to fetch poll details");
+        return this.createAdminError("Error", pollResult.error || "Failed to fetch poll details");
       }
 
       const poll = pollResult.data;
 
       // Check if poll is already closed
       if (poll.status !== "active") {
-        return this.createGeneralError("Poll Already Closed", "This poll is already closed.");
+        return this.createAdminError("Poll Already Closed", "This poll is already closed.");
       }
 
       // Check if poll has naturally ended
       const endTime = new Date(poll.endTime);
       if (endTime < new Date()) {
-        return this.createGeneralError("Poll Already Ended", "This poll has already ended naturally.");
+        return this.createAdminError("Poll Already Ended", "This poll has already ended naturally.");
       }
 
       // Close the poll
@@ -84,7 +90,7 @@ class ClosePollCommand extends GeneralCommand {
       const closeResult = (await closeResponse.json()) as any;
 
       if (!closeResult.success) {
-        return this.createGeneralError("Close Error", closeResult.error || "Failed to close poll");
+        return this.createAdminError("Close Error", closeResult.error || "Failed to close poll");
       }
 
       const closedPoll = closeResult.data;
@@ -104,7 +110,7 @@ class ClosePollCommand extends GeneralCommand {
         .addFields(
           {
             name: "📊 Poll Type",
-            value: `${typeEmojis[poll.type]} ${poll.type.charAt(0).toUpperCase() + poll.type.slice(1)}`,
+            value: `${typeEmojis[poll.type as keyof typeof typeEmojis]} ${(poll.type as string).charAt(0).toUpperCase() + (poll.type as string).slice(1)}`,
             inline: true,
           },
           {
@@ -190,7 +196,7 @@ class ClosePollCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing poll-close command:", error);
-      return this.createGeneralError("Error", "An error occurred while closing the poll. Please try again.");
+      return this.createAdminError("Error", "An error occurred while closing the poll. Please try again.");
     }
   }
 

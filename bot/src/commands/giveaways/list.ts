@@ -1,9 +1,10 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { PermissionLevel } from "bot/src/structures/PermissionTypes.js";
+import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class ListGiveawaysCommand extends GeneralCommand {
+class ListGiveawaysCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "giveaway-list",
@@ -11,6 +12,11 @@ class ListGiveawaysCommand extends GeneralCommand {
       category: "giveaways",
       ephemeral: false,
       guildOnly: true,
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
+        discordPermissions: [PermissionsBitField.Flags.Administrator],
+      },
     };
 
     super(config);
@@ -23,7 +29,7 @@ class ListGiveawaysCommand extends GeneralCommand {
 
     // Validate page number
     if (page < 1) {
-      return this.createGeneralError("Invalid Page", "Page number must be greater than 0.");
+      return this.createAdminError("Invalid Page", "Page number must be greater than 0.");
     }
 
     try {
@@ -55,7 +61,7 @@ class ListGiveawaysCommand extends GeneralCommand {
       const result = (await response.json()) as any;
 
       if (!result.success) {
-        return this.createGeneralError("Giveaways Error", result.error || "Failed to fetch giveaways");
+        return this.createAdminError("Giveaways Error", result.error || "Failed to fetch giveaways");
       }
 
       const { giveaways, pagination } = result.data;
@@ -162,7 +168,7 @@ class ListGiveawaysCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing giveaway-list command:", error);
-      return this.createGeneralError("Error", "An error occurred while fetching giveaways. Please try again.");
+      return this.createAdminError("Error", "An error occurred while fetching giveaways. Please try again.");
     }
   }
 }

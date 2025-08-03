@@ -16,7 +16,7 @@ export class ServerCommand extends AdminCommand {
       permissions: {
         level: PermissionLevel.ADMIN,
         discordPermissions: [PermissionsBitField.Flags.Administrator],
-        isConfigurable: true,
+        isConfigurable: false,
       },
       ephemeral: true,
       guildOnly: true,

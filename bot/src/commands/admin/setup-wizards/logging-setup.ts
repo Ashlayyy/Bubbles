@@ -180,7 +180,7 @@ export { startLoggingWizard };
 
 async function startLoggingWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
@@ -252,7 +252,7 @@ async function showMainMenu(
     await interaction.reply({
       embeds: [welcomeEmbed],
       components: [buttons],
-      flags: 64,
+      ephemeral: true,
     });
   } else if (interaction.deferred) {
     await interaction.editReply({
@@ -263,17 +263,104 @@ async function showMainMenu(
     await interaction.followUp({
       embeds: [welcomeEmbed],
       components: [buttons],
-      flags: 64,
+      ephemeral: true,
     });
   }
 
-  // Note: Button interactions are now handled by the global handleLoggingButtonInteraction function
-  // which is called from the main button interaction event handler
+  // Set up collector for button interactions
+  const collector = interaction.channel?.createMessageComponentCollector({
+    time: 300000, // 5 minutes
+    filter: (i) => i.user.id === interaction.user.id,
+  });
+
+  collector?.on("collect", (interactionComponent) => {
+    void (async () => {
+      try {
+        if (
+          interactionComponent.isChannelSelectMenu() &&
+          interactionComponent.customId.startsWith("logging_channel_select_")
+        ) {
+          await handleChannelSelection(interactionComponent, client);
+        } else if (interactionComponent.isButton()) {
+          const btn = interactionComponent;
+          switch (btn.customId) {
+            case "logging_wizard_presets":
+              await showPresetSelection(btn, client);
+              break;
+            case "logging_wizard_custom":
+              await startCustomSetup(btn, client);
+              break;
+            case "logging_wizard_help":
+              await showLoggingHelp(btn, client);
+              break;
+            case "logging_quick_setup":
+              await performQuickSetup(btn, client);
+              break;
+            case "logging_wizard_back":
+              await showMainMenu(btn, client);
+              break;
+            case "logging_step1_categories":
+              await showCategorySelection(btn, client);
+              break;
+            case "logging_next_step":
+              await handleNextStep(btn, client);
+              break;
+            case "logging_test_mode":
+              await showTestModeOptions(btn, client);
+              break;
+            case "logging_apply_config":
+              await applyConfiguration(btn, client);
+              break;
+            case "logging_test_mode_enable":
+              await handleTestModeEnable(btn, client);
+              break;
+            case "logging_test_mode_disable":
+              await handleTestModeDisable(btn, client);
+              break;
+            default:
+              if (btn.customId.startsWith("preset_")) {
+                await handlePresetSelection(btn, client);
+              } else if (btn.customId.startsWith("cat_")) {
+                await handleCategoryToggle(btn, client);
+              } else if (btn.customId.startsWith("channel_config_")) {
+                await handleChannelConfiguration(btn, client);
+              } else {
+                await btn.reply({
+                  content: "❌ Unknown button interaction. Please try again.",
+                  ephemeral: true,
+                });
+              }
+              break;
+          }
+        }
+      } catch (error) {
+        logger.error("Logging wizard error:", error);
+        if (!interactionComponent.replied && !interactionComponent.deferred) {
+          await interactionComponent.reply({ content: "❌ An error occurred.", ephemeral: true });
+        } else if (interactionComponent.deferred) {
+          await interactionComponent.editReply({ content: "❌ An error occurred." });
+        } else if (interactionComponent.replied) {
+          await interactionComponent.followUp({ content: "❌ An error occurred.", ephemeral: true });
+        }
+      }
+    })();
+  });
+
+  collector?.on("end", () => {
+    // Disable components after timeout
+    const disabledButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      ...buttons.components.map((button) => ButtonBuilder.from(button).setDisabled(true))
+    );
+
+    void interaction.editReply({ components: [disabledButtons] }).catch(() => {
+      // Ignore errors if message was deleted
+    });
+  });
 }
 
 async function showPresetSelection(interaction: ButtonInteraction, client: Client): Promise<void> {
   const presetEmbed = new EmbedBuilder()
-    .setColor(0x9b59b6)
+    .setColor(WIZARD_COLORS.INFO)
     .setTitle("📦 Logging Presets")
     .setDescription(
       "Choose a preset configuration that matches your server type and needs. " +
@@ -317,7 +404,7 @@ async function showPresetSelection(interaction: ButtonInteraction, client: Clien
 
 async function startCustomSetup(interaction: ButtonInteraction, client: Client): Promise<void> {
   const customEmbed = new EmbedBuilder()
-    .setColor(0xf39c12)
+    .setColor(WIZARD_COLORS.WARNING)
     .setTitle("⚙️ Custom Logging Setup")
     .setDescription(
       "Let's build a custom logging configuration for your server!\n\n" +
@@ -363,7 +450,7 @@ async function startCustomSetup(interaction: ButtonInteraction, client: Client):
 
 async function showLoggingHelp(interaction: ButtonInteraction, client: Client): Promise<void> {
   const helpEmbed = new EmbedBuilder()
-    .setColor(0x3498db)
+    .setColor(WIZARD_COLORS.PRIMARY)
     .setTitle("❓ Logging Help & Information")
     .setDescription(
       "Use `/setup logging` to configure logging for your server!\n\n" +
@@ -414,7 +501,7 @@ async function showLoggingHelp(interaction: ButtonInteraction, client: Client): 
 
 async function handlePresetSelection(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
@@ -422,7 +509,7 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
   const preset = LOGGING_PRESETS.find((p) => p.name.toLowerCase().includes(presetType));
 
   if (!preset) {
-    await interaction.reply({ content: "❌ Preset not found.", flags: 64 });
+    await interaction.reply({ content: "❌ Preset not found.", ephemeral: true });
     return;
   }
 
@@ -487,12 +574,12 @@ async function handlePresetSelection(interaction: ButtonInteraction, client: Cli
       })
       .setTimestamp();
 
-    await interaction.followUp({ embeds: [successEmbed], flags: 64 });
+    await interaction.followUp({ embeds: [successEmbed], ephemeral: true });
   } catch (error) {
     logger.error("Error applying logging preset:", error);
     await interaction.followUp({
       content: "❌ Failed to apply preset. Please try again.",
-      flags: 64,
+      ephemeral: true,
     });
   }
 }
@@ -509,7 +596,7 @@ async function handleLoggingAction(interaction: ButtonInteraction, client: Clien
       await performQuickSetup(interaction, client);
       break;
     default:
-      await interaction.reply({ content: "❌ Unknown action.", flags: 64 });
+      await interaction.reply({ content: "❌ Unknown action.", ephemeral: true });
       break;
   }
 }
@@ -563,7 +650,7 @@ async function showCategorySelection(interaction: ButtonInteraction, client: Cli
 
 async function performQuickSetup(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
@@ -597,29 +684,29 @@ async function performQuickSetup(interaction: ButtonInteraction, client: Client)
       })
       .setTimestamp();
 
-    await interaction.followUp({ embeds: [successEmbed], flags: 64 });
+    await interaction.followUp({ embeds: [successEmbed], ephemeral: true });
   } catch (error) {
     logger.error("Error performing quick setup:", error);
     await interaction.followUp({
       content: "❌ Quick setup failed. Please try the manual setup instead.",
-      flags: 64,
+      ephemeral: true,
     });
   }
 }
 
 async function applyConfiguration(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
   const state = wizardStates.get(`${interaction.guild.id}-${interaction.user.id}`);
   if (!state) {
-    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", flags: 64 });
+    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", ephemeral: true });
     return;
   }
 
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferReply({ ephemeral: true });
 
   try {
     // Apply channel routing
@@ -733,28 +820,28 @@ async function showTestModeOptions(interaction: ButtonInteraction, client: Clien
 
 async function handleTestLog(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
   const state = wizardStates.get(`${interaction.guild.id}-${interaction.user.id}`);
   if (!state) {
-    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", flags: 64 });
+    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", ephemeral: true });
     return;
   }
 
   if (!state.testMode) {
-    await interaction.reply({ content: "❌ Test mode is not enabled. Please enable it first.", flags: 64 });
+    await interaction.reply({ content: "❌ Test mode is not enabled. Please enable it first.", ephemeral: true });
     return;
   }
 
   const testChannel = interaction.channel;
   if (!testChannel?.isTextBased()) {
-    await interaction.reply({ content: "❌ This command can only be used in a text channel.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a text channel.", ephemeral: true });
     return;
   }
 
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferReply({ ephemeral: true });
 
   try {
     // Check bot permissions in the test channel
@@ -814,7 +901,7 @@ async function handleTestLog(interaction: ButtonInteraction, client: Client): Pr
 
 async function handleNextStep(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
@@ -822,7 +909,7 @@ async function handleNextStep(interaction: ButtonInteraction, client: Client): P
   const state = wizardStates.get(stateKey);
 
   if (!state) {
-    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", flags: 64 });
+    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", ephemeral: true });
     return;
   }
 
@@ -872,7 +959,7 @@ async function handleNextStep(interaction: ButtonInteraction, client: Client): P
 
 async function handleCategoryToggle(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
@@ -881,7 +968,7 @@ async function handleCategoryToggle(interaction: ButtonInteraction, client: Clie
   const state = wizardStates.get(stateKey);
 
   if (!state) {
-    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", flags: 64 });
+    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", ephemeral: true });
     return;
   }
 
@@ -946,18 +1033,18 @@ async function handleCategoryToggle(interaction: ButtonInteraction, client: Clie
 
 async function handleTestModeEnable(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
   const state = wizardStates.get(`${interaction.guild.id}-${interaction.user.id}`);
   if (!state) {
-    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", flags: 64 });
+    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", ephemeral: true });
     return;
   }
 
   if (state.testMode) {
-    await interaction.reply({ content: "❌ Test mode is already enabled.", flags: 64 });
+    await interaction.reply({ content: "❌ Test mode is already enabled.", ephemeral: true });
     return;
   }
 
@@ -972,24 +1059,24 @@ async function handleTestModeEnable(interaction: ButtonInteraction, client: Clie
 
   await interaction.followUp({
     content: "✅ Test mode enabled! You can now send test logs to the channel you selected.",
-    flags: 64,
+    ephemeral: true,
   });
 }
 
 async function handleTestModeDisable(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
   const state = wizardStates.get(`${interaction.guild.id}-${interaction.user.id}`);
   if (!state) {
-    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", flags: 64 });
+    await interaction.reply({ content: "❌ Wizard state not found. Please start the wizard again.", ephemeral: true });
     return;
   }
 
   if (!state.testMode) {
-    await interaction.reply({ content: "❌ Test mode is already disabled.", flags: 64 });
+    await interaction.reply({ content: "❌ Test mode is already disabled.", ephemeral: true });
     return;
   }
 
@@ -1004,181 +1091,8 @@ async function handleTestModeDisable(interaction: ButtonInteraction, client: Cli
 
   await interaction.followUp({
     content: "✅ Test mode disabled. Your server's logs will now be sent to the channels you configured.",
-    flags: 64,
+    ephemeral: true,
   });
-}
-
-/**
- * Safely reply to an interaction, handling already-acknowledged cases
- */
-async function safeReply(
-  interaction: ButtonInteraction | ChannelSelectMenuInteraction,
-  options: { content: string; flags?: number }
-): Promise<void> {
-  try {
-    const replyOptions = {
-      content: options.content,
-      flags: options.flags,
-    };
-
-    // Check if interaction is still valid and hasn't been replied to
-    if (!interaction.isRepliable()) {
-      logger.warn("Interaction is no longer repliable:", (interaction as any).customId);
-      return;
-    }
-
-    // Check if interaction has already been acknowledged
-    if (interaction.replied || interaction.deferred) {
-      logger.warn("Interaction already acknowledged, using followUp:", (interaction as any).customId);
-      await interaction.followUp(replyOptions);
-      return;
-    }
-
-    // Safe to reply
-    await interaction.reply(replyOptions);
-  } catch (error) {
-    logger.error("Failed to send interaction response:", error);
-    // Don't throw - we don't want to crash the bot for UI errors
-  }
-}
-
-/**
- * Handle button interactions for logging configuration
- */
-export async function handleLoggingButtonInteraction(
-  interaction: ButtonInteraction | ChannelSelectMenuInteraction
-): Promise<void> {
-  const client = interaction.client as Client;
-
-  try {
-    // Check if interaction is still valid
-    if (!interaction.isRepliable()) {
-      logger.warn("Interaction is no longer repliable:", (interaction as any).customId);
-      return;
-    }
-
-    // Handle channel select menu interactions
-    if (interaction.isChannelSelectMenu() && (interaction as any).customId.startsWith("logging_channel_select_")) {
-      await handleChannelSelection(interaction, client);
-      return;
-    }
-
-    if (!interaction.isButton()) return;
-
-    // Handle preset selection buttons
-    if ((interaction as any).customId.startsWith("preset_")) {
-      await handlePresetSelection(interaction, client);
-      return;
-    }
-
-    // Handle wizard navigation buttons
-    if ((interaction as any).customId === "logging_wizard_back") {
-      await showMainMenu(interaction, client);
-      return;
-    }
-
-    if ((interaction as any).customId === "logging_wizard_presets") {
-      await showPresetSelection(interaction, client);
-      return;
-    }
-
-    if ((interaction as any).customId === "logging_wizard_custom") {
-      await startCustomSetup(interaction, client);
-      return;
-    }
-
-    if ((interaction as any).customId === "logging_wizard_help") {
-      await showLoggingHelp(interaction, client);
-      return;
-    }
-
-    if ((interaction as any).customId === "logging_quick_setup") {
-      await performQuickSetup(interaction, client);
-      return;
-    }
-
-    // Handle category selection
-    if ((interaction as any).customId === "logging_step1_categories") {
-      await showCategorySelection(interaction, client);
-      return;
-    }
-
-    // Handle category toggle buttons (cat_*)
-    if ((interaction as any).customId.startsWith("cat_")) {
-      await handleCategoryToggle(interaction, client);
-      return;
-    }
-
-    if ((interaction as any).customId === "logging_next_step") {
-      await handleNextStep(interaction, client);
-      return;
-    }
-
-    if ((interaction as any).customId === "logging_test_mode") {
-      await showTestModeOptions(interaction, client);
-      return;
-    }
-
-    if ((interaction as any).customId === "logging_apply_config") {
-      await applyConfiguration(interaction, client);
-      return;
-    }
-
-    // Handle channel configuration buttons
-    if ((interaction as any).customId.startsWith("channel_config_")) {
-      await handleChannelConfiguration(interaction, client);
-      return;
-    }
-
-    // Handle test mode buttons
-    if ((interaction as any).customId === "logging_test_mode_enable") {
-      await handleTestModeEnable(interaction, client);
-      return;
-    }
-
-    if ((interaction as any).customId === "logging_test_mode_disable") {
-      await handleTestModeDisable(interaction, client);
-      return;
-    }
-
-    // Handle status management buttons
-    if ((interaction as any).customId === "logging_manage_channels") {
-      await safeReply(interaction, {
-        content: "📍 To configure channels, please use the channel configuration step in the wizard.",
-        flags: 64,
-      });
-      return;
-    }
-
-    if ((interaction as any).customId === "logging_manage_categories") {
-      await showCategoryToggle(interaction, client);
-      return;
-    }
-
-    if ((interaction as any).customId === "logging_advanced_settings") {
-      await safeReply(interaction, {
-        content: "⚙️ Advanced options will be available in future updates.",
-        flags: 64,
-      });
-      return;
-    }
-
-    // Default fallback
-    await safeReply(interaction, {
-      content: "❌ This button interaction is not implemented yet.",
-      flags: 64,
-    });
-  } catch (error) {
-    logger.error("Error handling logging button interaction:", error);
-    try {
-      await safeReply(interaction, {
-        content: "❌ An error occurred while processing your request.",
-        flags: 64,
-      });
-    } catch (replyError) {
-      logger.error("Failed to send error message to user:", replyError);
-    }
-  }
 }
 
 /**
@@ -1186,7 +1100,7 @@ export async function handleLoggingButtonInteraction(
  */
 async function handleChannelSelection(interaction: ChannelSelectMenuInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
@@ -1215,7 +1129,7 @@ async function handleChannelSelection(interaction: ChannelSelectMenuInteraction,
     );
     await interaction.reply({
       content: `❌ Invalid log category "${category}". Please use the channel configuration step to configure channels properly.`,
-      flags: 64,
+      ephemeral: true,
     });
     return;
   }
@@ -1223,11 +1137,11 @@ async function handleChannelSelection(interaction: ChannelSelectMenuInteraction,
   const selectedChannel = interaction.channels.first();
 
   if (!selectedChannel) {
-    await interaction.reply({ content: "❌ No channel selected.", flags: 64 });
+    await interaction.reply({ content: "❌ No channel selected.", ephemeral: true });
     return;
   }
 
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferReply({ ephemeral: true });
 
   try {
     // Check bot permissions in the selected channel
@@ -1312,18 +1226,18 @@ async function handleChannelSelection(interaction: ChannelSelectMenuInteraction,
 
 async function handleAllChannelSelection(interaction: ChannelSelectMenuInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
   const selectedChannel = interaction.channels.first();
 
   if (!selectedChannel) {
-    await interaction.reply({ content: "❌ No channel selected.", flags: 64 });
+    await interaction.reply({ content: "❌ No channel selected.", ephemeral: true });
     return;
   }
 
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferReply({ ephemeral: true });
 
   try {
     // Check bot permissions in the selected channel
@@ -1414,7 +1328,7 @@ async function handleAllChannelSelection(interaction: ChannelSelectMenuInteracti
 
 async function handleChannelConfiguration(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
@@ -1437,7 +1351,7 @@ async function handleChannelConfiguration(interaction: ButtonInteraction, client
     );
     await interaction.reply({
       content: `❌ Invalid log category "${category}". Please use the channel configuration step to configure channels properly.`,
-      flags: 64,
+      ephemeral: true,
     });
     return;
   }
@@ -1449,7 +1363,7 @@ async function handleChannelConfiguration(interaction: ButtonInteraction, client
     logger.error(`Category "${category}" does not contain an array of log types:`, categoryTypes);
     await interaction.reply({
       content: `❌ Invalid configuration for category "${category}". Please contact an administrator.`,
-      flags: 64,
+      ephemeral: true,
     });
     return;
   }
@@ -1475,7 +1389,7 @@ async function handleChannelConfiguration(interaction: ButtonInteraction, client
         (categoryTypes.length > 5 ? `\n• ...and ${String(categoryTypes.length - 5)} more` : "")
     )
     .addFields({
-      name: "💡 Tips",
+      name: "�� Tips",
       value:
         "• Choose a channel that only moderators can see\n" +
         "• Make sure the bot has permission to send messages\n" +
@@ -1486,13 +1400,13 @@ async function handleChannelConfiguration(interaction: ButtonInteraction, client
   await interaction.reply({
     embeds: [embed],
     components: [selectRow],
-    flags: 64,
+    ephemeral: true,
   });
 }
 
 async function handleAllCategoryConfiguration(interaction: ButtonInteraction, client: Client): Promise<void> {
   if (!interaction.guild) {
-    await interaction.reply({ content: "❌ This command can only be used in a server.", flags: 64 });
+    await interaction.reply({ content: "❌ This command can only be used in a server.", ephemeral: true });
     return;
   }
 
@@ -1537,13 +1451,13 @@ async function handleAllCategoryConfiguration(interaction: ButtonInteraction, cl
   await interaction.reply({
     embeds: [embed],
     components: [selectRow],
-    flags: 64,
+    ephemeral: true,
   });
 }
 
 async function showCategoryToggle(interaction: ButtonInteraction, client: Client): Promise<void> {
   const toggleEmbed = new EmbedBuilder()
-    .setColor(0xf39c12)
+    .setColor(WIZARD_COLORS.WARNING)
     .setTitle("🔄 Toggle Log Categories")
     .setDescription(
       "Use the category selection step to enable or disable specific log categories.\n\n" +
@@ -1561,5 +1475,5 @@ async function showCategoryToggle(interaction: ButtonInteraction, client: Client
       inline: false,
     });
 
-  await interaction.reply({ embeds: [toggleEmbed], flags: 64 });
+  await interaction.reply({ embeds: [toggleEmbed], ephemeral: true });
 }

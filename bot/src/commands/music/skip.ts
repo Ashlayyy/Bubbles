@@ -32,7 +32,7 @@ class SkipCommand extends GeneralCommand {
       // Get current status
       const status = await musicService.getStatus(this.guild.id);
 
-      if (!status || !status.currentTrack) {
+      if (!status?.currentTrack) {
         return this.createGeneralError("No Music Playing", "There is no music currently playing to skip!");
       }
 

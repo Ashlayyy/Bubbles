@@ -1,9 +1,9 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class DeleteEventCommand extends GeneralCommand {
+class DeleteEventCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "event-delete",
@@ -21,7 +21,7 @@ class DeleteEventCommand extends GeneralCommand {
     const confirm = this.getBooleanOption("confirm") ?? false;
 
     if (!confirm) {
-      return this.createGeneralError(
+      return this.createAdminError(
         "Confirmation Required",
         "You must set `confirm` to `true` to delete an event. This action cannot be undone and will notify all attendees!"
       );
@@ -40,7 +40,7 @@ class DeleteEventCommand extends GeneralCommand {
 
       if (!eventResponse.ok) {
         if (eventResponse.status === 404) {
-          return this.createGeneralError("Event Not Found", "The specified event was not found.");
+          return this.createAdminError("Event Not Found", "The specified event was not found.");
         }
         throw new Error(`API request failed: ${eventResponse.status}`);
       }
@@ -48,7 +48,7 @@ class DeleteEventCommand extends GeneralCommand {
       const eventResult = (await eventResponse.json()) as any;
 
       if (!eventResult.success) {
-        return this.createGeneralError("Error", eventResult.error || "Failed to fetch event details");
+        return this.createAdminError("Error", eventResult.error || "Failed to fetch event details");
       }
 
       const event = eventResult.data;
@@ -77,7 +77,7 @@ class DeleteEventCommand extends GeneralCommand {
       const deleteResult = (await deleteResponse.json()) as any;
 
       if (!deleteResult.success) {
-        return this.createGeneralError("Deletion Error", deleteResult.error || "Failed to delete event");
+        return this.createAdminError("Deletion Error", deleteResult.error || "Failed to delete event");
       }
 
       const eventStartTime = new Date(event.startTime);
@@ -123,7 +123,10 @@ class DeleteEventCommand extends GeneralCommand {
       if (event.description && event.description.length > 0) {
         embed.addFields({
           name: "📋 Description",
-          value: event.description.length > 200 ? event.description.substring(0, 197) + "..." : event.description,
+          value:
+            event.description.length > 200
+              ? (event.description as string).substring(0, 197) + "..."
+              : (event.description as string),
           inline: false,
         });
       }
@@ -176,7 +179,7 @@ class DeleteEventCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing event-delete command:", error);
-      return this.createGeneralError("Error", "An error occurred while deleting the event. Please try again.");
+      return this.createAdminError("Error", "An error occurred while deleting the event. Please try again.");
     }
   }
 }

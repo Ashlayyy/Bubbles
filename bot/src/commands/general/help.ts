@@ -11,7 +11,7 @@ export class HelpCommand extends GeneralCommand {
       name: "help",
       description: "Get help with commands and features",
       category: "general",
-      ephemeral: false,
+      ephemeral: true,
       guildOnly: false, // Help can work in DMs too
     };
 

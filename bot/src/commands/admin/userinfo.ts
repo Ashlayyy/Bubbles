@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
@@ -14,10 +14,11 @@ export class UserinfoCommand extends AdminCommand {
       description: "Display detailed information about a user",
       category: "admin",
       permissions: {
-        level: PermissionLevel.PUBLIC,
-        isConfigurable: true,
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
+        discordPermissions: [PermissionsBitField.Flags.Administrator],
       },
-      ephemeral: false,
+      ephemeral: true,
       guildOnly: true,
     };
 

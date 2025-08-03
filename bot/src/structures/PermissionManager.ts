@@ -496,7 +496,7 @@ export default class PermissionManager {
 
     try {
       // Try cache first
-      const cached = await cacheService.get<any>(cacheKey);
+      const cached = await cacheService.get(cacheKey);
       if (cached !== null) {
         return cached;
       }

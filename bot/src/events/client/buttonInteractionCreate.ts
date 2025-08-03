@@ -1,5 +1,5 @@
 import type { Interaction } from "discord.js";
-import { handleGiveawayInteraction } from "../../commands/general/giveaway.js";
+import { handleGiveawayInteraction } from "../../commands/admin/giveaway.js";
 import { handlePollInteraction } from "../../commands/moderation/poll.js";
 import { handleTicketButtonInteraction } from "../../functions/discord/ticketManager.js";
 import { ClientEvent } from "../../structures/Event.js";
@@ -38,26 +38,12 @@ export default new ClientEvent("interactionCreate", async (interaction: Interact
       return;
     }
 
-    // Handle logging configuration button interactions
-    if (interaction.customId.startsWith("logging_") || interaction.customId.startsWith("channel_config_")) {
-      const { handleLoggingButtonInteraction } = await import("../../commands/admin/setup-wizards/logging-setup.js");
-      await handleLoggingButtonInteraction(interaction);
-      return;
-    }
-
     // Future button interaction logic will go here.
   }
 
   // Handle channel select menu interactions
   if (interaction.isChannelSelectMenu()) {
     if (!interaction.inGuild()) return;
-
-    // Handle logging channel selection
-    if (interaction.customId.startsWith("logging_channel_select_")) {
-      const { handleLoggingButtonInteraction } = await import("../../commands/admin/setup-wizards/logging-setup.js");
-      await handleLoggingButtonInteraction(interaction);
-      return;
-    }
 
     // Handle ticket setup channel selection (exclude from global handler)
     if (interaction.customId === "ticket_channel_select") {

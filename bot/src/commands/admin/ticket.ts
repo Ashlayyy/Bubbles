@@ -7,9 +7,13 @@ import {
   PermissionFlagsBits,
   SlashCommandBuilder,
   type CategoryChannel,
+  type Guild,
+  type GuildMember,
   type TextChannel,
+  type ThreadChannel,
 } from "discord.js";
 
+import { getGuildConfig } from "../../database/GuildConfig.js";
 import { prisma } from "../../database/index.js";
 import logger from "../../logger.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
@@ -22,6 +26,147 @@ function sanitizeUsername(username: string): string {
     .replace(/[^a-zA-Z0-9\-_]/g, "")
     .toLowerCase()
     .substring(0, 20);
+}
+
+// Helper function to get users with specific roles
+async function getUsersWithRole(guild: Guild, roleId: string): Promise<GuildMember[]> {
+  const role = guild.roles.cache.get(roleId);
+  if (!role) return [];
+
+  return Array.from(role.members.values());
+}
+
+// Helper function to get users with specific permissions
+async function getUsersWithPermission(guild: Guild, permission: bigint): Promise<GuildMember[]> {
+  const members = await guild.members.fetch();
+  return Array.from(members.filter((member) => member.permissions.has(permission)).values());
+}
+
+// Helper function to add users to ticket (thread or channel)
+async function addUsersToTicket(
+  ticketChannel: ThreadChannel | TextChannel,
+  users: GuildMember[],
+  ticketNumber: number,
+  category: string
+): Promise<{ success: string[]; failed: string[] }> {
+  const success: string[] = [];
+  const failed: string[] = [];
+
+  // Debug: Check bot permissions if it's a thread
+  if (ticketChannel.isThread()) {
+    const botMember = ticketChannel.guild.members.cache.get(ticketChannel.client.user.id);
+    if (botMember) {
+      logger.info(`Bot permissions in thread ${ticketChannel.id}: ${botMember.permissions.toArray().join(", ")}`);
+      logger.info(`Bot has MANAGE_THREADS: ${botMember.permissions.has(PermissionFlagsBits.ManageThreads)}`);
+      logger.info(
+        `Bot has CREATE_PRIVATE_THREADS: ${botMember.permissions.has(PermissionFlagsBits.CreatePrivateThreads)}`
+      );
+    }
+  }
+
+  for (const user of users) {
+    try {
+      if (ticketChannel.isThread()) {
+        // For threads, use the thread's add method
+        await ticketChannel.members.add(user.id);
+        success.push(user.user.tag);
+      } else if (ticketChannel.isTextBased()) {
+        // For channels, update permissions (already handled by permission overwrites)
+        // But we can log that the user has access
+        success.push(user.user.tag);
+      }
+    } catch (error) {
+      logger.error(
+        `Failed to add user ${user.user.tag} (${user.id}) to ticket #${ticketNumber} (${category}): ${error instanceof Error ? error.message : String(error)}`
+      );
+      if (error instanceof Error && error.stack) {
+        logger.error(`Error stack for ${user.user.tag}: ${error.stack}`);
+      }
+
+      // If it's a thread and we get a permission error, try to add the user via the parent channel
+      if (ticketChannel.isThread() && error instanceof Error && error.message.includes("Missing Access")) {
+        try {
+          logger.info(`Attempting to add user ${user.user.tag} via parent channel permissions...`);
+          const parentChannel = ticketChannel.parent;
+          if (parentChannel && parentChannel.isTextBased()) {
+            // Try to add the user to the parent channel first, which might give them access to the thread
+            await parentChannel.permissionOverwrites.create(user.id, {
+              ViewChannel: true,
+              SendMessages: true,
+              ReadMessageHistory: true,
+            });
+            logger.info(
+              `Successfully added user ${user.user.tag} to parent channel, they should now have access to the thread`
+            );
+            success.push(user.user.tag);
+            continue; // Skip adding to failed list since we found an alternative
+          }
+        } catch (parentError) {
+          logger.error(
+            `Failed to add user ${user.user.tag} via parent channel: ${parentError instanceof Error ? parentError.message : String(parentError)}`
+          );
+        }
+      }
+
+      failed.push(user.user.tag);
+    }
+  }
+
+  // Log the results
+  if (success.length > 0) {
+    logger.info(`Added ${success.length} users to ticket #${ticketNumber} (${category}): ${success.join(", ")}`);
+  }
+  if (failed.length > 0) {
+    logger.warn(`Failed to add ${failed.length} users to ticket #${ticketNumber} (${category}): ${failed.join(", ")}`);
+  }
+
+  return { success, failed };
+}
+
+// Helper function to get users that should be added to a ticket based on configuration
+async function getUsersForTicket(
+  guild: Guild,
+  config: {
+    ticketAccessType?: string | null;
+    ticketAccessRoleId?: string | null;
+    ticketAccessPermission?: string | null;
+    ticketOnCallRoleId?: string | null;
+  },
+  category: string
+): Promise<GuildMember[]> {
+  const users: GuildMember[] = [];
+
+  if (category === "admin") {
+    // For admin tickets
+    if (config.ticketAccessRoleId) {
+      // If admin role is configured, add all users with that role
+      const adminUsers = await getUsersWithRole(guild, config.ticketAccessRoleId);
+      users.push(...adminUsers);
+    } else {
+      // If no admin role configured, add all users with Administrator permissions
+      const adminUsers = await getUsersWithPermission(guild, PermissionFlagsBits.Administrator);
+      users.push(...adminUsers);
+    }
+  } else {
+    // For normal tickets
+    if (config.ticketOnCallRoleId) {
+      // If support role is configured, add all users with that role
+      const supportUsers = await getUsersWithRole(guild, config.ticketOnCallRoleId);
+      users.push(...supportUsers);
+    } else {
+      // If no support role configured, add all users with Timeout permissions (ManageMessages)
+      const timeoutUsers = await getUsersWithPermission(guild, PermissionFlagsBits.ManageMessages);
+      users.push(...timeoutUsers);
+    }
+  }
+
+  // Remove duplicates (users might have multiple roles)
+  const uniqueUsers = new Map<string, GuildMember>();
+  for (const user of users) {
+    uniqueUsers.set(user.id, user);
+  }
+
+  return Array.from(uniqueUsers.values());
 }
 
 /**
@@ -91,18 +236,19 @@ export class TicketCommand extends AdminCommand {
     const description = this.getStringOption("description");
 
     try {
-      // Check if user already has an open ticket
-      const existingTicket = await prisma.ticket.findFirst({
+      // Check if user has too many concurrent tickets in this category (max 5 per category)
+      const userTicketsInCategory = await prisma.ticket.count({
         where: {
           guildId: this.guild.id,
           userId: this.user.id,
+          category: category.toUpperCase(),
           status: { in: ["OPEN", "PENDING"] },
         },
       });
 
-      if (existingTicket) {
+      if (userTicketsInCategory >= 5) {
         return {
-          content: `❌ You already have an open ticket: #${existingTicket.ticketNumber}\n<#${existingTicket.channelId}>`,
+          content: `❌ You already have **${userTicketsInCategory}** open tickets in the **${category.toUpperCase()}** category.\n\nYou can have at most **5 concurrent tickets** per category. Please close some existing tickets before creating a new one in this category.`,
           ephemeral: true,
         };
       }
@@ -207,10 +353,32 @@ export class TicketCommand extends AdminCommand {
 
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(closeButton, claimButton);
 
+      // Get guild config to determine which users to add
+      const config = await getGuildConfig(this.guild.id);
+
+      // Get users that should be added to this ticket
+      const usersToAdd = await getUsersForTicket(this.guild, config, category.toLowerCase());
+
+      // Add users to the ticket
+      const addResult = await addUsersToTicket(ticketChannel, usersToAdd, ticketNumber, category.toLowerCase());
+
+      // Create mention string for added users
+      const addedUserMentions =
+        addResult.success.length > 0
+          ? `\n\n**Added to ticket:** ${addResult.success.map((username) => `\`${username}\``).join(", ")}`
+          : "";
+
+      const failedUserMentions =
+        addResult.failed.length > 0
+          ? `\n\n**Failed to add:** ${addResult.failed.map((username) => `\`${username}\``).join(", ")}`
+          : "";
+
       await ticketChannel.send({
         embeds: [ticketEmbed],
         components: [row],
       });
+
+      // User additions are logged to terminal only - no embed sent to channel
 
       // Log ticket creation
       await this.client.logManager.log(this.guild.id, "TICKET_CREATE", {
@@ -364,21 +532,38 @@ export class TicketCommand extends AdminCommand {
 
   private async handleClose(): Promise<CommandResponse> {
     const channel = this.interaction.channel as TextChannel;
-    const ticketId = this.getStringOption("ticket_id");
+    const ticketIdentifier = this.getStringOption("ticket_id");
     const reason = this.getStringOption("reason");
 
     try {
-      // Find ticket by ID if provided, otherwise by channel
+      // Find ticket by identifier if provided, otherwise by channel
       let ticket;
 
-      if (ticketId) {
-        ticket = await prisma.ticket.findFirst({
-          where: {
-            id: ticketId,
-            guildId: this.guild.id,
-            status: { in: ["OPEN", "PENDING"] },
-          },
-        });
+      if (ticketIdentifier) {
+        // Check if it's a ticket number (starts with # or is numeric)
+        const isTicketNumber = ticketIdentifier.startsWith("#") || /^\d+$/.test(ticketIdentifier);
+
+        if (isTicketNumber) {
+          // Extract ticket number (remove # if present)
+          const ticketNumber = parseInt(ticketIdentifier.replace("#", ""));
+
+          ticket = await prisma.ticket.findFirst({
+            where: {
+              ticketNumber: ticketNumber,
+              guildId: this.guild.id,
+              status: { in: ["OPEN", "PENDING"] },
+            },
+          });
+        } else {
+          // Treat as database ID
+          ticket = await prisma.ticket.findFirst({
+            where: {
+              id: ticketIdentifier,
+              guildId: this.guild.id,
+              status: { in: ["OPEN", "PENDING"] },
+            },
+          });
+        }
       } else {
         // Check if this is a ticket channel
         ticket = await prisma.ticket.findFirst({
@@ -392,8 +577,8 @@ export class TicketCommand extends AdminCommand {
 
       if (!ticket) {
         return {
-          content: ticketId
-            ? `❌ Could not find an active ticket with ID \`${ticketId}\`.`
+          content: ticketIdentifier
+            ? `❌ Could not find an active ticket with identifier \`${ticketIdentifier}\`.`
             : "❌ This is not an active ticket channel.",
           ephemeral: true,
         };
@@ -436,8 +621,8 @@ export class TicketCommand extends AdminCommand {
             const role = this.guild.roles.cache.get(id);
 
             // Keep administrators
-            if (member && member.permissions.has(PermissionFlagsBits.Administrator)) continue;
-            if (role && role.permissions.has(PermissionFlagsBits.Administrator)) continue;
+            if (member?.permissions.has(PermissionFlagsBits.Administrator)) continue;
+            if (role?.permissions.has(PermissionFlagsBits.Administrator)) continue;
 
             // Remove the overwrite
             await ticketChannel.permissionOverwrites.delete(id);
@@ -650,10 +835,12 @@ export class TicketCommand extends AdminCommand {
       }
 
       const openTickets = tickets.filter((t) => t.status === "OPEN");
+      const pendingTickets = tickets.filter((t) => t.status === "PENDING");
       const closedTickets = tickets.filter((t) => t.status === "CLOSED");
 
       embed.setDescription(
-        `**${openTickets.length}** open ticket${openTickets.length === 1 ? "" : "s"}, ` +
+        `**${pendingTickets.length}** pending ticket${pendingTickets.length === 1 ? "" : "s"}, ` +
+          `**${openTickets.length}** open ticket${openTickets.length === 1 ? "" : "s"}, ` +
           `**${closedTickets.length}** closed ticket${closedTickets.length === 1 ? "" : "s"}`
       );
 
@@ -702,25 +889,46 @@ export class TicketCommand extends AdminCommand {
   }
 
   private async handleTranscript(): Promise<CommandResponse> {
-    const ticketId = this.getStringOption("ticket_id");
+    const ticketIdentifier = this.getStringOption("ticket_id");
     const channel = this.interaction.channel as TextChannel;
 
     try {
-      // Find ticket by ID if provided, otherwise by channel
+      // Find ticket by identifier if provided, otherwise by channel
       let ticket;
 
-      if (ticketId) {
-        ticket = await prisma.ticket.findFirst({
-          where: {
-            id: ticketId,
-            guildId: this.guild.id,
-          },
-          include: {
-            messages: {
-              orderBy: { createdAt: "asc" },
+      if (ticketIdentifier) {
+        // Check if it's a ticket number (starts with # or is numeric)
+        const isTicketNumber = ticketIdentifier.startsWith("#") || /^\d+$/.test(ticketIdentifier);
+
+        if (isTicketNumber) {
+          // Extract ticket number (remove # if present)
+          const ticketNumber = parseInt(ticketIdentifier.replace("#", ""));
+
+          ticket = await prisma.ticket.findFirst({
+            where: {
+              ticketNumber: ticketNumber,
+              guildId: this.guild.id,
             },
-          },
-        });
+            include: {
+              messages: {
+                orderBy: { createdAt: "asc" },
+              },
+            },
+          });
+        } else {
+          // Treat as database ID
+          ticket = await prisma.ticket.findFirst({
+            where: {
+              id: ticketIdentifier,
+              guildId: this.guild.id,
+            },
+            include: {
+              messages: {
+                orderBy: { createdAt: "asc" },
+              },
+            },
+          });
+        }
       } else {
         // Check if this is a ticket channel
         ticket = await prisma.ticket.findFirst({
@@ -738,19 +946,100 @@ export class TicketCommand extends AdminCommand {
 
       if (!ticket) {
         return {
-          content: ticketId ? `❌ Could not find ticket with ID \`${ticketId}\`.` : "❌ This is not a ticket channel.",
+          content: ticketIdentifier
+            ? `❌ Could not find ticket with identifier \`${ticketIdentifier}\`.`
+            : "❌ This is not a ticket channel.",
           ephemeral: true,
         };
       }
 
-      // Create transcript from stored messages
-      const transcript = ticket.messages
-        .map((msg) => {
-          const timestamp = new Date(msg.createdAt).toISOString();
-          const author = msg.isSystemMsg ? "System" : `<@${msg.userId}>`;
-          return `[${timestamp}] ${author}: ${msg.content || "No content"}`;
-        })
-        .join("\n");
+      // Helper function to get username for a user ID
+      const getUserMention = async (userId: string): Promise<string> => {
+        try {
+          const member = this.guild.members.cache.get(userId);
+          if (member) {
+            return `<@${userId}> (${member.user.username})`;
+          } else {
+            // Try to fetch the member if not in cache
+            const fetchedMember = await this.guild.members.fetch(userId).catch(() => null);
+            if (fetchedMember) {
+              return `<@${userId}> (${fetchedMember.user.username})`;
+            }
+          }
+        } catch (error) {
+          // If we can't get the username, just use the userId
+        }
+        return `<@${userId}>`;
+      };
+
+      // Get usernames for ticket information
+      const createdByMention = await getUserMention(ticket.userId);
+      const assignedToMention = ticket.assignedTo ? await getUserMention(ticket.assignedTo) : "";
+      const closedByMention = ticket.closedBy ? await getUserMention(ticket.closedBy) : "";
+
+      // Build transcript content
+      let transcript = `=== TICKET TRANSCRIPT ===
+ Ticket ID: ${ticket.id}
+ Ticket Number: #${ticket.ticketNumber.toString().padStart(4, "0")}
+ Category: ${ticket.category}
+ Title: ${ticket.title}
+ Description: ${ticket.description || "No description"}
+ Status: ${ticket.status}
+ Created: ${ticket.createdAt.toISOString()}
+ Created by: ${createdByMention}
+ ${assignedToMention ? `Assigned to: ${assignedToMention}` : ""}
+ ${ticket.closedAt ? `Closed: ${ticket.closedAt.toISOString()}` : ""}
+ ${closedByMention ? `Closed by: ${closedByMention}` : ""}
+ ${ticket.closedReason ? `Close reason: ${ticket.closedReason}` : ""}
+ 
+ === MESSAGES ===
+ `;
+
+      // Add messages to transcript
+      if (ticket.messages && ticket.messages.length > 0) {
+        for (const message of ticket.messages) {
+          const timestamp = new Date(message.createdAt).toISOString();
+
+          // Try to get username from guild cache, fallback to userId if not found
+          let username = message.userId;
+          try {
+            const member = this.guild.members.cache.get(message.userId);
+            if (member) {
+              username = member.user.username;
+            } else {
+              // Try to fetch the member if not in cache
+              const fetchedMember = await this.guild.members.fetch(message.userId).catch(() => null);
+              if (fetchedMember) {
+                username = fetchedMember.user.username;
+              }
+            }
+          } catch (error) {
+            // If we can't get the username, just use the userId
+            username = message.userId;
+          }
+
+          const userMention = `<@${message.userId}> (${username})`;
+
+          transcript += `[${timestamp}] ${userMention}: ${message.content}\n`;
+
+          // Add attachments if any
+          if (message.attachments && message.attachments.length > 0) {
+            transcript += `[Attachments: ${message.attachments.join(", ")}]\n`;
+          }
+
+          // Add embeds info if any
+          if (message.embeds && message.embeds.length > 0) {
+            transcript += `[Embeds: ${message.embeds.length} embed(s)]\n`;
+          }
+
+          transcript += "\n";
+        }
+      } else {
+        transcript += "No messages found in this ticket.\n";
+      }
+
+      transcript += `\n=== END TRANSCRIPT ===
+Generated on: ${new Date().toISOString()}`;
 
       const embed = new EmbedBuilder()
         .setColor(0x3498db)
@@ -760,7 +1049,8 @@ export class TicketCommand extends AdminCommand {
           { name: "Ticket ID", value: ticket.id, inline: true },
           { name: "Opened By", value: `<@${ticket.userId}>`, inline: true },
           { name: "Status", value: ticket.status, inline: true },
-          { name: "Created", value: `<t:${Math.floor(ticket.createdAt.getTime() / 1000)}:F>`, inline: true }
+          { name: "Created", value: `<t:${Math.floor(ticket.createdAt.getTime() / 1000)}:F>`, inline: true },
+          { name: "Messages", value: `${ticket.messages?.length || 0} messages`, inline: true }
         )
         .setTimestamp();
 
@@ -771,28 +1061,22 @@ export class TicketCommand extends AdminCommand {
         );
       }
 
-      // Send transcript as file if it's too long
-      if (transcript.length > 1000) {
-        const buffer = Buffer.from(transcript, "utf8");
-        return {
-          embeds: [embed],
-          files: [
-            {
-              attachment: buffer,
-              name: `transcript-${ticket.ticketNumber.toString().padStart(4, "0")}.txt`,
-            },
-          ],
-          ephemeral: true,
-        };
-      } else {
-        embed.addFields({
-          name: "📝 Messages",
-          value: transcript || "No messages found",
-          inline: false,
-        });
-
-        return { embeds: [embed], ephemeral: true };
+      if (ticket.assignedTo) {
+        embed.addFields({ name: "Assigned To", value: `<@${ticket.assignedTo}>`, inline: true });
       }
+
+      // Send transcript as file
+      const buffer = Buffer.from(transcript, "utf8");
+      return {
+        embeds: [embed],
+        files: [
+          {
+            attachment: buffer,
+            name: `transcript-${ticket.ticketNumber.toString().padStart(4, "0")}.txt`,
+          },
+        ],
+        ephemeral: true,
+      };
     } catch (error) {
       logger.error("Error generating transcript:", error);
       return {
@@ -806,7 +1090,6 @@ export class TicketCommand extends AdminCommand {
 // Export the command instance
 export default new TicketCommand();
 
-// Export the Discord command builder for registration
 export const builder = new SlashCommandBuilder()
   .setName("ticket")
   .setDescription("Manage support tickets")

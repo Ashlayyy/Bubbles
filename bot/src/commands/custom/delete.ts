@@ -1,9 +1,9 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class DeleteCustomCommand extends GeneralCommand {
+class DeleteCustomCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "custom-delete",
@@ -60,17 +60,14 @@ class DeleteCustomCommand extends GeneralCommand {
 
       if (!getResponse.ok) {
         if (getResponse.status === 404) {
-          return this.createGeneralError(
-            "Command Not Found",
-            `No custom command named "${name}" exists in this server.`
-          );
+          return this.createAdminError("Command Not Found", `No custom command named "${name}" exists in this server.`);
         }
         throw new Error(`API request failed: ${getResponse.status}`);
       }
 
       const getResult = (await getResponse.json()) as any;
       if (!getResult.success) {
-        return this.createGeneralError("API Error", getResult.error || "Failed to fetch command information");
+        return this.createAdminError("API Error", getResult.error || "Failed to fetch command information");
       }
 
       const commandToDelete = getResult.data;
@@ -86,10 +83,7 @@ class DeleteCustomCommand extends GeneralCommand {
 
       if (!response.ok) {
         if (response.status === 404) {
-          return this.createGeneralError(
-            "Command Not Found",
-            `No custom command named "${name}" exists in this server.`
-          );
+          return this.createAdminError("Command Not Found", `No custom command named "${name}" exists in this server.`);
         }
         throw new Error(`API request failed: ${response.status}`);
       }
@@ -97,7 +91,7 @@ class DeleteCustomCommand extends GeneralCommand {
       const result = (await response.json()) as any;
 
       if (!result.success) {
-        return this.createGeneralError("Delete Error", result.error || "Failed to delete custom command");
+        return this.createAdminError("Delete Error", result.error || "Failed to delete custom command");
       }
 
       // Create success embed
@@ -179,7 +173,7 @@ class DeleteCustomCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing custom-delete command:", error);
-      return this.createGeneralError("Error", "An error occurred while deleting the custom command. Please try again.");
+      return this.createAdminError("Error", "An error occurred while deleting the custom command. Please try again.");
     }
   }
 }

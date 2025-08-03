@@ -2,9 +2,9 @@ import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder, User } from "di
 import logger from "../../logger.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class XpManagementCommand extends GeneralCommand {
+class XpManagementCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "xp",
@@ -13,7 +13,7 @@ class XpManagementCommand extends GeneralCommand {
       permissions: {
         level: PermissionLevel.ADMIN,
         discordPermissions: [PermissionsBitField.Flags.Administrator],
-        isConfigurable: true,
+        isConfigurable: false,
       },
       ephemeral: true,
       guildOnly: true,
@@ -32,7 +32,7 @@ class XpManagementCommand extends GeneralCommand {
       if (action === "view") {
         const user = this.getUserOption("user");
         if (!user) {
-          return this.createGeneralError("Invalid Input", "Please specify a user to view.");
+          return this.createAdminError("Invalid Input", "Please specify a user to view.");
         }
         return await this.viewUserXP(customApiUrl, guildId, user);
       } else if (action === "add") {
@@ -41,11 +41,11 @@ class XpManagementCommand extends GeneralCommand {
         const reason = this.getStringOption("reason") || "Manual XP addition by admin";
 
         if (!user || !amount) {
-          return this.createGeneralError("Invalid Input", "Please specify both user and amount.");
+          return this.createAdminError("Invalid Input", "Please specify both user and amount.");
         }
 
         if (amount < 1 || amount > 100000) {
-          return this.createGeneralError("Invalid Amount", "Amount must be between 1 and 100,000 XP.");
+          return this.createAdminError("Invalid Amount", "Amount must be between 1 and 100,000 XP.");
         }
 
         return await this.addXP(customApiUrl, guildId, user, amount, reason);
@@ -55,11 +55,11 @@ class XpManagementCommand extends GeneralCommand {
         const reason = this.getStringOption("reason") || "Manual XP removal by admin";
 
         if (!user || !amount) {
-          return this.createGeneralError("Invalid Input", "Please specify both user and amount.");
+          return this.createAdminError("Invalid Input", "Please specify both user and amount.");
         }
 
         if (amount < 1 || amount > 100000) {
-          return this.createGeneralError("Invalid Amount", "Amount must be between 1 and 100,000 XP.");
+          return this.createAdminError("Invalid Amount", "Amount must be between 1 and 100,000 XP.");
         }
 
         return await this.removeXP(customApiUrl, guildId, user, amount, reason);
@@ -69,11 +69,11 @@ class XpManagementCommand extends GeneralCommand {
         const reason = this.getStringOption("reason") || "Manual level set by admin";
 
         if (!user || level === null) {
-          return this.createGeneralError("Invalid Input", "Please specify both user and level.");
+          return this.createAdminError("Invalid Input", "Please specify both user and level.");
         }
 
         if (level < 0 || level > 1000) {
-          return this.createGeneralError("Invalid Level", "Level must be between 0 and 1000.");
+          return this.createAdminError("Invalid Level", "Level must be between 0 and 1000.");
         }
 
         return await this.setLevel(customApiUrl, guildId, user, level, reason);
@@ -82,7 +82,7 @@ class XpManagementCommand extends GeneralCommand {
         const reason = this.getStringOption("reason") || "XP reset by admin";
 
         if (!user) {
-          return this.createGeneralError("Invalid Input", "Please specify a user to reset.");
+          return this.createAdminError("Invalid Input", "Please specify a user to reset.");
         }
 
         return await this.resetUser(customApiUrl, guildId, user, reason);
@@ -92,14 +92,11 @@ class XpManagementCommand extends GeneralCommand {
         const reason = this.getStringOption("reason") || "Bulk XP addition by admin";
 
         if (!role || !amount) {
-          return this.createGeneralError("Invalid Input", "Please specify both role and amount.");
+          return this.createAdminError("Invalid Input", "Please specify both role and amount.");
         }
 
         if (amount < 1 || amount > 10000) {
-          return this.createGeneralError(
-            "Invalid Amount",
-            "Amount must be between 1 and 10,000 XP for bulk operations."
-          );
+          return this.createAdminError("Invalid Amount", "Amount must be between 1 and 10,000 XP for bulk operations.");
         }
 
         return await this.bulkAddXP(customApiUrl, guildId, role.id, amount, reason);
@@ -107,10 +104,10 @@ class XpManagementCommand extends GeneralCommand {
         return await this.resetLeaderboard(customApiUrl, guildId);
       }
 
-      return this.createGeneralError("Invalid Action", "Unknown action specified.");
+      return this.createAdminError("Invalid Action", "Unknown action specified.");
     } catch (error) {
       logger.error("Error in XP management command:", error);
-      return this.createGeneralError("Error", "An error occurred while managing XP. Please try again later.");
+      return this.createAdminError("Error", "An error occurred while managing XP. Please try again later.");
     }
   }
 
@@ -124,14 +121,14 @@ class XpManagementCommand extends GeneralCommand {
 
     if (!response.ok) {
       if (response.status === 404) {
-        return this.createGeneralError("No Data", `${user.username} hasn't gained any XP in this server yet.`);
+        return this.createAdminError("No Data", `${user.username} hasn't gained any XP in this server yet.`);
       }
       throw new Error(`API request failed: ${response.statusText}`);
     }
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to fetch user data.");
+      return this.createAdminError("API Error", data.error || "Failed to fetch user data.");
     }
 
     const userData = data.data;
@@ -221,7 +218,7 @@ class XpManagementCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to add XP.");
+      return this.createAdminError("API Error", data.error || "Failed to add XP.");
     }
 
     const result = data.data;
@@ -234,7 +231,7 @@ class XpManagementCommand extends GeneralCommand {
     }
 
     await this.logCommandUsage("xp", { action: "add", targetUserId: user.id, amount, reason, guildId });
-    return this.createGeneralSuccess("XP Added", successMessage);
+    return this.createAdminSuccess("XP Added", successMessage);
   }
 
   private async removeXP(
@@ -264,7 +261,7 @@ class XpManagementCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to remove XP.");
+      return this.createAdminError("API Error", data.error || "Failed to remove XP.");
     }
 
     const result = data.data;
@@ -277,7 +274,7 @@ class XpManagementCommand extends GeneralCommand {
     }
 
     await this.logCommandUsage("xp", { action: "remove", targetUserId: user.id, amount, reason, guildId });
-    return this.createGeneralSuccess("XP Removed", successMessage);
+    return this.createAdminSuccess("XP Removed", successMessage);
   }
 
   private async setLevel(
@@ -307,7 +304,7 @@ class XpManagementCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to set level.");
+      return this.createAdminError("API Error", data.error || "Failed to set level.");
     }
 
     const result = data.data;
@@ -318,7 +315,7 @@ class XpManagementCommand extends GeneralCommand {
     successMessage += `**Previous Level:** ${result.oldLevel || "Unknown"}`;
 
     await this.logCommandUsage("xp", { action: "set-level", targetUserId: user.id, level, reason, guildId });
-    return this.createGeneralSuccess("Level Set", successMessage);
+    return this.createAdminSuccess("Level Set", successMessage);
   }
 
   private async resetUser(apiUrl: string, guildId: string, user: User, reason: string): Promise<CommandResponse> {
@@ -341,7 +338,7 @@ class XpManagementCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to reset user.");
+      return this.createAdminError("API Error", data.error || "Failed to reset user.");
     }
 
     const result = data.data;
@@ -352,7 +349,7 @@ class XpManagementCommand extends GeneralCommand {
     successMessage += `**New Status:** Level 0 (0 XP)`;
 
     await this.logCommandUsage("xp", { action: "reset", targetUserId: user.id, reason, guildId });
-    return this.createGeneralSuccess("User Reset", successMessage);
+    return this.createAdminSuccess("User Reset", successMessage);
   }
 
   private async bulkAddXP(
@@ -383,7 +380,7 @@ class XpManagementCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to perform bulk operation.");
+      return this.createAdminError("API Error", data.error || "Failed to perform bulk operation.");
     }
 
     const result = data.data;
@@ -401,7 +398,7 @@ class XpManagementCommand extends GeneralCommand {
       affectedUsers: result.affectedUsers,
       guildId,
     });
-    return this.createGeneralSuccess("Bulk XP Added", successMessage);
+    return this.createAdminSuccess("Bulk XP Added", successMessage);
   }
 
   private async resetLeaderboard(apiUrl: string, guildId: string): Promise<CommandResponse> {
@@ -423,7 +420,7 @@ class XpManagementCommand extends GeneralCommand {
 
     const data = (await response.json()) as any;
     if (!data.success) {
-      return this.createGeneralError("API Error", data.error || "Failed to reset leaderboard.");
+      return this.createAdminError("API Error", data.error || "Failed to reset leaderboard.");
     }
 
     const result = data.data;
@@ -434,7 +431,7 @@ class XpManagementCommand extends GeneralCommand {
     successMessage += `**Total XP Cleared:** ${result.totalXPCleared?.toLocaleString() || 0}`;
 
     await this.logCommandUsage("xp", { action: "leaderboard-reset", affectedUsers: result.affectedUsers, guildId });
-    return this.createGeneralSuccess("Leaderboard Reset", successMessage);
+    return this.createAdminSuccess("Leaderboard Reset", successMessage);
   }
 
   private calculateLevelXP(level: number): number {

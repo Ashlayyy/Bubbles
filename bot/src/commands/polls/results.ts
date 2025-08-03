@@ -1,9 +1,10 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { PermissionLevel } from "bot/src/structures/PermissionTypes.js";
+import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class PollResultsCommand extends GeneralCommand {
+class PollResultsCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "poll-results",
@@ -11,6 +12,11 @@ class PollResultsCommand extends GeneralCommand {
       category: "polls",
       ephemeral: false,
       guildOnly: true,
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
+        discordPermissions: [PermissionsBitField.Flags.Administrator],
+      },
     };
 
     super(config);
@@ -36,7 +42,7 @@ class PollResultsCommand extends GeneralCommand {
 
       if (!pollResponse.ok) {
         if (pollResponse.status === 404) {
-          return this.createGeneralError("Poll Not Found", "The specified poll was not found.");
+          return this.createAdminError("Poll Not Found", "The specified poll was not found.");
         }
         throw new Error(`API request failed: ${pollResponse.status}`);
       }
@@ -44,7 +50,7 @@ class PollResultsCommand extends GeneralCommand {
       const pollResult = (await pollResponse.json()) as any;
 
       if (!pollResult.success) {
-        return this.createGeneralError("Error", pollResult.error || "Failed to fetch poll results");
+        return this.createAdminError("Error", pollResult.error || "Failed to fetch poll results");
       }
 
       const poll = pollResult.data;
@@ -66,7 +72,7 @@ class PollResultsCommand extends GeneralCommand {
         .addFields(
           {
             name: "🗳️ Poll Type",
-            value: `${typeEmojis[poll.type]} ${poll.type.charAt(0).toUpperCase() + poll.type.slice(1)}`,
+            value: `${typeEmojis[poll.type as keyof typeof typeEmojis]} ${(poll.type as string).charAt(0).toUpperCase() + (poll.type as string).slice(1)}`,
             inline: true,
           },
           {
@@ -209,7 +215,9 @@ class PollResultsCommand extends GeneralCommand {
 
         embed.addFields({
           name: "🗳️ Individual Votes",
-          value: votesText + (poll.votes.length > 10 ? `\n... and ${poll.votes.length - 10} more` : ""),
+          value:
+            (votesText as string) +
+            ((poll.votes.length as number) > 10 ? `\n... and ${(poll.votes.length as number) - 10} more` : ""),
           inline: false,
         });
       }
@@ -233,7 +241,7 @@ class PollResultsCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing poll-results command:", error);
-      return this.createGeneralError("Error", "An error occurred while fetching poll results. Please try again.");
+      return this.createAdminError("Error", "An error occurred while fetching poll results. Please try again.");
     }
   }
 }

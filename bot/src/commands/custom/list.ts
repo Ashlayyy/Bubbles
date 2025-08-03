@@ -1,9 +1,9 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class ListCustomCommand extends GeneralCommand {
+class ListCustomCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "custom-list",
@@ -49,7 +49,7 @@ class ListCustomCommand extends GeneralCommand {
       const data = (await response.json()) as any;
 
       if (!data.success) {
-        return this.createGeneralError("API Error", data.error || "Failed to fetch custom commands.");
+        return this.createAdminError("API Error", data.error || "Failed to fetch custom commands.");
       }
 
       const { commands, pagination } = data.data;
@@ -103,7 +103,7 @@ class ListCustomCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error listing custom commands:", error);
-      return this.createGeneralError(
+      return this.createAdminError(
         "Error",
         "An error occurred while fetching custom commands. Please try again later."
       );

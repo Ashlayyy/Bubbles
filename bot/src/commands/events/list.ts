@@ -1,9 +1,9 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class ListEventsCommand extends GeneralCommand {
+class ListEventsCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "event-list",
@@ -23,7 +23,7 @@ class ListEventsCommand extends GeneralCommand {
 
     // Validate page number
     if (page < 1) {
-      return this.createGeneralError("Invalid Page", "Page number must be greater than 0.");
+      return this.createAdminError("Invalid Page", "Page number must be greater than 0.");
     }
 
     try {
@@ -55,7 +55,7 @@ class ListEventsCommand extends GeneralCommand {
       const result = (await response.json()) as any;
 
       if (!result.success) {
-        return this.createGeneralError("Events Error", result.error || "Failed to fetch events");
+        return this.createAdminError("Events Error", result.error || "Failed to fetch events");
       }
 
       const { events, pagination } = result.data;
@@ -152,7 +152,7 @@ class ListEventsCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing event-list command:", error);
-      return this.createGeneralError("Error", "An error occurred while fetching events. Please try again.");
+      return this.createAdminError("Error", "An error occurred while fetching events. Please try again.");
     }
   }
 }

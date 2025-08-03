@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { getPrismaClient } from '../services/databaseService.js';
 import { wsManager } from '../websocket/manager.js';
-import { createConsoleLogger } from '@bubbles/shared';
+import { createConsoleLogger } from '@shared/utils/logger.js';
 import type { AuthRequest } from '../middleware/auth.js';
 
 const logger = createConsoleLogger('reminder-controller');

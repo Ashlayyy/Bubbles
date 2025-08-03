@@ -1,4 +1,4 @@
-import { createPrismaClient } from '../../../shared/src/database';
+import { createPrismaClient } from '@shared/database';
 import { createLogger } from '../types/shared.js';
 
 const logger = createLogger('database-service');

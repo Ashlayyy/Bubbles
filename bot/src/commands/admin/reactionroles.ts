@@ -735,7 +735,10 @@ async function handleMessageList(client: Client, interaction: GuildChatInputComm
 }
 
 async function handleMessageDelete(client: Client, interaction: GuildChatInputCommandInteraction) {
-  const messageIds = interaction.options.getString("message_ids", true).split(/[,\s]+/).filter(id => id.trim());
+  const messageIds = interaction.options
+    .getString("message_ids", true)
+    .split(/[,\s]+/)
+    .filter((id) => id.trim());
   const skipConfirmation = interaction.options.getBoolean("skip_confirmation") ?? false;
 
   await interaction.deferReply({ ephemeral: true });
@@ -758,11 +761,11 @@ async function handleMessageDelete(client: Client, interaction: GuildChatInputCo
 
   try {
     // Find all messages and get their reaction role info
-    const messagesToDelete: Array<{
+    const messagesToDelete: {
       message: Message;
       reactionRoles: any[];
       reactionRoleMessage: any;
-    }> = [];
+    }[] = [];
 
     for (const messageId of messageIds) {
       const message = await findMessageById(interaction.guild ?? ({} as Guild), messageId);
@@ -776,7 +779,7 @@ async function handleMessageDelete(client: Client, interaction: GuildChatInputCo
 
       // Get reaction roles for this message
       const reactionRoles = await getReactionRolesByMessage(messageId);
-      
+
       // Get reaction role message info if it exists
       const reactionRoleMessage = await prisma.reactionRoleMessage.findUnique({
         where: { messageId },
@@ -794,14 +797,19 @@ async function handleMessageDelete(client: Client, interaction: GuildChatInputCo
       const previewEmbed = new EmbedBuilder()
         .setTitle("🗑️ Delete Reaction Role Messages - Preview")
         .setColor(0xe74c3c)
-        .setDescription(`You are about to delete **${messagesToDelete.length}** reaction role message${messagesToDelete.length === 1 ? "" : "s"}:`)
+        .setDescription(
+          `You are about to delete **${messagesToDelete.length}** reaction role message${messagesToDelete.length === 1 ? "" : "s"}:`
+        )
         .setTimestamp();
 
       const messageFields = messagesToDelete.map((item, index) => {
         const channel = client.channels.cache.get(item.message.channelId);
-        const roleCount = item.reactionRoles.reduce((total, rr) => total + rr.roleIds.length, 0);
+        const roleCount = item.reactionRoles.reduce(
+          (total: number, rr: any) => total + (rr.roleIds.length as number),
+          0
+        );
         const emojiCount = item.reactionRoles.length;
-        
+
         return {
           name: `${index + 1}. ${item.reactionRoleMessage?.title || "Reaction Role Message"}`,
           value: [
@@ -847,10 +855,12 @@ async function handleMessageDelete(client: Client, interaction: GuildChatInputCo
       });
 
       // Wait for confirmation
-      const confirmation = await previewReply.awaitMessageComponent({
-        componentType: ComponentType.Button,
-        time: 60000,
-      }).catch(() => null);
+      const confirmation = await previewReply
+        .awaitMessageComponent({
+          componentType: ComponentType.Button,
+          time: 60000,
+        })
+        .catch(() => null);
 
       if (!confirmation) {
         await interaction.editReply({
@@ -875,7 +885,7 @@ async function handleMessageDelete(client: Client, interaction: GuildChatInputCo
 
     // Perform the deletion
     let successCount = 0;
-    let failedMessages: string[] = [];
+    const failedMessages: string[] = [];
 
     for (const item of messagesToDelete) {
       try {
@@ -899,7 +909,7 @@ async function handleMessageDelete(client: Client, interaction: GuildChatInputCo
             metadata: {
               messageId: item.message.id,
               title: item.reactionRoleMessage?.title,
-              roleCount: item.reactionRoles.reduce((total, rr) => total + rr.roleIds.length, 0),
+              roleCount: item.reactionRoles.reduce((total: number, rr) => total + (rr.roleIds.length as number), 0),
               emojiCount: item.reactionRoles.length,
               deletedAt: new Date().toISOString(),
             },
@@ -912,14 +922,15 @@ async function handleMessageDelete(client: Client, interaction: GuildChatInputCo
     }
 
     // Create result embed
-    const resultEmbed = new EmbedBuilder()
-      .setTimestamp();
+    const resultEmbed = new EmbedBuilder().setTimestamp();
 
     if (successCount === messagesToDelete.length) {
       resultEmbed
         .setTitle("✅ Messages Deleted Successfully")
         .setColor(0x2ecc71)
-        .setDescription(`Successfully deleted **${successCount}** reaction role message${successCount === 1 ? "" : "s"}.`);
+        .setDescription(
+          `Successfully deleted **${successCount}** reaction role message${successCount === 1 ? "" : "s"}.`
+        );
     } else if (successCount > 0) {
       resultEmbed
         .setTitle("⚠️ Partial Success")
@@ -953,7 +964,6 @@ async function handleMessageDelete(client: Client, interaction: GuildChatInputCo
     } else {
       await interaction.editReply({ embeds: [resultEmbed], components: [] });
     }
-
   } catch (error) {
     logger.error("Error in handleMessageDelete:", error);
     await interaction.followUp({
@@ -1298,7 +1308,8 @@ export class ReactionRolesCommand extends AdminCommand {
           .setDescription(`Removed reaction role mapping for emoji \`${emoji}\` on message \`${messageId}\`.`)
           .addFields({
             name: "ℹ️ Note",
-            value: "The message and its reactions remain. Only the role assignment was removed. Use `/reactionroles delete` to delete the entire message.",
+            value:
+              "The message and its reactions remain. Only the role assignment was removed. Use `/reactionroles delete` to delete the entire message.",
             inline: false,
           })
           .setTimestamp();
@@ -1338,7 +1349,8 @@ export class ReactionRolesCommand extends AdminCommand {
           )
           .addFields({
             name: "ℹ️ Note",
-            value: "The message and its reactions remain. Only the role assignments were removed. Use `/reactionroles delete` to delete the entire message.",
+            value:
+              "The message and its reactions remain. Only the role assignments were removed. Use `/reactionroles delete` to delete the entire message.",
             inline: false,
           })
           .setTimestamp();
@@ -1389,16 +1401,19 @@ export class ReactionRolesCommand extends AdminCommand {
             ? `Removed **${deleted.count}** reaction role mapping${deleted.count === 1 ? "" : "s"} from <#${channelId}>.`
             : `Removed **${deleted.count}** reaction role mapping${deleted.count === 1 ? "" : "s"} from this server.`
         )
-        .addFields({
-          name: "⚠️ Important",
-          value: "This action cannot be undone. You'll need to recreate any reaction roles you want to keep.",
-          inline: false,
-        },
-        {
-          name: "ℹ️ Note",
-          value: "The messages and their reactions remain. Only the role assignments were removed. Use `/reactionroles delete` to delete entire messages.",
-          inline: false,
-        })
+        .addFields(
+          {
+            name: "⚠️ Important",
+            value: "This action cannot be undone. You'll need to recreate any reaction roles you want to keep.",
+            inline: false,
+          },
+          {
+            name: "ℹ️ Note",
+            value:
+              "The messages and their reactions remain. Only the role assignments were removed. Use `/reactionroles delete` to delete entire messages.",
+            inline: false,
+          }
+        )
         .setTimestamp();
 
       // Notify API of reaction role changes

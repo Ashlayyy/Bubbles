@@ -1,9 +1,9 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class EventRSVPCommand extends GeneralCommand {
+class EventRSVPCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "event-rsvp",
@@ -33,7 +33,7 @@ class EventRSVPCommand extends GeneralCommand {
 
       if (!eventResponse.ok) {
         if (eventResponse.status === 404) {
-          return this.createGeneralError(
+          return this.createAdminError(
             "Event Not Found",
             "The specified event was not found. Use `/event-list` to see available events."
           );
@@ -44,7 +44,7 @@ class EventRSVPCommand extends GeneralCommand {
       const eventResult = (await eventResponse.json()) as any;
 
       if (!eventResult.success) {
-        return this.createGeneralError("Error", eventResult.error || "Failed to fetch event details");
+        return this.createAdminError("Error", eventResult.error || "Failed to fetch event details");
       }
 
       const event = eventResult.data;
@@ -52,7 +52,7 @@ class EventRSVPCommand extends GeneralCommand {
       // Check if event has passed
       const eventStartTime = new Date(event.startTime);
       if (eventStartTime < new Date()) {
-        return this.createGeneralError(
+        return this.createAdminError(
           "Event Has Passed",
           "You cannot RSVP to an event that has already started or finished."
         );
@@ -61,7 +61,7 @@ class EventRSVPCommand extends GeneralCommand {
       // Check if event has capacity limits for "going" responses
       if (response === "going" && event.maxAttendees) {
         if (event.attendeeCount >= event.maxAttendees) {
-          return this.createGeneralError(
+          return this.createAdminError(
             "Event Full",
             `This event has reached its maximum capacity of ${event.maxAttendees} attendees.`
           );
@@ -89,7 +89,7 @@ class EventRSVPCommand extends GeneralCommand {
       const rsvpResult = (await rsvpResponse.json()) as any;
 
       if (!rsvpResult.success) {
-        return this.createGeneralError("RSVP Error", rsvpResult.error || "Failed to update RSVP");
+        return this.createAdminError("RSVP Error", rsvpResult.error || "Failed to update RSVP");
       }
 
       const rsvpData = rsvpResult.data;
@@ -146,7 +146,10 @@ class EventRSVPCommand extends GeneralCommand {
       if (event.description && event.description.length > 0) {
         embed.addFields({
           name: "📋 Description",
-          value: event.description.length > 200 ? event.description.substring(0, 197) + "..." : event.description,
+          value:
+            event.description.length > 200
+              ? (event.description as string).substring(0, 197) + "..."
+              : (event.description as string),
           inline: false,
         });
       }
@@ -200,7 +203,7 @@ class EventRSVPCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing event-rsvp command:", error);
-      return this.createGeneralError("Error", "An error occurred while updating your RSVP. Please try again.");
+      return this.createAdminError("Error", "An error occurred while updating your RSVP. Please try again.");
     }
   }
 }

@@ -5,6 +5,7 @@ import type Client from "../../structures/Client.js";
 import { BaseProcessor, type ProcessorResult } from "./BaseProcessor.js";
 
 interface BulkModerationJob extends BaseJob {
+  id: string;
   type: "BULK_BAN" | "BULK_KICK" | "BULK_TIMEOUT";
   guildId: string;
   userIds: string[];

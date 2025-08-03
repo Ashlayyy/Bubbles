@@ -1,9 +1,10 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
+import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class DeletePollCommand extends GeneralCommand {
+class DeletePollCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "poll-delete",
@@ -11,6 +12,11 @@ class DeletePollCommand extends GeneralCommand {
       category: "polls",
       ephemeral: false,
       guildOnly: true,
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
+        discordPermissions: [PermissionsBitField.Flags.Administrator],
+      },
     };
 
     super(config);
@@ -21,7 +27,7 @@ class DeletePollCommand extends GeneralCommand {
     const confirm = this.getBooleanOption("confirm") ?? false;
 
     if (!confirm) {
-      return this.createGeneralError(
+      return this.createAdminError(
         "Confirmation Required",
         "You must set `confirm` to `true` to delete a poll. This action cannot be undone and will remove all votes!"
       );
@@ -40,7 +46,7 @@ class DeletePollCommand extends GeneralCommand {
 
       if (!pollResponse.ok) {
         if (pollResponse.status === 404) {
-          return this.createGeneralError("Poll Not Found", "The specified poll was not found.");
+          return this.createAdminError("Poll Not Found", "The specified poll was not found.");
         }
         throw new Error(`API request failed: ${pollResponse.status}`);
       }
@@ -48,7 +54,7 @@ class DeletePollCommand extends GeneralCommand {
       const pollResult = (await pollResponse.json()) as any;
 
       if (!pollResult.success) {
-        return this.createGeneralError("Error", pollResult.error || "Failed to fetch poll details");
+        return this.createAdminError("Error", pollResult.error || "Failed to fetch poll details");
       }
 
       const poll = pollResult.data;
@@ -73,7 +79,7 @@ class DeletePollCommand extends GeneralCommand {
       const deleteResult = (await deleteResponse.json()) as any;
 
       if (!deleteResult.success) {
-        return this.createGeneralError("Deletion Error", deleteResult.error || "Failed to delete poll");
+        return this.createAdminError("Deletion Error", deleteResult.error || "Failed to delete poll");
       }
 
       const endTime = new Date(poll.endTime);
@@ -94,7 +100,7 @@ class DeletePollCommand extends GeneralCommand {
         .addFields(
           {
             name: "📊 Poll Type",
-            value: `${typeEmojis[poll.type]} ${poll.type.charAt(0).toUpperCase() + poll.type.slice(1)}`,
+            value: `${typeEmojis[poll.type as keyof typeof typeEmojis]} ${(poll.type as string).charAt(0).toUpperCase() + (poll.type as string).slice(1)}`,
             inline: true,
           },
           {
@@ -122,14 +128,16 @@ class DeletePollCommand extends GeneralCommand {
 
       // Add poll details if available
       if (poll.options && poll.options.length > 0) {
-        const optionsText = poll.options
+        const optionsText = (poll.options as string[])
           .slice(0, 5) // Show first 5 options
           .map((option: string, index: number) => `**${index + 1}.** ${option}`)
           .join("\n");
 
         embed.addFields({
           name: "📝 Poll Options",
-          value: optionsText + (poll.options.length > 5 ? `\n... and ${poll.options.length - 5} more` : ""),
+          value:
+            optionsText +
+            ((poll.options.length as number) > 5 ? `\n... and ${(poll.options.length as number) - 5} more` : ""),
           inline: false,
         });
       }
@@ -202,7 +210,7 @@ class DeletePollCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing poll-delete command:", error);
-      return this.createGeneralError("Error", "An error occurred while deleting the poll. Please try again.");
+      return this.createAdminError("Error", "An error occurred while deleting the poll. Please try again.");
     }
   }
 }

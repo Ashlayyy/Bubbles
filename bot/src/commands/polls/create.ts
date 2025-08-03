@@ -1,10 +1,11 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { PermissionLevel } from "bot/src/structures/PermissionTypes.js";
+import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import { pollApiService } from "../../services/pollApiService.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class CreatePollCommand extends GeneralCommand {
+class CreatePollCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "poll-create",
@@ -12,6 +13,11 @@ class CreatePollCommand extends GeneralCommand {
       category: "polls",
       ephemeral: false,
       guildOnly: true,
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
+        discordPermissions: [PermissionsBitField.Flags.Administrator],
+      },
     };
 
     super(config);
@@ -30,7 +36,7 @@ class CreatePollCommand extends GeneralCommand {
     try {
       // Check if API service is configured
       if (!pollApiService.isConfigured()) {
-        return this.createGeneralError("Service Unavailable", "Poll service is not properly configured.");
+        return this.createAdminError("Service Unavailable", "Poll service is not properly configured.");
       }
 
       // Prepare options array
@@ -39,7 +45,7 @@ class CreatePollCommand extends GeneralCommand {
         .map((text) => ({ text }));
 
       if (options.length < 2) {
-        return this.createGeneralError("Invalid Options", "You must provide at least 2 options for a poll.");
+        return this.createAdminError("Invalid Options", "You must provide at least 2 options for a poll.");
       }
 
       // Prepare poll data
@@ -55,7 +61,7 @@ class CreatePollCommand extends GeneralCommand {
       const result = await pollApiService.createPoll(this.guild.id, pollData);
 
       if (!result.success) {
-        return this.createGeneralError("Poll Creation Error", result.error || "Failed to create poll");
+        return this.createAdminError("Poll Creation Error", result.error || "Failed to create poll");
       }
 
       const poll = result.data!;
@@ -124,7 +130,7 @@ class CreatePollCommand extends GeneralCommand {
       return { embeds: [embed] };
     } catch (error) {
       logger.error("Error executing poll-create command:", error);
-      return this.createGeneralError("Error", "An error occurred while creating the poll. Please try again.");
+      return this.createAdminError("Error", "An error occurred while creating the poll. Please try again.");
     }
   }
 }

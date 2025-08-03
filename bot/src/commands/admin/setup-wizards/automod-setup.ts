@@ -7,7 +7,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 
-import { AutoModRule } from "shared/src/database.js";
+import { AutoModRule } from "@shared/database";
 import { prisma } from "../../../database/index.js";
 import logger from "../../../logger.js";
 import type Client from "../../../structures/Client.js";

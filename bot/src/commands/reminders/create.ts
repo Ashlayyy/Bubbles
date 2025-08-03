@@ -1,16 +1,22 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { PermissionLevel } from "bot/src/structures/PermissionTypes.js";
+import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class CreateReminderCommand extends GeneralCommand {
+class CreateReminderCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "reminder-create",
       description: "Create a new reminder",
       category: "reminders",
-      ephemeral: false,
+      ephemeral: true,
       guildOnly: true,
+      permissions: {
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
+        discordPermissions: [PermissionsBitField.Flags.Administrator],
+      },
     };
 
     super(config);
@@ -31,7 +37,7 @@ class CreateReminderCommand extends GeneralCommand {
       // Parse the time input
       const remindTime = this.parseTimeInput(time);
       if (!remindTime) {
-        return this.createGeneralError(
+        return this.createAdminError(
           "Invalid Time Format",
           "Please use a valid time format like:\n" +
             "• `10m` (10 minutes)\n" +
@@ -43,7 +49,7 @@ class CreateReminderCommand extends GeneralCommand {
       }
 
       if (remindTime <= new Date()) {
-        return this.createGeneralError("Invalid Time", "Reminder time must be in the future.");
+        return this.createAdminError("Invalid Time", "Reminder time must be in the future.");
       }
 
       const customApiUrl = process.env.API_URL || "http://localhost:3001";
@@ -77,7 +83,7 @@ class CreateReminderCommand extends GeneralCommand {
       const result = (await response.json()) as any;
 
       if (!result.success) {
-        return this.createGeneralError("Reminder Creation Error", result.error || "Failed to create reminder");
+        return this.createAdminError("Reminder Creation Error", result.error || "Failed to create reminder");
       }
 
       const reminder = result.data;
@@ -191,7 +197,7 @@ class CreateReminderCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing reminder-create command:", error);
-      return this.createGeneralError("Error", "An error occurred while creating the reminder. Please try again.");
+      return this.createAdminError("Error", "An error occurred while creating the reminder. Please try again.");
     }
   }
 

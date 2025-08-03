@@ -1,9 +1,9 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class EditCustomCommand extends GeneralCommand {
+class EditCustomCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "custom-edit",
@@ -29,11 +29,11 @@ class EditCustomCommand extends GeneralCommand {
     try {
       // Validate inputs if provided
       if (content && content.length > 2000) {
-        return this.createGeneralError("Content Too Long", "Command content must be 2000 characters or less.");
+        return this.createAdminError("Content Too Long", "Command content must be 2000 characters or less.");
       }
 
       if (cooldown !== null && (cooldown < 0 || cooldown > 3600)) {
-        return this.createGeneralError("Invalid Cooldown", "Cooldown must be between 0 and 3600 seconds (1 hour).");
+        return this.createAdminError("Invalid Cooldown", "Cooldown must be between 0 and 3600 seconds (1 hour).");
       }
 
       const customApiUrl = process.env.API_URL || "http://localhost:3001";
@@ -59,7 +59,7 @@ class EditCustomCommand extends GeneralCommand {
       if (enabled !== null) updateData.enabled = enabled;
 
       if (Object.keys(updateData).length === 0) {
-        return this.createGeneralError("No Changes", "You must provide at least one field to update.");
+        return this.createAdminError("No Changes", "You must provide at least one field to update.");
       }
 
       // Make API request to update custom command
@@ -74,10 +74,7 @@ class EditCustomCommand extends GeneralCommand {
 
       if (!response.ok) {
         if (response.status === 404) {
-          return this.createGeneralError(
-            "Command Not Found",
-            `No custom command named "${name}" exists in this server.`
-          );
+          return this.createAdminError("Command Not Found", `No custom command named "${name}" exists in this server.`);
         }
         throw new Error(`API request failed: ${response.status}`);
       }
@@ -85,7 +82,7 @@ class EditCustomCommand extends GeneralCommand {
       const result = (await response.json()) as any;
 
       if (!result.success) {
-        return this.createGeneralError("Update Error", result.error || "Failed to update custom command");
+        return this.createAdminError("Update Error", result.error || "Failed to update custom command");
       }
 
       const command = result.data;
@@ -193,7 +190,7 @@ class EditCustomCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing custom-edit command:", error);
-      return this.createGeneralError("Error", "An error occurred while updating the custom command. Please try again.");
+      return this.createAdminError("Error", "An error occurred while updating the custom command. Please try again.");
     }
   }
 }

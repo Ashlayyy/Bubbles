@@ -16,8 +16,8 @@ class AliasCommand extends AdminCommand {
       description: "Manage quick response aliases",
       category: "admin",
       permissions: {
-        level: PermissionLevel.MODERATOR,
-        isConfigurable: true,
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
       },
       ephemeral: true,
       guildOnly: true,
@@ -300,6 +300,7 @@ export default new AliasCommand();
 export const builder = new SlashCommandBuilder()
   .setName("alias")
   .setDescription("Manage quick response aliases")
+  .setDefaultMemberPermissions(0)
   .addSubcommand((sub) =>
     sub
       .setName("create")

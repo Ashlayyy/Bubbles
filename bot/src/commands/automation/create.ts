@@ -1,9 +1,9 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class CreateAutomationCommand extends GeneralCommand {
+class CreateAutomationCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "automation-create",
@@ -66,7 +66,7 @@ class CreateAutomationCommand extends GeneralCommand {
       const result = (await response.json()) as any;
 
       if (!result.success) {
-        return this.createGeneralError("Automation Error", result.error || "Failed to create automation rule");
+        return this.createAdminError("Automation Error", result.error || "Failed to create automation rule");
       }
 
       const rule = result.data;
@@ -140,10 +140,7 @@ class CreateAutomationCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing automation-create command:", error);
-      return this.createGeneralError(
-        "Error",
-        "An error occurred while creating the automation rule. Please try again."
-      );
+      return this.createAdminError("Error", "An error occurred while creating the automation rule. Please try again.");
     }
   }
 }

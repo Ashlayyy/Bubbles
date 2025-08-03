@@ -15,7 +15,7 @@ import logger from "../../logger.js";
 import type Client from "../../structures/Client.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { ResponseBuilder, type CommandConfig, type CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
 // Store active giveaways in memory for quick access
 const activeGiveaways = new Map<string, Giveaway>();
@@ -23,15 +23,15 @@ const activeGiveaways = new Map<string, Giveaway>();
 /**
  * Giveaway Command - Create and manage giveaways
  */
-export class GiveawayCommand extends GeneralCommand {
+export class GiveawayCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "giveaway",
       description: "Create and manage giveaways",
-      category: "general",
+      category: "admin",
       permissions: {
-        level: PermissionLevel.MODERATOR,
-        isConfigurable: true,
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
       },
       ephemeral: false,
       guildOnly: true,
@@ -59,10 +59,10 @@ export class GiveawayCommand extends GeneralCommand {
         case "list":
           return await this.handleListGiveaways();
         default:
-          return this.createGeneralError("Invalid Subcommand", "Unknown giveaway subcommand");
+          return this.createAdminError("Invalid Subcommand", "Unknown giveaway subcommand");
       }
     } catch (error) {
-      return this.createGeneralError(
+      return this.createAdminError(
         "Giveaway Error",
         `An error occurred: ${error instanceof Error ? error.message : "Unknown error"}`
       );
@@ -167,7 +167,7 @@ export class GiveawayCommand extends GeneralCommand {
 
       return response;
     } catch (error) {
-      return this.createGeneralError("Creation Failed", "Failed to create giveaway. Please try again.");
+      return this.createAdminError("Creation Failed", "Failed to create giveaway. Please try again.");
     }
   }
 
@@ -183,7 +183,7 @@ export class GiveawayCommand extends GeneralCommand {
         .ephemeral()
         .build();
     } catch (error) {
-      return this.createGeneralError("End Failed", "Failed to end giveaway. Please check the ID and try again.");
+      return this.createAdminError("End Failed", "Failed to end giveaway. Please check the ID and try again.");
     }
   }
 
@@ -199,18 +199,18 @@ export class GiveawayCommand extends GeneralCommand {
       });
 
       if (!giveaway) {
-        return this.createGeneralError("Giveaway Not Found", "Could not find the specified giveaway.");
+        return this.createAdminError("Giveaway Not Found", "Could not find the specified giveaway.");
       }
 
       if (!giveaway.hasEnded) {
-        return this.createGeneralError("Giveaway Active", "Cannot reroll an active giveaway. End it first.");
+        return this.createAdminError("Giveaway Active", "Cannot reroll an active giveaway. End it first.");
       }
 
       const winnersCount = newWinners ?? giveaway.winnersCount;
       const eligibleEntries = giveaway.entries.map((entry) => entry.userId);
 
       if (eligibleEntries.length === 0) {
-        return this.createGeneralError("No Entries", "No valid entries found for this giveaway.");
+        return this.createAdminError("No Entries", "No valid entries found for this giveaway.");
       }
 
       const winners = selectRandomWinners(eligibleEntries, winnersCount);
@@ -235,7 +235,7 @@ export class GiveawayCommand extends GeneralCommand {
 
       return { embeds: [embed] };
     } catch (error) {
-      return this.createGeneralError("Reroll Failed", "Failed to reroll giveaway. Please try again.");
+      return this.createAdminError("Reroll Failed", "Failed to reroll giveaway. Please try again.");
     }
   }
 
@@ -276,7 +276,7 @@ export class GiveawayCommand extends GeneralCommand {
 
       return { embeds: [embed], ephemeral: true };
     } catch (error) {
-      return this.createGeneralError("List Failed", "Failed to list giveaways. Please try again.");
+      return this.createAdminError("List Failed", "Failed to list giveaways. Please try again.");
     }
   }
 

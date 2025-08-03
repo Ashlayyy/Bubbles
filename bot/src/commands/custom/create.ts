@@ -1,9 +1,9 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class CreateCustomCommand extends GeneralCommand {
+class CreateCustomCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "custom-create",
@@ -27,17 +27,17 @@ class CreateCustomCommand extends GeneralCommand {
     try {
       // Validate command name
       if (name.length < 2 || name.length > 32) {
-        return this.createGeneralError("Invalid Name", "Command name must be between 2 and 32 characters long.");
+        return this.createAdminError("Invalid Name", "Command name must be between 2 and 32 characters long.");
       }
 
       // Validate content length
       if (content.length > 2000) {
-        return this.createGeneralError("Content Too Long", "Command content must be 2000 characters or less.");
+        return this.createAdminError("Content Too Long", "Command content must be 2000 characters or less.");
       }
 
       // Validate cooldown
       if (cooldown < 0 || cooldown > 3600) {
-        return this.createGeneralError("Invalid Cooldown", "Cooldown must be between 0 and 3600 seconds (1 hour).");
+        return this.createAdminError("Invalid Cooldown", "Cooldown must be between 0 and 3600 seconds (1 hour).");
       }
 
       const customApiUrl = process.env.API_URL || "http://localhost:3001";
@@ -78,7 +78,7 @@ class CreateCustomCommand extends GeneralCommand {
       const result = (await response.json()) as any;
 
       if (!result.success) {
-        return this.createGeneralError("Command Creation Error", result.error || "Failed to create custom command");
+        return this.createAdminError("Command Creation Error", result.error || "Failed to create custom command");
       }
 
       const command = result.data;
@@ -121,7 +121,10 @@ class CreateCustomCommand extends GeneralCommand {
       }
 
       // Add content preview
-      const contentPreview = command.content.length > 200 ? command.content.substring(0, 197) + "..." : command.content;
+      const contentPreview =
+        (command.content as string).length > 200
+          ? (command.content as string).substring(0, 197) + "..."
+          : command.content;
 
       embed.addFields({
         name: "📝 Content",
@@ -177,7 +180,7 @@ class CreateCustomCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing custom-create command:", error);
-      return this.createGeneralError("Error", "An error occurred while creating the custom command. Please try again.");
+      return this.createAdminError("Error", "An error occurred while creating the custom command. Please try again.");
     }
   }
 }

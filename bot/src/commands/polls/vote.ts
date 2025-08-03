@@ -193,7 +193,7 @@ class VotePollCommand extends GeneralCommand {
         .addFields(
           {
             name: "📊 Poll Type",
-            value: `${typeEmojis[poll.type]} ${poll.type.charAt(0).toUpperCase() + poll.type.slice(1)}`,
+            value: `${typeEmojis[poll.type as keyof typeof typeEmojis]} ${(poll.type as string).charAt(0).toUpperCase() + (poll.type as string).slice(1)}`,
             inline: true,
           },
           {
@@ -218,14 +218,14 @@ class VotePollCommand extends GeneralCommand {
         const choiceIndex = poll.options.indexOf(voteData.choices[0]);
         embed.addFields({
           name: "✅ Your Choice",
-          value: `**${choiceIndex + 1}.** ${voteData.choices[0]}`,
+          value: `**${(choiceIndex as number) + 1}.** ${voteData.choices[0]}`,
           inline: false,
         });
       } else if (poll.type === "multiple") {
         const choicesText = voteData.choices
           .map((choice: string) => {
             const choiceIndex = poll.options.indexOf(choice);
-            return `**${choiceIndex + 1}.** ${choice}`;
+            return `**${(choiceIndex as number) + 1}.** ${choice}`;
           })
           .join("\n");
 
@@ -245,7 +245,7 @@ class VotePollCommand extends GeneralCommand {
         const rankingText = voteData.ranking
           .map((choice: string, index: number) => {
             const choiceIndex = poll.options.indexOf(choice);
-            return `**${index + 1}.** ${choice} (Option ${choiceIndex + 1})`;
+            return `**${index + 1}.** ${choice} (Option ${(choiceIndex as number) + 1})`;
           })
           .join("\n");
 

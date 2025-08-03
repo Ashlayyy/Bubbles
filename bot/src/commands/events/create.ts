@@ -1,9 +1,9 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class CreateEventCommand extends GeneralCommand {
+class CreateEventCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "event-create",
@@ -29,14 +29,14 @@ class CreateEventCommand extends GeneralCommand {
       // Parse and validate start time
       const startDate = new Date(startTime);
       if (isNaN(startDate.getTime())) {
-        return this.createGeneralError(
+        return this.createAdminError(
           "Invalid Start Time",
           "Please provide a valid start time in ISO format (e.g., 2024-01-15T19:00:00Z) or relative format (e.g., 'tomorrow 7pm')."
         );
       }
 
       if (startDate < new Date()) {
-        return this.createGeneralError("Invalid Start Time", "Start time cannot be in the past.");
+        return this.createAdminError("Invalid Start Time", "Start time cannot be in the past.");
       }
 
       // Parse and validate end time if provided
@@ -44,11 +44,11 @@ class CreateEventCommand extends GeneralCommand {
       if (endTime) {
         endDate = new Date(endTime);
         if (isNaN(endDate.getTime())) {
-          return this.createGeneralError("Invalid End Time", "Please provide a valid end time in ISO format.");
+          return this.createAdminError("Invalid End Time", "Please provide a valid end time in ISO format.");
         }
 
         if (endDate <= startDate) {
-          return this.createGeneralError("Invalid End Time", "End time must be after start time.");
+          return this.createAdminError("Invalid End Time", "End time must be after start time.");
         }
       }
 
@@ -84,7 +84,7 @@ class CreateEventCommand extends GeneralCommand {
       const result = (await response.json()) as any;
 
       if (!result.success) {
-        return this.createGeneralError("Event Creation Error", result.error || "Failed to create event");
+        return this.createAdminError("Event Creation Error", result.error || "Failed to create event");
       }
 
       const event = result.data;
@@ -121,7 +121,10 @@ class CreateEventCommand extends GeneralCommand {
       if (event.description) {
         embed.addFields({
           name: "📋 Description",
-          value: event.description.length > 1024 ? event.description.substring(0, 1021) + "..." : event.description,
+          value:
+            (event.description as string).length > 1024
+              ? (event.description as string).substring(0, 1021) + "..."
+              : (event.description as string),
           inline: false,
         });
       }
@@ -183,7 +186,7 @@ class CreateEventCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing event-create command:", error);
-      return this.createGeneralError("Error", "An error occurred while creating the event. Please try again.");
+      return this.createAdminError("Error", "An error occurred while creating the event. Please try again.");
     }
   }
 }

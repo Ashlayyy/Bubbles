@@ -1,9 +1,9 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
-class DeleteAutomationCommand extends GeneralCommand {
+class DeleteAutomationCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "automation-delete",
@@ -21,7 +21,7 @@ class DeleteAutomationCommand extends GeneralCommand {
     const confirm = this.getBooleanOption("confirm") ?? false;
 
     if (!confirm) {
-      return this.createGeneralError(
+      return this.createAdminError(
         "Confirmation Required",
         "You must set `confirm` to `true` to delete an automation rule. This action cannot be undone!"
       );
@@ -40,7 +40,7 @@ class DeleteAutomationCommand extends GeneralCommand {
 
       if (!getResponse.ok) {
         if (getResponse.status === 404) {
-          return this.createGeneralError("Rule Not Found", "The specified automation rule was not found.");
+          return this.createAdminError("Rule Not Found", "The specified automation rule was not found.");
         }
         throw new Error(`API request failed: ${getResponse.status}`);
       }
@@ -48,7 +48,7 @@ class DeleteAutomationCommand extends GeneralCommand {
       const getRuleResult = (await getResponse.json()) as any;
 
       if (!getRuleResult.success) {
-        return this.createGeneralError("Error", getRuleResult.error || "Failed to fetch automation rule details");
+        return this.createAdminError("Error", getRuleResult.error || "Failed to fetch automation rule details");
       }
 
       const rule = getRuleResult.data;
@@ -73,7 +73,7 @@ class DeleteAutomationCommand extends GeneralCommand {
       const deleteResult = (await deleteResponse.json()) as any;
 
       if (!deleteResult.success) {
-        return this.createGeneralError("Deletion Error", deleteResult.error || "Failed to delete automation rule");
+        return this.createAdminError("Deletion Error", deleteResult.error || "Failed to delete automation rule");
       }
 
       // Create success embed
@@ -106,7 +106,7 @@ class DeleteAutomationCommand extends GeneralCommand {
           },
           {
             name: "👤 Deleted by",
-            value: this.formatUserDisplay(this.user),
+            value: this.user.username,
             inline: true,
           },
           {
@@ -139,10 +139,7 @@ class DeleteAutomationCommand extends GeneralCommand {
       return { embeds: [embed], ephemeral: false };
     } catch (error) {
       logger.error("Error executing automation-delete command:", error);
-      return this.createGeneralError(
-        "Error",
-        "An error occurred while deleting the automation rule. Please try again."
-      );
+      return this.createAdminError("Error", "An error occurred while deleting the automation rule. Please try again.");
     }
   }
 }

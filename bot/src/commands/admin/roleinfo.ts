@@ -2,22 +2,22 @@ import { EmbedBuilder, PermissionsBitField, Role, SlashCommandBuilder } from "di
 import logger from "../../logger.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
+import { AdminCommand } from "../_core/specialized/AdminCommand.js";
 
 /**
  * Roleinfo Command - Display detailed information about a role
  */
-export class RoleinfoCommand extends GeneralCommand {
+export class RoleinfoCommand extends AdminCommand {
   constructor() {
     const config: CommandConfig = {
       name: "roleinfo",
       description: "Display detailed information about a role",
-      category: "general",
+      category: "admin",
       permissions: {
-        level: PermissionLevel.PUBLIC,
-        isConfigurable: true,
+        level: PermissionLevel.ADMIN,
+        isConfigurable: false,
       },
-      ephemeral: false,
+      ephemeral: true,
       guildOnly: true,
     };
 
