@@ -17,6 +17,14 @@ export function loadEnvironment(): void {
     // Get paths using the centralized path resolver
     const paths = PathResolver.getCommonPaths(import.meta.url);
 
+    // Enhanced debugging for path resolution
+    console.log(`🔧 Environment Loader Debug:`);
+    console.log(`   Project Root: ${paths.projectRoot}`);
+    console.log(`   Bot Root: ${paths.botRoot}`);
+    console.log(`   Current Working Directory: ${process.cwd()}`);
+    console.log(`   PM2_HOME: ${process.env.PM2_HOME || "not set"}`);
+    console.log(`   process.env.name: ${process.env.name || "not set"}`);
+
     // Determine if we're running under PM2 or locally
     const isRunningUnderPM2 = process.env.PM2_HOME !== undefined || process.env.name?.startsWith("bubbles-") === true;
 

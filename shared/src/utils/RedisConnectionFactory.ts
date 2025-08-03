@@ -14,7 +14,8 @@ export class RedisConnectionFactory {
 	 */
 	static getSharedConnection(): Redis {
 		if (!this.sharedConnection) {
-			this.sharedConnection = new Redis({
+			// Enhanced debugging for Redis connection
+			const redisConfig = {
 				host: process.env.REDIS_HOST || 'localhost',
 				port: parseInt(process.env.REDIS_PORT || '6379'),
 				password: process.env.REDIS_PASSWORD || undefined, // Use undefined instead of empty string to avoid NOAUTH errors
@@ -29,7 +30,16 @@ export class RedisConnectionFactory {
 				family: 4, // Force IPv4 for WSL compatibility
 				showFriendlyErrorStack: true,
 				keyPrefix: 'bot:', // Namespace all bot operations
-			});
+			};
+
+			console.log(
+				`[Redis Shared] 🔧 Creating connection with config: host=${redisConfig.host}, port=${redisConfig.port}, db=${redisConfig.db}`
+			);
+			console.log(
+				`[Redis Shared] 🔧 Environment variables: REDIS_HOST=${process.env.REDIS_HOST}, REDIS_PORT=${process.env.REDIS_PORT}, REDIS_DB=${process.env.REDIS_DB}`
+			);
+
+			this.sharedConnection = new Redis(redisConfig);
 
 			// Set up connection event handlers
 			this.sharedConnection.on('error', (err: Error) => {

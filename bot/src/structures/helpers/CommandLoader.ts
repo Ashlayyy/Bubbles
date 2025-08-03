@@ -76,7 +76,11 @@ export class CommandLoader {
         await this.loadSingleCommand(command, category, commandFilePath);
         loadedCommandFiles.add(commandFilePath);
       } catch (error) {
-        logger.error(`Failed to process command file ${commandFilePath}:`, error);
+        logger.error(`Failed to process command file ${commandFilePath}:`);
+        logger.error(`  File exists: ${require("fs").existsSync(commandFilePath)}`);
+        logger.error(`  File path: ${commandFilePath}`);
+        logger.error(`  Category: ${category}`);
+        logger.error(`  Error details:`, error);
       }
     };
 
