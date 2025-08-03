@@ -1,11 +1,8 @@
+import { PathResolver } from "@shared/utils/pathResolver";
 import i18next from "i18next";
 import Backend from "i18next-fs-backend";
-import { resolve } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import logger from "../logger.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = resolve(__filename, "..");
 
 export class I18nService {
   private static instance: I18nService | null = null;
@@ -32,8 +29,8 @@ export class I18nService {
         debug: process.env.NODE_ENV === "development",
 
         backend: {
-          loadPath: resolve(__dirname, "../locales/{{lng}}/{{ns}}.json"),
-          addPath: resolve(__dirname, "../locales/{{lng}}/{{ns}}.missing.json"),
+          loadPath: join(PathResolver.getCommonPaths(import.meta.url).botSrc, "locales/{{lng}}/{{ns}}.json"),
+          addPath: join(PathResolver.getCommonPaths(import.meta.url).botSrc, "locales/{{lng}}/{{ns}}.missing.json"),
         },
 
         ns: ["common", "commands", "errors", "moderation"],

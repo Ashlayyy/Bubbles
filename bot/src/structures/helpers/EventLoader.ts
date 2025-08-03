@@ -1,3 +1,4 @@
+import { PathResolver } from "@shared/utils/pathResolver";
 import { forNestedDirsFiles, importDefaultESM } from "../../functions/general/fs.js";
 import { camel2Display } from "../../functions/general/strings.js";
 import logger from "../../logger.js";
@@ -14,7 +15,14 @@ export class EventLoader {
   async loadEvents(client: Client): Promise<void> {
     logger.info("Loading events");
 
-    const eventsDir = this.devMode ? "./src/events" : "./build/bot/src/events";
+    // Use centralized path resolver for reliable path resolution
+    const paths = PathResolver.getCommonPaths(import.meta.url);
+    const eventsDir = PathResolver.resolveForEnvironment({
+      devPath: "src/events",
+      prodPath: "bot/build/src/events",
+      isDevMode: this.devMode,
+      baseDir: paths.projectRoot,
+    });
     const eventEmitterTypes: EventEmitterType[] = [];
 
     await forNestedDirsFiles(eventsDir, async (eventFilePath, dir, file) => {

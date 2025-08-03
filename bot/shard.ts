@@ -1,31 +1,30 @@
+import { PathResolver } from "@shared/utils/pathResolver";
 import { config as dotenvConfig } from "dotenv";
 import path from "path";
-import { fileURLToPath } from "url";
 
-// Get current directory for ESM compatibility
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Get paths using the centralized path resolver
+const paths = PathResolver.getCommonPaths(import.meta.url);
 
 // Use centralized environment loading
-const environmentLoaderPath = path.resolve(__dirname, "src/functions/general/environmentLoader.js");
+const environmentLoaderPath = path.join(paths.botRoot, "bot/build/src/functions/general/environmentLoader.js");
 try {
   const { loadEnvironment } = (await import(environmentLoaderPath)) as { loadEnvironment: () => void };
   loadEnvironment();
 } catch (_error) {
   // Fallback to basic environment loading if the module isn't built yet
   console.warn("⚠️ Using fallback environment loading for shard.ts");
-  const rootEnvPath = path.resolve(__dirname, "../.env");
+  const rootEnvPath = paths.envFile;
   dotenvConfig({ path: rootEnvPath });
 
   const nodeEnv = process.env.NODE_ENV ?? "development";
-  const envSpecificPath = path.resolve(__dirname, `../.env.${nodeEnv}`);
+  const envSpecificPath = path.join(paths.projectRoot, `.env.${nodeEnv}`);
   dotenvConfig({ path: envSpecificPath, override: true });
 }
 
 import { ShardingManager } from "discord.js";
 
 // Create sharding manager
-const manager = new ShardingManager(path.join(__dirname, "build", "bot", "src", "index.js"), {
+const manager = new ShardingManager(path.join(paths.botRoot, "bot/build/src/index.js"), {
   token: process.env.DISCORD_TOKEN || "",
   totalShards: "auto", // Discord will determine the optimal number
   // totalShards: 4, // Or specify manually

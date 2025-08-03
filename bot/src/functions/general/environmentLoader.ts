@@ -1,11 +1,6 @@
+import { PathResolver } from "@shared/utils/pathResolver";
 import dotenvExpand from "dotenv-expand";
 import * as dotenvFlow from "dotenv-flow";
-import { resolve } from "path";
-import { fileURLToPath } from "url";
-
-// Get current directory for ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = resolve(__filename, "..");
 
 let environmentLoaded = false;
 
@@ -19,16 +14,19 @@ export function loadEnvironment(): void {
   }
 
   try {
+    // Get paths using the centralized path resolver
+    const paths = PathResolver.getCommonPaths(import.meta.url);
+
     // Determine if we're running under PM2 or locally
     const isRunningUnderPM2 = process.env.PM2_HOME !== undefined || process.env.name?.startsWith("bubbles-") === true;
 
     if (isRunningUnderPM2) {
-      // PM2 mode - use current working directory paths (PM2 handles this)
+      // PM2 mode - PM2 should set the working directory correctly
       console.log("🔧 Loading environment variables for PM2...");
 
-      // Use dotenv-flow for PM2 mode
+      // For PM2, try the project root first
       const result = dotenvFlow.config({
-        path: process.cwd(),
+        path: paths.projectRoot,
         pattern: ".env[.node_env][.local]",
         node_env: process.env.NODE_ENV ?? "development",
       }) as { parsed?: Record<string, string>; error?: Error };
@@ -36,18 +34,27 @@ export function loadEnvironment(): void {
       if (result?.parsed && !result.error) {
         // Enable variable expansion
         dotenvExpand.expand({ parsed: result.parsed });
-        console.log(`✅ Loaded environment files from ${process.cwd()}`);
+        console.log(`✅ Loaded environment files from ${paths.projectRoot}`);
+      } else {
+        // Fallback to current working directory for PM2
+        const fallbackResult = dotenvFlow.config({
+          path: process.cwd(),
+          pattern: ".env[.node_env][.local]",
+          node_env: process.env.NODE_ENV ?? "development",
+        }) as { parsed?: Record<string, string>; error?: Error };
+
+        if (fallbackResult?.parsed && !fallbackResult.error) {
+          dotenvExpand.expand({ parsed: fallbackResult.parsed });
+          console.log(`✅ Loaded environment files from ${process.cwd()} (PM2 fallback)`);
+        }
       }
     } else {
-      // Local development mode - use relative paths from bot directory
+      // Local development mode - use absolute paths from module location
       console.log("🔧 Loading environment variables for local development...");
-
-      // Get the project root (3 levels up from this file: bot/src/functions/general/)
-      const projectRoot = resolve(__dirname, "../../../../");
 
       // Load from project root with dotenv-flow
       const result = dotenvFlow.config({
-        path: projectRoot,
+        path: paths.projectRoot,
         pattern: ".env[.node_env][.local]",
         node_env: process.env.NODE_ENV ?? "development",
       }) as { parsed?: Record<string, string>; error?: Error };
@@ -55,20 +62,19 @@ export function loadEnvironment(): void {
       if (result?.parsed && !result.error) {
         // Enable variable expansion
         dotenvExpand.expand({ parsed: result.parsed });
-        console.log(`✅ Loaded environment files from ${projectRoot}`);
+        console.log(`✅ Loaded environment files from ${paths.projectRoot}`);
       }
 
       // Also try bot-specific files as final override
-      const botDir = resolve(__dirname, "../../../");
       const botResult = dotenvFlow.config({
-        path: botDir,
+        path: paths.botRoot,
         pattern: ".env[.node_env][.local]",
         node_env: process.env.NODE_ENV ?? "development",
       }) as { parsed?: Record<string, string>; error?: Error };
 
       if (botResult?.parsed && !botResult.error) {
         dotenvExpand.expand({ parsed: botResult.parsed });
-        console.log(`✅ Loaded bot-specific environment files from ${botDir}`);
+        console.log(`✅ Loaded bot-specific environment files from ${paths.botRoot}`);
       }
     }
 

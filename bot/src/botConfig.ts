@@ -1,8 +1,8 @@
+import { PathResolver } from "@shared/utils/pathResolver";
 import { ActivityType } from "discord.js";
 import { constants, copyFileSync, existsSync, readFileSync, writeFileSync } from "fs";
 import lodash from "lodash";
-import path from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 
@@ -75,16 +75,14 @@ let config: BotConfig | undefined;
  */
 export function getConfigFile(): BotConfig {
   if (config === undefined) {
-    // Get the directory containing this source file
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
+    // Get paths using the centralized path resolver
+    const paths = PathResolver.getCommonPaths(import.meta.url);
+    const botRoot = paths.botRoot;
 
-    // Resolve paths relative to bot root directory (../../ from src/)
-    const botRoot = path.resolve(__dirname, "..", "..");
-    const DEFAULT_CONFIG_FILE_NAME = path.join(botRoot, "config.default.yaml");
+    const DEFAULT_CONFIG_FILE_NAME = join(botRoot, "config.default.yaml");
 
     const isDev = isDevEnvironment();
-    const configFileName = path.join(botRoot, isDev ? "config.dev.yaml" : "config.yaml");
+    const configFileName = join(botRoot, isDev ? "config.dev.yaml" : "config.yaml");
 
     if (!existsSync(configFileName)) {
       console.info(`Generating "${configFileName}"`);

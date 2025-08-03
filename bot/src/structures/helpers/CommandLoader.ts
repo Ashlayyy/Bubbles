@@ -1,3 +1,4 @@
+import { PathResolver } from "@shared/utils/pathResolver";
 import { Collection } from "discord.js";
 import { BaseCommand } from "../../commands/_core/BaseCommand.js";
 import { forNestedDirsFiles, importDefaultESM } from "../../functions/general/fs.js";
@@ -24,7 +25,14 @@ export class CommandLoader {
     logger.info("Loading commands");
     logger.info(`Dev mode: ${this.devMode}`);
 
-    const commandsDir = this.devMode ? "./src/commands" : "./build/bot/src/commands";
+    // Use centralized path resolver for reliable path resolution
+    const paths = PathResolver.getCommonPaths(import.meta.url);
+    const commandsDir = PathResolver.resolveForEnvironment({
+      devPath: "src/commands",
+      prodPath: "bot/build/src/commands",
+      isDevMode: this.devMode,
+      baseDir: paths.projectRoot,
+    });
     logger.info(`Commands directory: ${commandsDir}`);
 
     const loadedCommandFiles = new Set<string>();
@@ -76,7 +84,12 @@ export class CommandLoader {
     await forNestedDirsFiles(commandsDir, processCommandFile);
 
     // Load context menu commands
-    const contextMenuDir = `${commandsDir}/context`;
+    const contextMenuDir = PathResolver.resolveForEnvironment({
+      devPath: "src/commands/context",
+      prodPath: "bot/build/src/commands/context",
+      isDevMode: this.devMode,
+      baseDir: paths.projectRoot,
+    });
     await forNestedDirsFiles(contextMenuDir, processCommandFile);
 
     logger.debug("Successfully loaded commands");

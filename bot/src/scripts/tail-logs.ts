@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 
+import { PathResolver } from "@shared/utils/pathResolver";
 import { spawn } from "child_process";
 import { existsSync } from "fs";
-import { resolve } from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = resolve(__filename, "..");
+import { join } from "path";
 
 interface TailOptions {
   follow: boolean;
@@ -65,12 +62,13 @@ class LogTailer {
   }
 
   private findLogFile(): string | null {
+    const paths = PathResolver.getCommonPaths(import.meta.url);
     const possiblePaths = [
-      resolve(__dirname, "../logs/bot.log"),
-      resolve(__dirname, "../logs/combined.log"),
-      resolve(__dirname, "../logs/app.log"),
-      resolve(__dirname, "../../logs/bot.log"),
-      resolve(__dirname, "../../logs/combined.log"),
+      join(paths.botRoot, "logs/bot.log"),
+      join(paths.botRoot, "logs/combined.log"),
+      join(paths.botRoot, "logs/app.log"),
+      join(paths.projectRoot, "logs/bot.log"),
+      join(paths.projectRoot, "logs/combined.log"),
     ];
 
     for (const path of possiblePaths) {

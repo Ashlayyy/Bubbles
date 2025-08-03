@@ -1,17 +1,14 @@
 #!/usr/bin/env node
 
+import { PathResolver } from "@shared/utils/pathResolver";
 import { Collection } from "discord.js";
 import { mkdirSync, writeFileSync } from "fs";
-import { resolve } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { BaseCommand } from "../commands/_core/BaseCommand.js";
 import { forNestedDirsFiles, importDefaultESM } from "../functions/general/fs.js";
 import { camel2Display } from "../functions/general/strings.js";
 import type Command from "../structures/Command.js";
 import { isCommand } from "../structures/Command.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = resolve(__filename, "..");
 
 interface CommandInfo {
   name: string;
@@ -36,7 +33,8 @@ async function generateCommandDocs(): Promise<void> {
   const commands = new Collection<string, BaseCommand | Command>();
   const commandsByCategory = new Map<string, CommandInfo[]>();
 
-  const commandsDir = "./src/commands";
+  const paths = PathResolver.getCommonPaths(import.meta.url);
+  const commandsDir = join(paths.botSrc, "commands");
   const loadedCommandFiles = new Set<string>();
 
   const processCommandFile = async (commandFilePath: string, category: string) => {
@@ -139,11 +137,11 @@ async function generateCommandDocs(): Promise<void> {
   const markdown = generateMarkdown(commandsByCategory);
 
   // Ensure output directory exists
-  const outputDir = resolve(__dirname, "../../../documentation/generated");
+  const outputDir = join(paths.docsRoot, "generated");
   mkdirSync(outputDir, { recursive: true });
 
   // Write to file
-  const outputPath = resolve(outputDir, "commands.md");
+  const outputPath = join(outputDir, "commands.md");
   writeFileSync(outputPath, markdown, "utf-8");
 
   console.log(`✅ Documentation generated: ${outputPath}`);

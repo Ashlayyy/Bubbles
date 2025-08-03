@@ -5,3 +5,4 @@ export * from './utils/duration.js';
 export * from './utils/logger.js';
 export * from './utils/JwtKeyManager.js';
 export * from './utils/RedisConnectionFactory.js';
+export * from './utils/pathResolver.js';

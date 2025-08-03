@@ -1,22 +1,26 @@
 import dotenv from 'dotenv';
-import { resolve } from 'path';
+import { resolve, join } from 'path';
 import { existsSync } from 'fs';
+import { PathResolver } from '@shared/utils/pathResolver';
+
+// Get paths using the centralized path resolver
+const paths = PathResolver.getCommonPaths(import.meta.url);
 
 // 1) Load repository-root .env first (base config)
-const rootEnvPath = resolve(process.cwd(), '../.env');
+const rootEnvPath = paths.envFile;
 if (existsSync(rootEnvPath)) {
 	dotenv.config({ path: rootEnvPath });
 }
 
 // 2) Load environment-specific config (development/production) as override
 const nodeEnv = process.env.NODE_ENV ?? 'development';
-const envSpecificPath = resolve(process.cwd(), `../.env.${nodeEnv}`);
+const envSpecificPath = join(paths.projectRoot, `.env.${nodeEnv}`);
 if (existsSync(envSpecificPath)) {
 	dotenv.config({ path: envSpecificPath, override: true });
 }
 
 // 3) Load local env (within /api) as final override if present
-const localEnvPath = resolve(process.cwd(), '.env');
+const localEnvPath = join(paths.apiRoot, '.env');
 if (existsSync(localEnvPath)) {
 	dotenv.config({ path: localEnvPath, override: true });
 }
