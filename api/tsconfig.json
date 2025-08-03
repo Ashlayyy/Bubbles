@@ -22,7 +22,8 @@
 			"@shared/types/*": ["../shared/dist/types/*"],
 			"@shared/types": ["../shared/dist/types/index"],
 			"@shared/queue": ["../shared/dist/queue/index"],
-			"@shared/utils/*": ["../shared/dist/utils/*"]
+			"@shared/utils/*": ["../shared/dist/utils/*"],
+			"@bubbles/shared": ["../shared/dist/index"]
 		}
 	},
 	"include": ["src/**/*"],
