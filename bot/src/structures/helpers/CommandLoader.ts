@@ -1,5 +1,6 @@
 import { PathResolver } from "@shared/utils/pathResolver";
 import { Collection } from "discord.js";
+import { existsSync } from "fs";
 import { BaseCommand } from "../../commands/_core/BaseCommand.js";
 import { forNestedDirsFiles, importDefaultESM } from "../../functions/general/fs.js";
 import { camel2Display } from "../../functions/general/strings.js";
@@ -77,7 +78,7 @@ export class CommandLoader {
         loadedCommandFiles.add(commandFilePath);
       } catch (error) {
         logger.error(`Failed to process command file ${commandFilePath}:`);
-        logger.error(`  File exists: ${require("fs").existsSync(commandFilePath)}`);
+        logger.error(`  File exists: ${existsSync(commandFilePath)}`);
         logger.error(`  File path: ${commandFilePath}`);
         logger.error(`  Category: ${category}`);
         logger.error(`  Error details:`, error);
