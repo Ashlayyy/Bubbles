@@ -5,7 +5,7 @@
 	"main": "dist/index.js",
 	"type": "module",
 	"scripts": {
-		"build": "npm --prefix ../shared run build && tsc",
+		"build": "npm --prefix ../shared run build && tsc --build",
 		"dev": "nodemon",
 		"start": "node dist/index.js",
 		"setup": "npm install && npm run build",

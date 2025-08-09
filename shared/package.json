@@ -5,7 +5,7 @@
 	"main": "dist/index.js",
 	"type": "module",
 	"scripts": {
-		"build": "tsc",
+		"build": "tsc --build",
 		"dev": "tsc --watch",
 		"db:generate": "prisma generate",
 		"db:push": "prisma db push",

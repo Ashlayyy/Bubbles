@@ -53,8 +53,8 @@ export class CommandLoader {
       }
 
       if (category === "dev" && !this.devMode) {
-        logger.error(new Error(`Development only commands are present in production environment`));
-        process.exit(1);
+        logger.debug(`Development only commands skipping in production`);
+        return;
       }
 
       try {

@@ -6,7 +6,7 @@ import path from "path";
 const paths = PathResolver.getCommonPaths(import.meta.url);
 
 // Use centralized environment loading
-const environmentLoaderPath = path.join(paths.botRoot, "bot/build/src/functions/general/environmentLoader.js");
+const environmentLoaderPath = path.join(paths.botRoot, "build/src/functions/general/environmentLoader.js");
 try {
   const { loadEnvironment } = (await import(environmentLoaderPath)) as { loadEnvironment: () => void };
   loadEnvironment();
@@ -24,7 +24,7 @@ try {
 import { ShardingManager } from "discord.js";
 
 // Create sharding manager
-const manager = new ShardingManager(path.join(paths.botRoot, "bot/build/src/index.js"), {
+const manager = new ShardingManager(path.join(paths.botRoot, "build/src/index.js"), {
   token: process.env.DISCORD_TOKEN || "",
   totalShards: "auto", // Discord will determine the optimal number
   // totalShards: 4, // Or specify manually

@@ -141,7 +141,7 @@ export class ComplimentWheelService {
       const participantsKey = this.getParticipantsKey(guildId);
       const participants = await this.redis.hgetall(participantsKey);
 
-      return Object.values(participants).map((p) => JSON.parse(p) as WheelParticipant);
+      return Object.values(participants as Record<string, string>).map((p: string) => JSON.parse(p) as WheelParticipant);
     } catch (error) {
       logger.error("Error getting wheel participants:", error);
       return [];
