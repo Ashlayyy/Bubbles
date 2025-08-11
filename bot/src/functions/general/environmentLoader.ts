@@ -24,7 +24,12 @@ export function loadEnvironment(): void {
     console.log(`   Current Working Directory: ${process.cwd()}`);
     console.log(`   PM2_HOME: ${process.env.PM2_HOME || "not set"}`);
     console.log(`   process.env.name: ${process.env.name || "not set"}`);
-
+    console.log(`   process.env.NODE_ENV: ${process.env.NODE_ENV || "not set"}`);
+    console.log(`   REDIS_URL: ${process.env.REDIS_URL || "not set"}`);
+    console.log(`   REDIS_USERNAME: ${process.env.REDIS_USERNAME || "not set"}`);
+    console.log(`   REDIS_PASSWORD: ${process.env.REDIS_PASSWORD || "not set"}`);
+    console.log(`   REDIS_PORT: ${process.env.REDIS_PORT || "not set"}`);
+    
     // Determine if we're running under PM2 or locally
     const isRunningUnderPM2 = process.env.PM2_HOME !== undefined || process.env.name?.startsWith("bubbles-") === true;
 

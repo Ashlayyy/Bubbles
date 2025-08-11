@@ -33,6 +33,7 @@
 		".": "./dist/index.js",
 		"./database": "./dist/database.js",
 		"./types/*": "./dist/types/*.js",
-		"./utils/*": "./dist/utils/*.js"
+		"./utils/*": "./dist/utils/*.js",
+		"./queue": "./dist/queue/index.js"
 	}
 }

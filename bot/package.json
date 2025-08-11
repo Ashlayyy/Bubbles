@@ -7,7 +7,7 @@
   "main": "build/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc --build && tsc-alias -p tsconfig.prod.json && node -e \"const fs=require('fs');const path=require('path');function replaceInFile(file){let content=fs.readFileSync(file,'utf8');content=content.replace(/from ['\\\"]@shared\\//g,'from \\\"@bubbles/shared/');content=content.replace(/from [\\\"]\\.\\.[\\\\/]\\.\\.[\\\"]|from [']\\.\\.[\\\\/]\\..['];/g,'from \\\"@bubbles/shared/database\\\";');if(fs.readFileSync(file,'utf8')!==content){fs.writeFileSync(file,content);}}function walkDir(dir){fs.readdirSync(dir).forEach(file=>{const filePath=path.join(dir,file);if(fs.statSync(filePath).isDirectory()){walkDir(filePath);}else if(file.endsWith('.js')){replaceInFile(filePath);}});}walkDir('build');\"",
+    "build": "tsc --build && tsc-alias -p tsconfig.prod.json && node scripts/fix-imports.js",
     "postbuild": "node build/src/scripts/generateConfig.js",
     "dev": "nodemon",
     "dev:shard": "tsx shard.ts",
