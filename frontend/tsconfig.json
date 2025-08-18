@@ -8,13 +8,8 @@
 		"baseUrl": ".",
 		"paths": {
 			"@/*": ["./src/*"],
-			"@shared/*": ["../shared/dist/*"]
+			"@shared/*": ["../shared/src/*"]
 		},
-		"noImplicitAny": false,
-		"noUnusedParameters": false,
-		"skipLibCheck": true,
-		"allowJs": true,
-		"noUnusedLocals": false,
-		"strictNullChecks": false
+		"skipLibCheck": true
 	}
 }

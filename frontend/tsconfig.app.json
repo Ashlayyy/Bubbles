@@ -12,7 +12,7 @@
 		"isolatedModules": true,
 		"moduleDetection": "force",
 		"noEmit": true,
-		"jsx": "react-jsx",
+		"jsx": "preserve",
 
 		/* Linting */
 		"strict": false,
@@ -24,8 +24,11 @@
 		"baseUrl": ".",
 		"paths": {
 			"@/*": ["./src/*"],
-			"@shared/*": ["../shared/dist/*"]
-		}
+			"@shared/*": ["../shared/src/*"]
+		},
+		"types": ["vite/client", "node"],
+		"resolveJsonModule": true
 	},
-	"include": ["src"]
+	"include": ["src/**/*.ts", "src/**/*.vue"],
+	"exclude": ["node_modules", "dist", "src/components/ui/**/*"]
 }

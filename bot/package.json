@@ -17,6 +17,7 @@
     "commands:resetDev": "tsc && cross-env NODE_ENV=development tsx src/scripts/discordAPI/resetCommands.ts",
     "commands:resetProd": "node build/src/scripts/discordAPI/resetCommands.js",
     "start": "node .",
+    "start:prod": "cross-env NODE_ENV=production node build/src/index.js",
     "start:shard": "node build/shard.js",
     "clean": "rimraf dist",
     "rotate-keys": "tsx src/scripts/rotate-keys.ts"

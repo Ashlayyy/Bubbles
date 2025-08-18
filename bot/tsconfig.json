@@ -1,23 +1,25 @@
 {
-  "extends": "../tsconfig.json",
   "compilerOptions": {
-    "outDir": "./build",
+    "target": "ES2022",
     "module": "ES2022",
+    "lib": ["ES2022"],
     "moduleResolution": "node",
-    "rootDir": ".",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "strict": false,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "outDir": "./build",
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
     "baseUrl": "..",
     "paths": {
-      "@shared/*": ["shared/dist/*"],
-      "@shared/database": ["shared/dist/database"],
-      "@shared/types/*": ["shared/dist/types/*"],
-      "@shared/types": ["shared/dist/types/index"],
-      "@shared/queue": ["shared/dist/queue/index"],
-      "@shared/utils/*": ["shared/dist/utils/*"]
+      "@shared/*": ["shared/dist/*"]
     },
-    "allowJs": false
+    "composite": true
   },
   "include": ["src/**/*", "shard.ts"],
   "exclude": ["node_modules", "build"],

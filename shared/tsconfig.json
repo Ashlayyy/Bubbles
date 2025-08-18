@@ -6,7 +6,6 @@
 		"moduleResolution": "node",
 		"allowSyntheticDefaultImports": true,
 		"esModuleInterop": true,
-		"allowJs": false,
 		"strict": true,
 		"declaration": true,
 		"declarationMap": true,
@@ -14,12 +13,9 @@
 		"outDir": "./dist",
 		"rootDir": "./src",
 		"skipLibCheck": true,
-		"skipDefaultLibCheck": true,
-		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
 		"types": ["node"],
-		"composite": true,
-		"downlevelIteration": true
+		"composite": true
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist"]

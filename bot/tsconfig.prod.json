@@ -7,6 +7,5 @@
     "rootDir": "."
   },
   "include": ["src/**/*", "shard.ts"],
-  "exclude": ["src/commands/dev"],
-  "references": [{ "path": "../shared" }]
+  "exclude": ["src/commands/dev"]
 }
