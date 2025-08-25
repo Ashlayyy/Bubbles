@@ -7,6 +7,7 @@ import { startReportWizard } from "../_shared/report-setup.js";
 import { startAppealsWizard } from "./setup-wizards/appeals-setup.js";
 import { startSetupWizard as startAutoModWizard } from "./setup-wizards/automod-setup.js";
 import { startComplimentenWizard } from "./setup-wizards/complimenten-setup.js";
+import { startLevelingWizard } from "./setup-wizards/leveling-setup.js";
 import { startLoggingWizard } from "./setup-wizards/logging-setup.js";
 import { startTicketWizard } from "./setup-wizards/ticket-setup.js";
 import { startWelcomeWizard } from "./setup-wizards/welcome-setup.js";
@@ -19,6 +20,7 @@ const MODULE_CHOICES = [
   "welcome/goodbye",
   "appeals",
   "complimenten",
+  "leveling",
 ] as const;
 
 type SetupModule = (typeof MODULE_CHOICES)[number];
@@ -65,6 +67,9 @@ class SetupCommand extends AdminCommand {
           break;
         case "complimenten":
           await startComplimentenWizard(this.client, this.interaction as ChatInputCommandInteraction);
+          break;
+        case "leveling":
+          await startLevelingWizard(this.client, this.interaction as ChatInputCommandInteraction);
           break;
         default:
           return {

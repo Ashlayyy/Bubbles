@@ -265,11 +265,11 @@ export class BullMQRegistry {
 		};
 
 		// Start checking availability after a longer delay to allow connections to establish
-		setTimeout(checkAvailability, 2000);
+		setTimeout(checkAvailability, 15000);
 
 		// Also check immediately and then periodically
 		checkAvailability();
-		setInterval(checkAvailability, 5000); // Check every 5 seconds
+		setInterval(checkAvailability, 30000); // Check every 30 seconds
 	}
 
 	// Prometheus metrics

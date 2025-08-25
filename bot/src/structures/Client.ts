@@ -690,7 +690,7 @@ export default class Client extends DiscordClient {
 
     // For now, all commands should assume we are in a guild.
     // Subject to change.
-    if (!interaction.guildId) {
+    if (!interaction.inGuild()) {
       logger.warn(`Tried to run \`/${legacyCommand.builder.name}\` command outside of a server/guild`);
       await interaction.reply({
         content: "This bot only supports commands in a server/guild!",

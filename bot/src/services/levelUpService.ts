@@ -1,5 +1,6 @@
 import { EmbedBuilder, Guild, GuildMember, TextChannel, User } from "discord.js";
 import logger from "../logger.js";
+import { levelingSettingsService } from "./levelingSettingsService.js";
 
 export interface LevelUpEmbedConfig {
   // Basic embed settings
@@ -274,25 +275,18 @@ export class LevelUpService {
    */
   private async getGuildLevelUpConfig(guildId: string): Promise<LevelUpEmbedConfig> {
     try {
-      const customApiUrl = process.env.API_URL || "http://localhost:3001";
-      const response = await fetch(`${customApiUrl}/api/leveling/${guildId}/level-up-config`, {
-        headers: {
-          Authorization: `Bearer ${process.env.API_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (response.ok) {
-        const data = (await response.json()) as any;
-        if (data.success) {
-          return { ...this.defaultConfig, ...data.data };
-        }
-      }
+      const settings = await levelingSettingsService.getSettings(guildId);
+      const config: LevelUpEmbedConfig = {
+        ...this.defaultConfig,
+        sendToChannel: settings.levelUpChannel ?? null,
+        description: settings.levelUpMessage ?? this.defaultConfig.description,
+        enabled: settings.enabled,
+      };
+      return config;
     } catch (error) {
-      logger.warn("Failed to fetch guild level-up config:", error);
+      logger.warn("Failed to load guild level-up config from settings:", error);
+      return this.defaultConfig;
     }
-
-    return this.defaultConfig;
   }
 
   /**

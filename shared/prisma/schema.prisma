@@ -89,6 +89,25 @@ model AppealSettings {
   GuildConfig           GuildConfig[]
 }
 
+// --------------------------------------------------
+// Leveling settings (persisted in DB, cached in Redis)
+model LevelingSettings {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId          String   @unique
+  enabled          Boolean  @default(true)
+  xpPerMessage     Int      @default(15)
+  xpCooldown       Int      @default(60) // seconds
+  levelUpChannel   String?
+  levelUpMessage   String?
+  ignoredChannels  String[] @default([])
+  ignoredRoles     String[] @default([])
+  multiplierRoles  Json? // Array of { roleId: string, multiplier: number }
+  stackMultipliers Boolean  @default(false)
+  minMessageLength Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
 model ModerationCase {
   id           String          @id @default(auto()) @map("_id") @db.ObjectId
   caseNumber   Int

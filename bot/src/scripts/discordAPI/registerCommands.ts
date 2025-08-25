@@ -1,5 +1,7 @@
 // Load environment variables first
 import { loadEnvironment } from "../../functions/general/environmentLoader.js";
+// Force production environment for this script
+process.env.NODE_ENV = "production";
 loadEnvironment();
 
 import { isDevEnvironment } from "../../functions/general/environment.js";

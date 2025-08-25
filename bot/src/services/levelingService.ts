@@ -5,6 +5,7 @@ import type { Message, VoiceState } from "discord.js";
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import { cooldownStore } from "../utils/CooldownStore.js";
+import { levelingSettingsService } from "./levelingSettingsService.js";
 
 // Reuse root logger with child metadata
 const loggerChild = logger.child({ component: "leveling-service" });
@@ -33,12 +34,19 @@ export class LevelingService {
     const guildId = message.guild.id;
     const userId = message.author.id;
 
-    // Cool-down check (guild+user level)
+    // Load settings
+    const settings = await levelingSettingsService.getSettings(guildId);
+    if (!settings.enabled) return;
+    if (settings.minMessageLength && message.content && message.content.length < settings.minMessageLength) return;
+    if (settings.ignoredChannels.includes(message.channel.id)) return;
+    if (message.member && message.member.roles.cache.some((r) => settings.ignoredRoles.includes(r.id))) return;
+
+    const cooldownMs = Math.max(0, (settings.xpCooldown ?? 60) * 1000);
     const allowed = await cooldownStore.requestToken({
       userId,
       guildId,
       commandName: "xp",
-      cooldownMs: this.DEFAULT_COOLDOWN_MS,
+      cooldownMs: cooldownMs || this.DEFAULT_COOLDOWN_MS,
     });
 
     if (!allowed) return; // Ignore XP award – cooldown active
@@ -47,12 +55,32 @@ export class LevelingService {
       const xpKey = `xpTotal:${guildId}:${userId}`;
       // Increment XP atomically in Redis and get new total
       const redis = (cooldownStore as any).redis; // expose internal redis (hacky but fine for now)
-      const newTotal = await redis.incrby(xpKey, this.XP_PER_MESSAGE);
+
+      // Compute XP per message with role multipliers
+      let messageXp = settings.xpPerMessage ?? this.XP_PER_MESSAGE;
+      if (message.member) {
+        const roleIds = message.member.roles.cache.map((r) => r.id);
+        const multipliers = Array.isArray(settings.multiplierRoles)
+          ? (settings.multiplierRoles as Array<{ roleId: string; multiplier: number }>)
+          : [];
+        const applicable = multipliers.filter((m) => roleIds.includes(m.roleId));
+        if (applicable.length) {
+          if (settings.stackMultipliers) {
+            const totalMul = applicable.reduce((acc, m) => acc * (m.multiplier ?? 1), 1);
+            messageXp = Math.max(1, Math.floor(messageXp * totalMul));
+          } else {
+            const maxMul = Math.max(...applicable.map((m) => m.multiplier ?? 1));
+            messageXp = Math.max(1, Math.floor(messageXp * maxMul));
+          }
+        }
+      }
+
+      const newTotal = await redis.incrby(xpKey, messageXp);
 
       // Set a very long expiry (90 days) so keys eventually disappear for inactive users
       await redis.expire(xpKey, 60 * 60 * 24 * 90);
 
-      const prevLevel = this.calculateLevel(newTotal - this.XP_PER_MESSAGE);
+      const prevLevel = this.calculateLevel(newTotal - messageXp);
       const newLevel = this.calculateLevel(newTotal);
 
       // Sync with database (upsert UserEconomy record)

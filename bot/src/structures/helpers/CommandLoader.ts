@@ -30,9 +30,9 @@ export class CommandLoader {
     const paths = PathResolver.getCommonPaths(import.meta.url);
     const commandsDir = PathResolver.resolveForEnvironment({
       devPath: "src/commands",
-      prodPath: "bot/build/src/commands",
+      prodPath: "build/src/commands",
       isDevMode: this.devMode,
-      baseDir: paths.projectRoot,
+      baseDir: paths.botRoot,
     });
     logger.info(`Commands directory: ${commandsDir}`);
 
@@ -91,9 +91,9 @@ export class CommandLoader {
     // Load context menu commands
     const contextMenuDir = PathResolver.resolveForEnvironment({
       devPath: "src/commands/context",
-      prodPath: "bot/build/src/commands/context",
+      prodPath: "build/src/commands/context",
       isDevMode: this.devMode,
-      baseDir: paths.projectRoot,
+      baseDir: paths.botRoot,
     });
     await forNestedDirsFiles(contextMenuDir, processCommandFile);
 

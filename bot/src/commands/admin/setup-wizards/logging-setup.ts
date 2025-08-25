@@ -945,7 +945,7 @@ async function handleNextStep(interaction: ButtonInteraction, client: Client): P
       .setLabel("Individual Channels")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
-      .setCustomId("channel_config_all")
+      .setCustomId("channel_config_ALL")
       .setLabel("All-in-One Channel")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("logging_wizard_back").setLabel("← Back").setStyle(ButtonStyle.Secondary)
@@ -984,11 +984,6 @@ async function handleCategoryToggle(interaction: ButtonInteraction, client: Clie
 
   wizardStates.set(stateKey, state);
 
-  // Update the button to show the new state
-  const isSelected = state.selectedCategories.includes(category);
-  const buttonStyle = isSelected ? ButtonStyle.Primary : ButtonStyle.Secondary;
-  const buttonLabel = `${isSelected ? "✅" : "❌"} ${category}`;
-
   // Create updated buttons for the category selection
   const categoryButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -1025,8 +1020,26 @@ async function handleCategoryToggle(interaction: ButtonInteraction, client: Clie
     new ButtonBuilder().setCustomId("logging_next_step").setLabel("Continue →").setStyle(ButtonStyle.Success)
   );
 
+  // Rebuild the informational embed so the text stays visible and reflects selections
+  const categoryEmbed = new EmbedBuilder()
+    .setColor(0x3498db)
+    .setTitle("1️⃣ Choose Log Categories")
+    .setDescription(
+      "Select which categories of events you want to track. You can always change these later.\n\n" +
+        "**Recommended for most servers:** MESSAGE, MEMBER, MODERATION, SERVER"
+    );
+
+  const categories = Object.entries(LOG_CATEGORIES);
+  categories.forEach(([cat, types]) => {
+    const isHighVolume = cat === "HIGH_VOLUME";
+    const isSelected = state.selectedCategories.includes(cat);
+    const emoji = isHighVolume ? "⚠️" : isSelected ? "✅" : "❌";
+    const description = isHighVolume ? "High-volume events (can spam channels)" : `${String(types.length)} event types`;
+    categoryEmbed.addFields({ name: `${emoji} ${cat}`, value: description, inline: true });
+  });
+
   await interaction.update({
-    embeds: [],
+    embeds: [categoryEmbed],
     components: [categoryButtons, categoryButtons2],
   });
 }
@@ -1332,7 +1345,9 @@ async function handleChannelConfiguration(interaction: ButtonInteraction, client
     return;
   }
 
-  const category = interaction.customId.replace("channel_config_", "");
+  // Normalize the category extracted from the customId
+  const raw = interaction.customId.replace("channel_config_", "");
+  const category = raw.toUpperCase();
 
   // Add debugging information
   logger.info(`Channel configuration requested for category: "${category}" from customId: "${interaction.customId}"`);
@@ -1340,6 +1355,12 @@ async function handleChannelConfiguration(interaction: ButtonInteraction, client
   // Handle special case for "ALL" category
   if (category === "ALL") {
     await handleAllCategoryConfiguration(interaction, client);
+    return;
+  }
+
+  // Handle routing to the individual per-category configuration menu
+  if (category === "INDIVIDUAL") {
+    await showIndividualChannelConfigurationMenu(interaction, client);
     return;
   }
 
@@ -1389,7 +1410,7 @@ async function handleChannelConfiguration(interaction: ButtonInteraction, client
         (categoryTypes.length > 5 ? `\n• ...and ${String(categoryTypes.length - 5)} more` : "")
     )
     .addFields({
-      name: "�� Tips",
+      name: "💡 Tips",
       value:
         "• Choose a channel that only moderators can see\n" +
         "• Make sure the bot has permission to send messages\n" +
@@ -1453,6 +1474,54 @@ async function handleAllCategoryConfiguration(interaction: ButtonInteraction, cl
     components: [selectRow],
     ephemeral: true,
   });
+}
+
+// Show per-category channel configuration buttons while keeping the step text visible
+async function showIndividualChannelConfigurationMenu(interaction: ButtonInteraction, client: Client): Promise<void> {
+  const stateKey = `${interaction.guild!.id}-${interaction.user.id}`;
+  const state = wizardStates.get(stateKey);
+
+  const categoriesToShow = state?.selectedCategories?.length ? state.selectedCategories : Object.keys(LOG_CATEGORIES);
+
+  const embed = new EmbedBuilder()
+    .setColor(0x3498db)
+    .setTitle("🔗 Step 2: Channel Configuration — Individual Categories")
+    .setDescription(
+      "Choose a channel for each selected category. You can configure any category below.\n\n" +
+        "Use the buttons to pick a category; a menu will appear to select a channel."
+    )
+    .addFields({
+      name: "📋 Selected Categories",
+      value: categoriesToShow.map((c) => `• ${c}`).join("\n"),
+      inline: false,
+    });
+
+  // Build rows of up to 5 buttons each
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  const chunkSize = 5;
+  for (let i = 0; i < categoriesToShow.length; i += chunkSize) {
+    const chunk = categoriesToShow.slice(i, i + chunkSize);
+    const row = new ActionRowBuilder<ButtonBuilder>();
+    chunk.forEach((cat) => {
+      row.addComponents(
+        new ButtonBuilder().setCustomId(`channel_config_${cat}`).setLabel(cat).setStyle(ButtonStyle.Secondary)
+      );
+    });
+    rows.push(row);
+  }
+
+  // Add a final row for All-in-One and Back to previous step
+  rows.push(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId("channel_config_ALL")
+        .setLabel("All-in-One Channel")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("logging_next_step").setLabel("← Back").setStyle(ButtonStyle.Secondary)
+    )
+  );
+
+  await interaction.update({ embeds: [embed], components: rows });
 }
 
 async function showCategoryToggle(interaction: ButtonInteraction, client: Client): Promise<void> {

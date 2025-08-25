@@ -19,12 +19,31 @@ export class EventLoader {
 
     // Use centralized path resolver for reliable path resolution
     const paths = PathResolver.getCommonPaths(import.meta.url);
-    const eventsDir = PathResolver.resolveForEnvironment({
+
+    // Detect if current runtime is executing from built output
+    const isBuiltRuntime = import.meta.url.includes("/build/") || import.meta.url.includes("\\build\\");
+
+    // Pre-compute candidate directories
+    const srcEventsDir = PathResolver.resolveForEnvironment({
       devPath: "src/events",
-      prodPath: "bot/build/src/events",
-      isDevMode: this.devMode,
-      baseDir: paths.projectRoot,
+      prodPath: "src/events",
+      isDevMode: true,
+      baseDir: paths.botRoot,
     });
+    const buildEventsDir = PathResolver.resolveForEnvironment({
+      devPath: "build/src/events",
+      prodPath: "build/src/events",
+      isDevMode: false,
+      baseDir: paths.botRoot,
+    });
+
+    // Prefer build directory when in production or when running from build
+    let eventsDir: string;
+    if (isBuiltRuntime || (!this.devMode && existsSync(buildEventsDir))) {
+      eventsDir = buildEventsDir;
+    } else {
+      eventsDir = srcEventsDir;
+    }
 
     logger.debug(`🎭 EventLoader: Events directory resolved to: ${eventsDir}`);
     logger.debug(`🎭 EventLoader: Directory exists: ${existsSync(eventsDir)}`);
