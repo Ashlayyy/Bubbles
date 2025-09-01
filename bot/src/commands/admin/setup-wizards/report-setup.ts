@@ -12,9 +12,9 @@ import {
   type RoleSelectMenuInteraction,
 } from "discord.js";
 
-import { getGuildConfig, updateGuildConfig } from "../../database/GuildConfig.js";
-import logger from "../../logger.js";
-import type Client from "../../structures/Client.js";
+import { getGuildConfig, updateGuildConfig } from "../../../database/GuildConfig.js";
+import logger from "../../../logger.js";
+import type Client from "../../../structures/Client.js";
 
 // ----- Setup Wizard -----
 export async function startReportWizard(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {

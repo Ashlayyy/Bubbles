@@ -3,12 +3,12 @@ import { SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.j
 import logger from "../../logger.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { AdminCommand } from "../_core/specialized/AdminCommand.js";
-import { startReportWizard } from "../_shared/report-setup.js";
 import { startAppealsWizard } from "./setup-wizards/appeals-setup.js";
 import { startSetupWizard as startAutoModWizard } from "./setup-wizards/automod-setup.js";
 import { startComplimentenWizard } from "./setup-wizards/complimenten-setup.js";
 import { startLevelingWizard } from "./setup-wizards/leveling-setup.js";
 import { startLoggingWizard } from "./setup-wizards/logging-setup.js";
+import { startReportWizard } from "./setup-wizards/report-setup.js";
 import { startTicketWizard } from "./setup-wizards/ticket-setup.js";
 import { startWelcomeWizard } from "./setup-wizards/welcome-setup.js";
 
