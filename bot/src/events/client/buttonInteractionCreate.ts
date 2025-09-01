@@ -2,12 +2,27 @@ import type { Interaction } from "discord.js";
 import { handleGiveawayInteraction } from "../../commands/admin/giveaway.js";
 import { handlePollInteraction } from "../../commands/moderation/poll.js";
 import { handleTicketButtonInteraction } from "../../functions/discord/ticketManager.js";
+import logger from "../../logger.js";
 import { ClientEvent } from "../../structures/Event.js";
 
 export default new ClientEvent("interactionCreate", async (interaction: Interaction) => {
   // Handle button interactions
   if (interaction.isButton()) {
     if (!interaction.inGuild()) return;
+
+    // Skip wizard-specific buttons that are handled by their own collectors
+    if (
+      interaction.customId.startsWith("report_") ||
+      interaction.customId.startsWith("logging_") ||
+      interaction.customId.startsWith("welcome_") ||
+      interaction.customId.startsWith("appeals_") ||
+      interaction.customId.startsWith("reactionroles_") ||
+      interaction.customId.startsWith("automod_") ||
+      interaction.customId.startsWith("compliment_")
+    ) {
+      logger.debug(`Wizard button ${interaction.customId} handled by setup wizard, skipping global handler`);
+      return;
+    }
 
     // Handle giveaway button interactions
     if (interaction.customId.startsWith("giveaway_")) {

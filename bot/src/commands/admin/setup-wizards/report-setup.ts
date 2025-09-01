@@ -7,6 +7,7 @@ import {
   EmbedBuilder,
   PermissionFlagsBits,
   RoleSelectMenuBuilder,
+  type ButtonInteraction,
   type ChannelSelectMenuInteraction,
   type ChatInputCommandInteraction,
   type RoleSelectMenuInteraction,
@@ -112,6 +113,8 @@ export async function startReportWizard(client: Client, interaction: ChatInputCo
         } else if (component.isRoleSelectMenu() && component.customId === "report_role_select") {
           const selectedRoleId = component.values[0] ?? null;
           await applyReportPingRole(client, component, selectedRoleId);
+        } else if (component.isButton() && component.customId === "report_create_panel") {
+          await handleReportPanelCreation(client, component);
         } else {
           await component.reply({
             content: "❌ Unknown component interaction. Please try again.",
@@ -234,5 +237,74 @@ async function applyReportPingRole(
       content: "❌ Failed to update ping role. Please try again.",
       ephemeral: true,
     });
+  }
+}
+
+async function handleReportPanelCreation(_client: Client, interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "❌ Guild unavailable.", ephemeral: true });
+    return;
+  }
+
+  const config = await getGuildConfig(interaction.guild.id);
+
+  if (!config.reportChannelId) {
+    await interaction.reply({
+      content: "❌ Please select a report channel first before creating a panel.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  try {
+    const channel = interaction.guild.channels.cache.get(config.reportChannelId);
+    if (!channel?.isTextBased()) {
+      await interaction.reply({
+        content: "❌ The configured report channel is no longer available.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const botMember = interaction.guild.members.me;
+    if (!botMember) {
+      await interaction.reply({ content: "❌ Bot user not found in guild.", ephemeral: true });
+      return;
+    }
+
+    const perms = channel.permissionsFor(botMember);
+    const hasRequiredPerms =
+      perms.has(PermissionFlagsBits.ViewChannel) &&
+      perms.has(PermissionFlagsBits.SendMessages) &&
+      perms.has(PermissionFlagsBits.EmbedLinks);
+    if (!hasRequiredPerms) {
+      await interaction.reply({
+        content: `❌ I need **View Channel**, **Send Messages**, and **Embed Links** in <#${channel.id}> to post the panel.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const panelEmbed = new EmbedBuilder()
+      .setColor(0x3498db)
+      .setTitle("📝 Report Message")
+      .setDescription(
+        "To report a message:\n" +
+          "• Right-click the message (or tap and hold on mobile)\n" +
+          "• Choose **Apps** → **Report Message**\n\n" +
+          "Your report will be sent to the moderation team."
+      )
+      .setFooter({ text: "Misuse of the report feature may lead to penalties" })
+      .setTimestamp();
+
+    await channel.send({ embeds: [panelEmbed] });
+
+    await interaction.reply({
+      content: `✅ Report panel created in <#${channel.id}>!`,
+      ephemeral: true,
+    });
+  } catch (error) {
+    logger.error("Error creating report panel:", error);
+    await interaction.reply({ content: "❌ Failed to create report panel. Please try again.", ephemeral: true });
   }
 }
