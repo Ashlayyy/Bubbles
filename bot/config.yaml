@@ -6,11 +6,11 @@ activities:
     type: "watching"
 welcome:
   messages:
-    - title: "Welcome to the server!"
-      description: "We're glad you're here! Please read the rules and have fun."
+    - title: Welcome to ${server}!
+      description: We're glad you're here <@${userID}>! Please read the rules and have fun.
       color: "#00ff00"
 goodbye:
   messages:
-    - title: "Goodbye!"
-      description: "Thanks for being part of our community. You're always welcome back!"
+    - title: Goodbye ${user}!
+      description: Thanks for being part of our community <@${userID}>. You're always welcome back!
       color: "#ff6600"

@@ -64,9 +64,17 @@ export default new ClientEvent(Events.GuildMemberAdd, async (member: GuildMember
       const randomMessage = messages[Math.floor(Math.random() * messages.length)];
 
       const embed = new EmbedBuilder()
-        .setTitle(randomMessage.title.replace("{server}", member.guild.name).replace("{user}", member.displayName))
+        .setTitle(
+          randomMessage.title
+            .replace("{server}", member.guild.name)
+            .replace("{user}", member.displayName)
+            .replace("{userID}", member.id)
+        )
         .setDescription(
-          randomMessage.description.replace("{server}", member.guild.name).replace("{user}", member.displayName)
+          randomMessage.description
+            .replace("{server}", member.guild.name)
+            .replace("{user}", member.displayName)
+            .replace("{userID}", member.id)
         )
         .setColor(randomMessage.color as `#${string}`)
         .setThumbnail(member.user.displayAvatarURL())
