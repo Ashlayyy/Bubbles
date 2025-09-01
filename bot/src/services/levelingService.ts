@@ -103,6 +103,21 @@ export class LevelingService {
     const userId = member.id;
     const sessionKey = `${guildId}:${userId}`;
 
+    // Respect leveling settings: if disabled, do not track/award voice XP
+    try {
+      const settings = await levelingSettingsService.getSettings(guildId);
+      if (!settings.enabled) {
+        // If leveling is disabled, clear any existing session for this user
+        if (this.voiceSessions.has(sessionKey)) {
+          this.voiceSessions.delete(sessionKey);
+        }
+        return;
+      }
+    } catch {
+      // If settings retrieval fails, be safe and do nothing
+      return;
+    }
+
     // User joined a voice channel
     if (!oldState.channel && newState.channel) {
       this.voiceSessions.set(sessionKey, {

@@ -1,5 +1,6 @@
 import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder, User } from "discord.js";
 import logger from "../../logger.js";
+import { levelingSettingsService } from "../../services/levelingSettingsService.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { AdminCommand } from "../_core/specialized/AdminCommand.js";
@@ -27,6 +28,15 @@ class XpManagementCommand extends AdminCommand {
     const guildId = this.guild.id;
 
     try {
+      // Check if leveling is enabled
+      const settings = await levelingSettingsService.getSettings(guildId);
+      if (!settings.enabled && action !== "view") {
+        return this.createAdminError(
+          "Leveling Disabled",
+          "Leveling is currently disabled for this server. Enable it via `/setup leveling` as an server admin before modifying XP."
+        );
+      }
+
       const customApiUrl = process.env.API_URL || "http://localhost:3001";
 
       if (action === "view") {

@@ -1,5 +1,6 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
+import { levelingSettingsService } from "../../services/levelingSettingsService.js";
 import { rankCardService } from "../../services/rankCardService.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
@@ -23,7 +24,21 @@ class RankCommand extends GeneralCommand {
     const guildId = this.guild.id;
 
     try {
+      // Check if leveling is enabled
+      const settings = await levelingSettingsService.getSettings(guildId);
+      if (!settings.enabled) {
+        return this.createGeneralError(
+          "Leveling Disabled",
+          "Leveling is currently disabled for this server. Use `/setup leveling` as an server admin to enable and configure it."
+        );
+      }
+
       const customApiUrl = process.env.API_URL || "http://localhost:3001";
+      const isApiDisabled = process.env.DISABLE_API === "true" || true;
+
+      if (isApiDisabled) {
+        return this.createGeneralError("Service Unavailable", "Leveling service is currently disabled.");
+      }
 
       // Fetch user's leveling data from API
       const response = await fetch(`${customApiUrl}/api/leveling/${guildId}/users/${user.id}`, {

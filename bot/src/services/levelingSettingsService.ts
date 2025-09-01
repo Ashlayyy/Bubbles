@@ -9,13 +9,13 @@ export interface GuildLevelingSettings {
   levelUpMessage: string | null;
   ignoredChannels: string[];
   ignoredRoles: string[];
-  multiplierRoles: Array<{ roleId: string; multiplier: number }>;
+  multiplierRoles: { roleId: string; multiplier: number }[];
   stackMultipliers: boolean;
   minMessageLength: number;
 }
 
 const DEFAULT_SETTINGS: GuildLevelingSettings = {
-  enabled: true,
+  enabled: false,
   xpPerMessage: 15,
   xpCooldown: 60,
   levelUpChannel: null,

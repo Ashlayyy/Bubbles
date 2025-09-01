@@ -1,6 +1,7 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import logger from "../../logger.js";
 import { levelingApiService } from "../../services/levelingApiService.js";
+import { levelingSettingsService } from "../../services/levelingSettingsService.js";
 import type { CommandConfig, CommandResponse } from "../_core/index.js";
 import { GeneralCommand } from "../_core/specialized/GeneralCommand.js";
 
@@ -22,6 +23,15 @@ class LeaderboardCommand extends GeneralCommand {
     const limit = this.getIntegerOption("limit") || 10;
 
     try {
+      // Check if leveling is enabled
+      const settings = await levelingSettingsService.getSettings(this.guild.id);
+      if (!settings.enabled) {
+        return this.createGeneralError(
+          "Leveling Disabled",
+          "Leveling is currently disabled for this server. Use `/setup leveling` as an server admin to enable and configure it."
+        );
+      }
+
       // Check if API client is configured
       if (!levelingApiService.isConfigured()) {
         return this.createGeneralError("Service Unavailable", "Leveling service is not properly configured.");
