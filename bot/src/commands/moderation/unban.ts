@@ -14,7 +14,7 @@ export class UnbanCommand extends ModerationCommand {
       description: "Remove a ban from a user",
       category: "moderation",
       permissions: {
-        level: PermissionLevel.MODERATOR,
+        level: PermissionLevel.ADMIN,
         discordPermissions: [PermissionsBitField.Flags.BanMembers],
         isConfigurable: true,
       },

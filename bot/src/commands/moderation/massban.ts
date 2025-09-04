@@ -15,7 +15,7 @@ export class MassBanCommand extends ModerationCommand {
       description: "Ban multiple users at once via IDs",
       category: "moderation",
       permissions: {
-        level: PermissionLevel.MODERATOR,
+        level: PermissionLevel.ADMIN,
         discordPermissions: [PermissionsBitField.Flags.BanMembers],
         isConfigurable: true,
       },
