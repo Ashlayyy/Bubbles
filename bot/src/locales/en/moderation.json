@@ -1,0 +1,38 @@
+{
+  "bulk": {
+    "queue": {
+      "ban": {
+        "title": "🔨 Bulk Ban Queued",
+        "description": "Bulk ban operation has been queued for {{count}} users."
+      },
+      "kick": {
+        "title": "👢 Bulk Kick Queued",
+        "description": "Bulk kick operation has been queued for {{count}} users."
+      },
+      "timeout": {
+        "title": "⏰ Bulk Timeout Queued",
+        "description": "Bulk timeout operation has been queued for {{count}} users."
+      }
+    },
+    "fields": {
+      "jobId": "Job ID",
+      "usersToProcess": "Users to Process",
+      "reason": "Reason",
+      "duration": "Duration"
+    },
+    "footer": {
+      "checkAuditLog": "Check the audit log for progress updates"
+    },
+    "errors": {
+      "noValidUserIds": "No valid user IDs provided.",
+      "maxUsersBan": "Maximum 100 users can be banned at once.",
+      "maxUsersKick": "Maximum 100 users can be kicked at once.",
+      "maxUsersTimeout": "Maximum 100 users can be timed out at once.",
+      "invalidDurationFormat": "Invalid duration format. Use formats like '5m', '1h', '2d'.",
+      "durationRange": "Duration must be between 60 seconds and 28 days.",
+      "failedToQueueBan": "Failed to queue bulk ban: {{error}}",
+      "failedToQueueKick": "Failed to queue bulk kick: {{error}}",
+      "failedToQueueTimeout": "Failed to queue bulk timeout: {{error}}"
+    }
+  }
+}

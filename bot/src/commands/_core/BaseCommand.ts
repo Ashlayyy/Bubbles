@@ -15,6 +15,7 @@ import type {
 import { MessageFlags } from "discord.js";
 
 import logger from "../../logger.js";
+import { i18nService } from "../../services/i18nService.js";
 import type Client from "../../structures/Client.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { cooldownStore } from "../../utils/CooldownStore.js";
@@ -56,6 +57,16 @@ export abstract class BaseCommand {
 
   set category(category: string) {
     this._category = category;
+  }
+
+  // Provide guild-scoped translation helper for all commands
+  protected async t(key: string, options?: Record<string, unknown>): Promise<string> {
+    try {
+      return await i18nService.tForGuild(this.context.guild.id, key, options);
+    } catch (_error) {
+      // Fallback to key on any error to avoid breaking command flow
+      return key;
+    }
   }
 
   // Abstract method that must be implemented by subclasses

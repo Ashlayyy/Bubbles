@@ -3,6 +3,7 @@ import i18next from "i18next";
 import Backend from "i18next-fs-backend";
 import { join } from "path";
 import logger from "../logger.js";
+import { cacheService } from "./cacheService.js";
 
 export class I18nService {
   private static instance: I18nService | null = null;
@@ -73,7 +74,7 @@ export class I18nService {
       return key;
     }
 
-    // Get guild's preferred language from database
+    // Get guild's preferred language from cache/DB
     const preferredLanguage = await this.getGuildLanguage(guildId);
     return this.t(key, options, preferredLanguage);
   }
@@ -101,13 +102,24 @@ export class I18nService {
   }
 
   /**
-   * Get guild's preferred language from database
+   * Get guild's preferred language from cache (1h) or database
    */
   private async getGuildLanguage(guildId: string): Promise<string> {
+    const cacheKey = `guild:language:${guildId}`;
+    const oneHourMs = 60 * 60 * 1000;
+
     try {
+      const cached = await cacheService.get<string>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
       const { getGuildConfig } = await import("../database/GuildConfig.js");
       const guildConfig = await getGuildConfig(guildId);
-      return guildConfig.preferredLanguage ?? "en";
+      const lang = guildConfig.preferredLanguage ?? "en";
+
+      await cacheService.set(cacheKey, lang, oneHourMs);
+      return lang;
     } catch (error) {
       logger.error(`Failed to get guild language for ${guildId}:`, error);
       return "en";

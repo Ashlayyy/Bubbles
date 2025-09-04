@@ -4,6 +4,13 @@ import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { type CommandConfig, type CommandResponse, type SlashCommandInteraction } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
 
+interface BulkQueueJob {
+  id: string | number;
+}
+interface BulkModerationQueue {
+  add(name: string, data: Record<string, unknown>): Promise<BulkQueueJob>;
+}
+
 /**
  * Bulk Moderation Command - Perform mass moderation actions
  */
@@ -42,12 +49,9 @@ export class BulkCommand extends ModerationCommand {
         default:
           throw new Error("Unknown subcommand");
       }
-    } catch (error) {
-      return this.createModerationError(
-        "bulk moderation",
-        { username: "N/A", id: "unknown" } as User,
-        error instanceof Error ? error.message : "Unknown error"
-      );
+    } catch (error: unknown) {
+      const errMsg = this.safeErrorMessage(error);
+      return this.createModerationError("bulk moderation", { username: "N/A", id: "unknown" } as User, errMsg);
     }
   }
 
@@ -55,7 +59,7 @@ export class BulkCommand extends ModerationCommand {
     const userIds = this.getStringOption("users", true);
     const reason = this.getStringOption("reason", true);
     const deleteMessages = this.getBooleanOption("delete-messages") ?? false;
-    const silent = this.getBooleanOption("silent") ?? false;
+    const _silent = this.getBooleanOption("silent") ?? false;
 
     const userIdList = userIds.split(/[,\s]+/).filter((id) => id.trim().length > 0);
 
@@ -63,7 +67,7 @@ export class BulkCommand extends ModerationCommand {
       return this.createModerationError(
         "bulk ban",
         { username: "N/A", id: "unknown" } as User,
-        "No valid user IDs provided."
+        await this.t("moderation:bulk.errors.noValidUserIds")
       );
     }
 
@@ -71,13 +75,13 @@ export class BulkCommand extends ModerationCommand {
       return this.createModerationError(
         "bulk ban",
         { username: "N/A", id: "unknown" } as User,
-        "Maximum 100 users can be banned at once."
+        await this.t("moderation:bulk.errors.maxUsersBan")
       );
     }
 
     try {
       // Queue the bulk ban operation
-      const queue = bullMQRegistry.getQueue("bulk-moderation");
+      const queue = bullMQRegistry.getQueue("bulk-moderation") as unknown as BulkModerationQueue;
       const job = await queue.add("BULK_BAN", {
         type: "BULK_BAN",
         guildId: this.guild.id,
@@ -85,40 +89,41 @@ export class BulkCommand extends ModerationCommand {
         reason,
         deleteMessages,
         moderatorId: this.user.id,
-        id: `bulk_ban_${Date.now()}`,
+        id: `bulk_ban_${String(Date.now())}`,
         timestamp: Date.now(),
       });
 
       const embed = this.client.genEmbed({
-        title: "🔨 Bulk Ban Queued",
-        description: `Bulk ban operation has been queued for ${userIdList.length} users.`,
+        title: await this.t("moderation:bulk.queue.ban.title"),
+        description: await this.t("moderation:bulk.queue.ban.description", { count: userIdList.length }),
         color: 0x3498db,
         fields: [
           {
-            name: "Job ID",
-            value: job.id as string,
+            name: await this.t("moderation:bulk.fields.jobId"),
+            value: String(job.id),
             inline: true,
           },
           {
-            name: "Users to Process",
+            name: await this.t("moderation:bulk.fields.usersToProcess"),
             value: userIdList.length.toString(),
             inline: true,
           },
           {
-            name: "Reason",
+            name: await this.t("moderation:bulk.fields.reason"),
             value: reason,
             inline: false,
           },
         ],
-        footer: { text: "Check the audit log for progress updates" },
+        footer: { text: await this.t("moderation:bulk.footer.checkAuditLog") },
       });
 
       return { embeds: [embed], ephemeral: true };
-    } catch (error) {
+    } catch (error: unknown) {
+      const errMsg = this.safeErrorMessage(error);
       return this.createModerationError(
         "bulk ban",
         { username: "N/A", id: "unknown" } as User,
-        `Failed to queue bulk ban: ${error instanceof Error ? error.message : "Unknown error"}`
+        await this.t("moderation:bulk.errors.failedToQueueBan", { error: errMsg })
       );
     }
   }
@@ -126,7 +131,7 @@ export class BulkCommand extends ModerationCommand {
   private async handleBulkKick(): Promise<CommandResponse> {
     const userIds = this.getStringOption("users", true);
     const reason = this.getStringOption("reason", true);
-    const silent = this.getBooleanOption("silent") ?? false;
+    const _silent = this.getBooleanOption("silent") ?? false;
 
     const userIdList = userIds.split(/[,\s]+/).filter((id) => id.trim().length > 0);
 
@@ -134,7 +139,7 @@ export class BulkCommand extends ModerationCommand {
       return this.createModerationError(
         "bulk kick",
         { username: "N/A", id: "unknown" } as User,
-        "No valid user IDs provided."
+        await this.t("moderation:bulk.errors.noValidUserIds")
       );
     }
 
@@ -142,53 +147,54 @@ export class BulkCommand extends ModerationCommand {
       return this.createModerationError(
         "bulk kick",
         { username: "N/A", id: "unknown" } as User,
-        "Maximum 100 users can be kicked at once."
+        await this.t("moderation:bulk.errors.maxUsersKick")
       );
     }
 
     try {
       // Queue the bulk kick operation
-      const queue = bullMQRegistry.getQueue("bulk-moderation");
+      const queue = bullMQRegistry.getQueue("bulk-moderation") as unknown as BulkModerationQueue;
       const job = await queue.add("BULK_KICK", {
         type: "BULK_KICK",
         guildId: this.guild.id,
         userIds: userIdList,
         reason,
         moderatorId: this.user.id,
-        id: `bulk_kick_${Date.now()}`,
+        id: `bulk_kick_${String(Date.now())}`,
         timestamp: Date.now(),
       });
 
       const embed = this.client.genEmbed({
-        title: "👢 Bulk Kick Queued",
-        description: `Bulk kick operation has been queued for ${userIdList.length} users.`,
+        title: await this.t("moderation:bulk.queue.kick.title"),
+        description: await this.t("moderation:bulk.queue.kick.description", { count: userIdList.length }),
         color: 0x3498db,
         fields: [
           {
-            name: "Job ID",
-            value: job.id as string,
+            name: await this.t("moderation:bulk.fields.jobId"),
+            value: String(job.id),
             inline: true,
           },
           {
-            name: "Users to Process",
+            name: await this.t("moderation:bulk.fields.usersToProcess"),
             value: userIdList.length.toString(),
             inline: true,
           },
           {
-            name: "Reason",
+            name: await this.t("moderation:bulk.fields.reason"),
             value: reason,
             inline: false,
           },
         ],
-        footer: { text: "Check the audit log for progress updates" },
+        footer: { text: await this.t("moderation:bulk.footer.checkAuditLog") },
       });
 
       return { embeds: [embed], ephemeral: true };
-    } catch (error) {
+    } catch (error: unknown) {
+      const errMsg = this.safeErrorMessage(error);
       return this.createModerationError(
         "bulk kick",
         { username: "N/A", id: "unknown" } as User,
-        `Failed to queue bulk kick: ${error instanceof Error ? error.message : "Unknown error"}`
+        await this.t("moderation:bulk.errors.failedToQueueKick", { error: errMsg })
       );
     }
   }
@@ -197,7 +203,7 @@ export class BulkCommand extends ModerationCommand {
     const userIds = this.getStringOption("users", true);
     const reason = this.getStringOption("reason", true);
     const durationStr = this.getStringOption("duration", true);
-    const silent = this.getBooleanOption("silent") ?? false;
+    const _silent = this.getBooleanOption("silent") ?? false;
 
     const userIdList = userIds.split(/[,\s]+/).filter((id) => id.trim().length > 0);
 
@@ -205,7 +211,7 @@ export class BulkCommand extends ModerationCommand {
       return this.createModerationError(
         "bulk timeout",
         { username: "N/A", id: "unknown" } as User,
-        "No valid user IDs provided."
+        await this.t("moderation:bulk.errors.noValidUserIds")
       );
     }
 
@@ -213,7 +219,7 @@ export class BulkCommand extends ModerationCommand {
       return this.createModerationError(
         "bulk timeout",
         { username: "N/A", id: "unknown" } as User,
-        "Maximum 100 users can be timed out at once."
+        await this.t("moderation:bulk.errors.maxUsersTimeout")
       );
     }
 
@@ -222,7 +228,7 @@ export class BulkCommand extends ModerationCommand {
       return this.createModerationError(
         "bulk timeout",
         { username: "N/A", id: "unknown" } as User,
-        "Invalid duration format. Use formats like '5m', '1h', '2d'."
+        await this.t("moderation:bulk.errors.invalidDurationFormat")
       );
     }
 
@@ -230,13 +236,13 @@ export class BulkCommand extends ModerationCommand {
       return this.createModerationError(
         "bulk timeout",
         { username: "N/A", id: "unknown" } as User,
-        "Duration must be between 60 seconds and 28 days."
+        await this.t("moderation:bulk.errors.durationRange")
       );
     }
 
     try {
       // Queue the bulk timeout operation
-      const queue = bullMQRegistry.getQueue("bulk-moderation");
+      const queue = bullMQRegistry.getQueue("bulk-moderation") as unknown as BulkModerationQueue;
       const job = await queue.add("BULK_TIMEOUT", {
         type: "BULK_TIMEOUT",
         guildId: this.guild.id,
@@ -244,45 +250,46 @@ export class BulkCommand extends ModerationCommand {
         reason,
         duration,
         moderatorId: this.user.id,
-        id: `bulk_timeout_${Date.now()}`,
+        id: `bulk_timeout_${String(Date.now())}`,
         timestamp: Date.now(),
       });
 
       const embed = this.client.genEmbed({
-        title: "⏰ Bulk Timeout Queued",
-        description: `Bulk timeout operation has been queued for ${userIdList.length} users.`,
+        title: await this.t("moderation:bulk.queue.timeout.title"),
+        description: await this.t("moderation:bulk.queue.timeout.description", { count: userIdList.length }),
         color: 0x3498db,
         fields: [
           {
-            name: "Job ID",
-            value: job.id as string,
+            name: await this.t("moderation:bulk.fields.jobId"),
+            value: String(job.id),
             inline: true,
           },
           {
-            name: "Users to Process",
+            name: await this.t("moderation:bulk.fields.usersToProcess"),
             value: userIdList.length.toString(),
             inline: true,
           },
           {
-            name: "Duration",
+            name: await this.t("moderation:bulk.fields.duration"),
             value: durationStr,
             inline: true,
           },
           {
-            name: "Reason",
+            name: await this.t("moderation:bulk.fields.reason"),
             value: reason,
             inline: false,
           },
         ],
-        footer: { text: "Check the audit log for progress updates" },
+        footer: { text: await this.t("moderation:bulk.footer.checkAuditLog") },
       });
 
       return { embeds: [embed], ephemeral: true };
-    } catch (error) {
+    } catch (error: unknown) {
+      const errMsg = this.safeErrorMessage(error);
       return this.createModerationError(
         "bulk timeout",
         { username: "N/A", id: "unknown" } as User,
-        `Failed to queue bulk timeout: ${error instanceof Error ? error.message : "Unknown error"}`
+        await this.t("moderation:bulk.errors.failedToQueueTimeout", { error: errMsg })
       );
     }
   }
@@ -311,6 +318,10 @@ export class BulkCommand extends ModerationCommand {
       default:
         return null;
     }
+  }
+
+  private safeErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 }
 
