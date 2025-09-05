@@ -2,7 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { expandAlias, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
-import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
+import { buildModCaseEmbed } from "../_shared/ModCaseEmbed.js";
 
 /**
  * Untimeout Command - Remove timeout from a user
@@ -91,16 +91,32 @@ export class UntimeoutCommand extends ModerationCommand {
         notifyUser: !silent,
       });
 
-      // Success response with better formatting
-      return buildModSuccess({
-        title: "Timeout Removed",
-        target: targetUser,
-        moderator: this.user,
-        reason,
-        notified: !silent,
-        caseNumber: case_.caseNumber,
-        resolved: true,
-      });
+      const embed = await buildModCaseEmbed(
+        this.client,
+        (k, o) => this.t(k, o),
+        {
+          action: "UNTIMEOUT",
+          title: `🔊 ${await this.t("moderation:common.types.UNTIMEOUT")}`,
+          target: {
+            id: targetUser.id,
+            username: targetUser.username,
+            avatarURL: targetUser.displayAvatarURL({ size: 128 }),
+          },
+          moderator: {
+            id: this.user.id,
+            username: this.user.username,
+            avatarURL: this.user.displayAvatarURL({ size: 128 }),
+          },
+          reason,
+          caseNumber: case_.caseNumber,
+          notified: !silent,
+          timestamp: new Date(),
+          thumbnailUser: "target",
+        },
+        this.getThemeOverrides()
+      );
+
+      return { embeds: [embed], ephemeral: true };
     } catch (error) {
       return this.createModerationError(
         "untimeout",
@@ -128,4 +144,27 @@ export const builder = new SlashCommandBuilder()
   .addStringOption((option) =>
     option.setName("reason").setDescription("Reason for removing timeout").setRequired(false)
   )
-  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false));
+  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false))
+  .addStringOption((opt) =>
+    opt
+      .setName("style")
+      .setDescription("Embed style")
+      .addChoices(
+        { name: "Compact", value: "compact" },
+        { name: "Standard", value: "standard" },
+        { name: "Detailed", value: "detailed" }
+      )
+      .setRequired(false)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("mentions")
+      .setDescription("How to show users in embeds")
+      .addChoices(
+        { name: "Mention", value: "mention" },
+        { name: "Username", value: "username" },
+        { name: "ID", value: "id" },
+        { name: "Tag", value: "tag" }
+      )
+      .setRequired(false)
+  );

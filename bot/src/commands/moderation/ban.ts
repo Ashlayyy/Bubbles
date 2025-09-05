@@ -2,7 +2,7 @@ import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { expandAlias, parseDuration, parseEvidence, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
-import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
+import { buildModCaseEmbed } from "../_shared/ModCaseEmbed.js";
 
 /**
  * Ban Command - Bans a user from the server
@@ -46,15 +46,7 @@ export class BanCommand extends ModerationCommand {
           return this.createModerationError(
             "ban",
             targetUser,
-            `❌ Invalid duration format: **${durationStr}**\n\n` +
-              `**Correct format examples:**\n` +
-              `• \`30m\` - 30 minutes\n` +
-              `• \`2h\` - 2 hours\n` +
-              `• \`1d\` - 1 day\n` +
-              `• \`7d\` - 7 days\n` +
-              `• \`30d\` - 30 days\n\n` +
-              `**Allowed units:** s(econds), m(inutes), h(ours), d(ays), w(eeks), mo(nths), y(ears)\n\n` +
-              `💡 **Tip:** Leave duration blank for permanent ban.`
+            await this.t("moderation:ban.errors.invalidFormat", { duration: durationStr })
           );
         }
         duration = parsedDuration;
@@ -71,8 +63,9 @@ export class BanCommand extends ModerationCommand {
           return this.createModerationError(
             "ban",
             targetUser,
-            `${error instanceof Error ? error.message : "Unknown validation error"}\n\n` +
-              `💡 **Tip:** Make sure you have appropriate permissions and role hierarchy.`
+            `${error instanceof Error ? error.message : "Unknown validation error"}\n\n${await this.t(
+              "moderation:ban.errors.validationTip"
+            )}`
           );
         }
       }
@@ -105,25 +98,40 @@ export class BanCommand extends ModerationCommand {
         invocation
       );
 
-      return buildModSuccess({
-        title: "Ban Applied",
-        target: targetUser,
-        moderator: this.user,
-        reason,
-        duration,
-        notified: !silent,
-        caseNumber: case_.caseNumber,
-      });
+      const embed = await buildModCaseEmbed(
+        this.client,
+        (k, o) => this.t(k, o),
+        {
+          action: "BAN",
+          title: await this.t("moderation:ban.title"),
+          target: {
+            id: targetUser.id,
+            username: targetUser.username,
+            avatarURL: targetUser.displayAvatarURL({ size: 128 }),
+          },
+          moderator: {
+            id: this.user.id,
+            username: this.user.username,
+            avatarURL: this.user.displayAvatarURL({ size: 128 }),
+          },
+          reason,
+          durationSeconds: duration,
+          caseNumber: case_.caseNumber,
+          notified: !silent,
+          timestamp: new Date(),
+          thumbnailUser: "target",
+        },
+        this.getThemeOverrides()
+      );
+
+      return { embeds: [embed], ephemeral: true };
     } catch (error) {
       return this.createModerationError(
         "ban",
         targetUser,
-        `${error instanceof Error ? error.message : "Unknown error"}\n\n` +
-          `💡 **Common solutions:**\n` +
-          `• Check if you have ban permissions\n` +
-          `• Verify role hierarchy\n` +
-          `• Ensure the bot has necessary permissions\n\n` +
-          `📖 **Need help?** Contact an administrator.`
+        `${error instanceof Error ? error.message : "Unknown error"}\n\n${await this.t(
+          "moderation:ban.errors.commonSolutions"
+        )}`
       );
     }
   }
@@ -172,4 +180,27 @@ export const builder = new SlashCommandBuilder()
       .setMaxValue(7)
       .setRequired(false)
   )
-  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false));
+  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false))
+  .addStringOption((opt) =>
+    opt
+      .setName("style")
+      .setDescription("Embed style")
+      .addChoices(
+        { name: "Compact", value: "compact" },
+        { name: "Standard", value: "standard" },
+        { name: "Detailed", value: "detailed" }
+      )
+      .setRequired(false)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("mentions")
+      .setDescription("How to show users in embeds")
+      .addChoices(
+        { name: "Mention", value: "mention" },
+        { name: "Username", value: "username" },
+        { name: "ID", value: "id" },
+        { name: "Tag", value: "tag" }
+      )
+      .setRequired(false)
+  );

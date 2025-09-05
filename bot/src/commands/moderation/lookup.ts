@@ -37,7 +37,16 @@ export class LookupCommand extends ModerationCommand {
     }
 
     const targetUser = this.getUserOption("user", true);
-    const detailed = this.getBooleanOption("detailed") ?? false;
+    let detailed = this.getBooleanOption("detailed") ?? false;
+
+    const styleOpt = this.getStringOption("style") as "compact" | "standard" | "detailed" | null;
+    if (styleOpt === "compact") detailed = false;
+    if (styleOpt === "detailed") detailed = true;
+
+    const mentionPref = (this.getStringOption("mentions") as "mention" | "username" | "id" | "tag" | null) ?? "mention";
+    const targetDisplay =
+      mentionPref === "mention" ? `<@${targetUser.id}>` : mentionPref === "id" ? targetUser.id : targetUser.username;
+    const targetLabel = await this.t("moderation:common.labels.target");
 
     try {
       // Get member information (if in server)
@@ -56,6 +65,11 @@ export class LookupCommand extends ModerationCommand {
         thumbnail: { url: targetUser.displayAvatarURL({ size: 256 }) },
         color: getRiskColor(riskAssessment.level),
         fields: [
+          {
+            name: targetLabel,
+            value: targetDisplay,
+            inline: true,
+          },
           {
             name: "👤 Basic Information",
             value: [
@@ -179,6 +193,29 @@ export const builder = new SlashCommandBuilder()
   .addUserOption((option) => option.setName("user").setDescription("The user to look up").setRequired(true))
   .addBooleanOption((option) =>
     option.setName("detailed").setDescription("Show detailed case information").setRequired(false)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("style")
+      .setDescription("Embed style")
+      .addChoices(
+        { name: "Compact", value: "compact" },
+        { name: "Standard", value: "standard" },
+        { name: "Detailed", value: "detailed" }
+      )
+      .setRequired(false)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("mentions")
+      .setDescription("How to show users in embeds")
+      .addChoices(
+        { name: "Mention", value: "mention" },
+        { name: "Username", value: "username" },
+        { name: "ID", value: "id" },
+        { name: "Tag", value: "tag" }
+      )
+      .setRequired(false)
   );
 
 interface RiskAssessment {

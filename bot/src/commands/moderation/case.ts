@@ -73,21 +73,31 @@ export class CaseCommand extends ModerationCommand {
       );
     }
 
+    const mentionPref = (this.getStringOption("mentions") as "mention" | "username" | "id" | "tag" | null) ?? "mention";
+    const userValue =
+      mentionPref === "mention" ? `<@${case_.userId}>` : mentionPref === "id" ? case_.userId : String(case_.userId);
+    const modValue =
+      mentionPref === "mention"
+        ? `<@${case_.moderatorId}>`
+        : mentionPref === "id"
+          ? case_.moderatorId
+          : String(case_.moderatorId);
+
     const embed = this.client.genEmbed({
       title: `📋 Case #${case_.caseNumber}`,
       color: case_.type === "BAN" ? 0xe74c3c : case_.type === "WARN" ? 0xf1c40f : 0x3498db,
       fields: [
-        { name: "👤 User", value: `<@${case_.userId}>`, inline: true },
-        { name: "👮 Moderator", value: `<@${case_.moderatorId}>`, inline: true },
-        { name: "⚖️ Action", value: case_.type, inline: true },
-        { name: "📝 Reason", value: case_.reason ?? "No reason provided", inline: false },
+        { name: await this.t("moderation:common.labels.target"), value: userValue, inline: true },
+        { name: await this.t("moderation:common.labels.moderator"), value: modValue, inline: true },
+        { name: await this.t("moderation:common.labels.type"), value: case_.type, inline: true },
+        {
+          name: await this.t("moderation:common.labels.reason"),
+          value: case_.reason ?? (await this.t("moderation:common.values.noReason")),
+          inline: false,
+        },
         { name: "📊 Severity", value: case_.severity, inline: true },
         { name: "🔢 Points", value: String(case_.points), inline: true },
-        {
-          name: "📅 Created",
-          value: `<t:${Math.floor(case_.createdAt.getTime() / 1000)}:F>`,
-          inline: true,
-        },
+        { name: "📅 Created", value: `<t:${Math.floor(case_.createdAt.getTime() / 1000)}:F>`, inline: true },
       ],
       footer: { text: `Case ID: ${case_.id}` },
     });
@@ -289,4 +299,16 @@ export const builder = new SlashCommandBuilder()
       .setName("delete")
       .setDescription("Delete a moderation case")
       .addIntegerOption((opt) => opt.setName("number").setDescription("Case number").setRequired(true))
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("mentions")
+      .setDescription("How to show users in embeds")
+      .addChoices(
+        { name: "Mention", value: "mention" },
+        { name: "Username", value: "username" },
+        { name: "ID", value: "id" },
+        { name: "Tag", value: "tag" }
+      )
+      .setRequired(false)
   );

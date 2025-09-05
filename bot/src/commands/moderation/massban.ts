@@ -2,7 +2,7 @@ import { PermissionsBitField, SlashCommandBuilder, type User } from "discord.js"
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { expandAlias, parseDuration, parseEvidence, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
-import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
+import { buildModCaseEmbed } from "../_shared/ModCaseEmbed.js";
 import { ResponseBuilder } from "../_shared/responses/ResponseBuilder.js";
 
 /**
@@ -158,13 +158,31 @@ export class MassBanCommand extends ModerationCommand {
       }
     }
 
-    return buildModSuccess({
-      title: "Mass Ban Complete",
-      target: this.user,
-      moderator: this.user,
-      reason: `Banned ${success}/${userIds.length} users (${failed} failed).`,
-      notified: false,
-    });
+    const embed = await buildModCaseEmbed(
+      this.client,
+      (k, o) => this.t(k, o),
+      {
+        action: "MASSBAN",
+        title: `🔨 ${await this.t("moderation:common.types.MASSBAN")}`,
+        target: {
+          id: this.user.id,
+          username: this.user.username,
+          avatarURL: this.user.displayAvatarURL({ size: 128 }),
+        },
+        moderator: {
+          id: this.user.id,
+          username: this.user.username,
+          avatarURL: this.user.displayAvatarURL({ size: 128 }),
+        },
+        reason: `Banned ${success}/${userIds.length} users (${failed} failed).`,
+        notified: false,
+        timestamp: new Date(),
+        thumbnailUser: "none",
+      },
+      this.getThemeOverrides()
+    );
+
+    return { embeds: [embed], ephemeral: true };
   }
 }
 
@@ -185,4 +203,27 @@ export const builder = new SlashCommandBuilder()
   .addBooleanOption((opt) => opt.setName("silent").setDescription("Don't DM users").setRequired(false))
   .addAttachmentOption((opt) =>
     opt.setName("list").setDescription("Attachment (.txt/.csv) containing user IDs, one per line").setRequired(false)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("style")
+      .setDescription("Embed style")
+      .addChoices(
+        { name: "Compact", value: "compact" },
+        { name: "Standard", value: "standard" },
+        { name: "Detailed", value: "detailed" }
+      )
+      .setRequired(false)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("mentions")
+      .setDescription("How to show users in embeds")
+      .addChoices(
+        { name: "Mention", value: "mention" },
+        { name: "Username", value: "username" },
+        { name: "ID", value: "id" },
+        { name: "Tag", value: "tag" }
+      )
+      .setRequired(false)
   );

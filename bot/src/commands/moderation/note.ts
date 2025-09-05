@@ -2,7 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { expandAlias, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
-import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
+import { buildModCaseEmbed } from "../_shared/ModCaseEmbed.js";
 
 /**
  * Note Command - Add a note about a user
@@ -65,14 +65,31 @@ export class NoteCommand extends ModerationCommand {
         invocation
       );
 
-      // Success response with better formatting
-      return buildModSuccess({
-        title: "Note Added",
-        target: targetUser,
-        moderator: this.user,
-        reason: content,
-        caseNumber: case_.caseNumber,
-      });
+      const embed = await buildModCaseEmbed(
+        this.client,
+        (k, o) => this.t(k, o),
+        {
+          action: "NOTE",
+          title: `📝 ${await this.t("moderation:common.types.NOTE")}`,
+          target: {
+            id: targetUser.id,
+            username: targetUser.username,
+            avatarURL: targetUser.displayAvatarURL({ size: 128 }),
+          },
+          moderator: {
+            id: this.user.id,
+            username: this.user.username,
+            avatarURL: this.user.displayAvatarURL({ size: 128 }),
+          },
+          reason: content,
+          caseNumber: case_.caseNumber,
+          timestamp: new Date(),
+          thumbnailUser: "target",
+        },
+        this.getThemeOverrides()
+      );
+
+      return { embeds: [embed], ephemeral: true };
     } catch (error) {
       return this.createModerationError(
         "note",
@@ -96,4 +113,27 @@ export const builder = new SlashCommandBuilder()
   .setName("note")
   .setDescription("Add a note about a user")
   .addUserOption((option) => option.setName("user").setDescription("The user to add a note about").setRequired(true))
-  .addStringOption((option) => option.setName("content").setDescription("The note content").setRequired(true));
+  .addStringOption((option) => option.setName("content").setDescription("The note content").setRequired(true))
+  .addStringOption((opt) =>
+    opt
+      .setName("style")
+      .setDescription("Embed style")
+      .addChoices(
+        { name: "Compact", value: "compact" },
+        { name: "Standard", value: "standard" },
+        { name: "Detailed", value: "detailed" }
+      )
+      .setRequired(false)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("mentions")
+      .setDescription("How to show users in embeds")
+      .addChoices(
+        { name: "Mention", value: "mention" },
+        { name: "Username", value: "username" },
+        { name: "ID", value: "id" },
+        { name: "Tag", value: "tag" }
+      )
+      .setRequired(false)
+  );

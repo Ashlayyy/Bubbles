@@ -2,7 +2,7 @@ import { PermissionsBitField, SlashCommandBuilder, type User } from "discord.js"
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { expandAlias, parseEvidence, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
-import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
+import { buildModCaseEmbed } from "../_shared/ModCaseEmbed.js";
 
 /**
  * Kick Command - Kicks a user from the server
@@ -126,13 +126,32 @@ export class KickCommand extends ModerationCommand {
         success++;
       }
 
-      return buildModSuccess({
-        title: "Kick Complete",
-        target: this.user,
-        moderator: this.user,
-        reason: `Kicked ${success}/${targetIds.length} users (${failed} failed).`,
-        notified: !silent,
-      });
+      const reasonSummary = `Kicked ${success}/${targetIds.length} users (${failed} failed).`;
+      const embed = await buildModCaseEmbed(
+        this.client,
+        (k, o) => this.t(k, o),
+        {
+          action: "KICK",
+          title: `👢 ${await this.t("moderation:common.types.KICK")} ${success > 1 || targetIds.length > 1 ? "(Bulk)" : ""}`,
+          target: {
+            id: this.user.id,
+            username: this.user.username,
+            avatarURL: this.user.displayAvatarURL({ size: 128 }),
+          },
+          moderator: {
+            id: this.user.id,
+            username: this.user.username,
+            avatarURL: this.user.displayAvatarURL({ size: 128 }),
+          },
+          reason: reasonSummary,
+          notified: !silent,
+          timestamp: new Date(),
+          thumbnailUser: "none",
+        },
+        this.getThemeOverrides()
+      );
+
+      return { embeds: [embed], ephemeral: true };
     } catch (error) {
       return this.createModerationError("kick", this.user, error instanceof Error ? error.message : "Unknown error");
     }
@@ -157,4 +176,27 @@ export const builder = new SlashCommandBuilder()
   .addStringOption((option) =>
     option.setName("reason").setDescription("Reason for the kick (or alias name)").setRequired(false)
   )
-  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false));
+  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false))
+  .addStringOption((opt) =>
+    opt
+      .setName("style")
+      .setDescription("Embed style")
+      .addChoices(
+        { name: "Compact", value: "compact" },
+        { name: "Standard", value: "standard" },
+        { name: "Detailed", value: "detailed" }
+      )
+      .setRequired(false)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("mentions")
+      .setDescription("How to show users in embeds")
+      .addChoices(
+        { name: "Mention", value: "mention" },
+        { name: "Username", value: "username" },
+        { name: "ID", value: "id" },
+        { name: "Tag", value: "tag" }
+      )
+      .setRequired(false)
+  );

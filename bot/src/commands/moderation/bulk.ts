@@ -60,6 +60,11 @@ export class BulkCommand extends ModerationCommand {
     const reason = this.getStringOption("reason", true);
     const deleteMessages = this.getBooleanOption("delete-messages") ?? false;
     const _silent = this.getBooleanOption("silent") ?? false;
+    const mentionPref = (this.getStringOption("mentions") as "mention" | "username" | "id" | "tag" | null) ?? "mention";
+    let moderatorValue: string;
+    if (mentionPref === "mention") moderatorValue = `<@${this.user.id}>`;
+    else if (mentionPref === "id") moderatorValue = this.user.id;
+    else moderatorValue = this.user.username;
 
     const userIdList = userIds.split(/[,\s]+/).filter((id) => id.trim().length > 0);
 
@@ -96,8 +101,19 @@ export class BulkCommand extends ModerationCommand {
       const embed = this.client.genEmbed({
         title: await this.t("moderation:bulk.queue.ban.title"),
         description: await this.t("moderation:bulk.queue.ban.description", { count: userIdList.length }),
-        color: 0x3498db,
+        color: 0x9b59b6,
+        thumbnail: { url: this.user.displayAvatarURL({ size: 128 }) },
         fields: [
+          {
+            name: await this.t("moderation:common.labels.type"),
+            value: await this.t("moderation:common.types.BAN"),
+            inline: true,
+          },
+          {
+            name: await this.t("moderation:common.labels.moderator"),
+            value: moderatorValue,
+            inline: true,
+          },
           {
             name: await this.t("moderation:bulk.fields.jobId"),
             value: String(job.id),
@@ -115,6 +131,7 @@ export class BulkCommand extends ModerationCommand {
           },
         ],
         footer: { text: await this.t("moderation:bulk.footer.checkAuditLog") },
+        timestamp: new Date(),
       });
 
       return { embeds: [embed], ephemeral: true };
@@ -132,6 +149,11 @@ export class BulkCommand extends ModerationCommand {
     const userIds = this.getStringOption("users", true);
     const reason = this.getStringOption("reason", true);
     const _silent = this.getBooleanOption("silent") ?? false;
+    const mentionPref = (this.getStringOption("mentions") as "mention" | "username" | "id" | "tag" | null) ?? "mention";
+    let moderatorValue: string;
+    if (mentionPref === "mention") moderatorValue = `<@${this.user.id}>`;
+    else if (mentionPref === "id") moderatorValue = this.user.id;
+    else moderatorValue = this.user.username;
 
     const userIdList = userIds.split(/[,\s]+/).filter((id) => id.trim().length > 0);
 
@@ -167,8 +189,19 @@ export class BulkCommand extends ModerationCommand {
       const embed = this.client.genEmbed({
         title: await this.t("moderation:bulk.queue.kick.title"),
         description: await this.t("moderation:bulk.queue.kick.description", { count: userIdList.length }),
-        color: 0x3498db,
+        color: 0x9b59b6,
+        thumbnail: { url: this.user.displayAvatarURL({ size: 128 }) },
         fields: [
+          {
+            name: await this.t("moderation:common.labels.type"),
+            value: await this.t("moderation:common.types.KICK"),
+            inline: true,
+          },
+          {
+            name: await this.t("moderation:common.labels.moderator"),
+            value: moderatorValue,
+            inline: true,
+          },
           {
             name: await this.t("moderation:bulk.fields.jobId"),
             value: String(job.id),
@@ -186,6 +219,7 @@ export class BulkCommand extends ModerationCommand {
           },
         ],
         footer: { text: await this.t("moderation:bulk.footer.checkAuditLog") },
+        timestamp: new Date(),
       });
 
       return { embeds: [embed], ephemeral: true };
@@ -204,6 +238,11 @@ export class BulkCommand extends ModerationCommand {
     const reason = this.getStringOption("reason", true);
     const durationStr = this.getStringOption("duration", true);
     const _silent = this.getBooleanOption("silent") ?? false;
+    const mentionPref = (this.getStringOption("mentions") as "mention" | "username" | "id" | "tag" | null) ?? "mention";
+    let moderatorValue: string;
+    if (mentionPref === "mention") moderatorValue = `<@${this.user.id}>`;
+    else if (mentionPref === "id") moderatorValue = this.user.id;
+    else moderatorValue = this.user.username;
 
     const userIdList = userIds.split(/[,\s]+/).filter((id) => id.trim().length > 0);
 
@@ -257,8 +296,19 @@ export class BulkCommand extends ModerationCommand {
       const embed = this.client.genEmbed({
         title: await this.t("moderation:bulk.queue.timeout.title"),
         description: await this.t("moderation:bulk.queue.timeout.description", { count: userIdList.length }),
-        color: 0x3498db,
+        color: 0x9b59b6,
+        thumbnail: { url: this.user.displayAvatarURL({ size: 128 }) },
         fields: [
+          {
+            name: await this.t("moderation:common.labels.type"),
+            value: `${await this.t("moderation:common.types.TIMEOUT")} (${durationStr})`,
+            inline: true,
+          },
+          {
+            name: await this.t("moderation:common.labels.moderator"),
+            value: moderatorValue,
+            inline: true,
+          },
           {
             name: await this.t("moderation:bulk.fields.jobId"),
             value: String(job.id),
@@ -281,6 +331,7 @@ export class BulkCommand extends ModerationCommand {
           },
         ],
         footer: { text: await this.t("moderation:bulk.footer.checkAuditLog") },
+        timestamp: new Date(),
       });
 
       return { embeds: [embed], ephemeral: true };
@@ -343,6 +394,18 @@ export const builder = new SlashCommandBuilder()
       .addStringOption((option) => option.setName("reason").setDescription("Reason for the ban").setRequired(true))
       .addBooleanOption((option) => option.setName("delete-messages").setDescription("Delete messages from the users"))
       .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the users"))
+      .addStringOption((opt) =>
+        opt
+          .setName("mentions")
+          .setDescription("How to show users in embeds")
+          .addChoices(
+            { name: "Mention", value: "mention" },
+            { name: "Username", value: "username" },
+            { name: "ID", value: "id" },
+            { name: "Tag", value: "tag" }
+          )
+          .setRequired(false)
+      )
   )
   .addSubcommand((subcommand) =>
     subcommand
@@ -353,6 +416,18 @@ export const builder = new SlashCommandBuilder()
       )
       .addStringOption((option) => option.setName("reason").setDescription("Reason for the kick").setRequired(true))
       .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the users"))
+      .addStringOption((opt) =>
+        opt
+          .setName("mentions")
+          .setDescription("How to show users in embeds")
+          .addChoices(
+            { name: "Mention", value: "mention" },
+            { name: "Username", value: "username" },
+            { name: "ID", value: "id" },
+            { name: "Tag", value: "tag" }
+          )
+          .setRequired(false)
+      )
   )
   .addSubcommand((subcommand) =>
     subcommand
@@ -366,4 +441,16 @@ export const builder = new SlashCommandBuilder()
         option.setName("duration").setDescription("Duration (e.g., 30s, 5m, 2h, 1d)").setRequired(true)
       )
       .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the users"))
+      .addStringOption((opt) =>
+        opt
+          .setName("mentions")
+          .setDescription("How to show users in embeds")
+          .addChoices(
+            { name: "Mention", value: "mention" },
+            { name: "Username", value: "username" },
+            { name: "ID", value: "id" },
+            { name: "Tag", value: "tag" }
+          )
+          .setRequired(false)
+      )
   );

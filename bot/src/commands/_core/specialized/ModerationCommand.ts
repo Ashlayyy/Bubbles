@@ -230,4 +230,44 @@ export abstract class ModerationCommand extends BaseCommand {
       .ephemeral(true)
       .build();
   }
+
+  /**
+   * Read optional embed theme overrides from common options present on moderation commands.
+   * Supported options: `style` (compact|standard|detailed), `mentions` (mention|tag|id|username)
+   */
+  protected getThemeOverrides(): Partial<{
+    variant: "compact" | "standard" | "detailed";
+    showCaseField: boolean;
+    reasonMaxLength: number;
+    mentionStyle: "mention" | "tag" | "id" | "username";
+  }> {
+    if (!this.isSlashCommand()) return {};
+
+    const style = this.getStringOption("style") as "compact" | "standard" | "detailed" | null;
+    const mentions = this.getStringOption("mentions") as "mention" | "tag" | "id" | "username" | null;
+
+    const overrides: Partial<{
+      variant: "compact" | "standard" | "detailed";
+      showCaseField: boolean;
+      reasonMaxLength: number;
+      mentionStyle: "mention" | "tag" | "id" | "username";
+    }> = {};
+    if (style === "compact" || style === "standard" || style === "detailed") {
+      overrides.variant = style;
+      // Compact preset tweaks
+      if (style === "compact") {
+        overrides.showCaseField = false;
+        overrides.reasonMaxLength = 300;
+      }
+      if (style === "detailed") {
+        overrides.reasonMaxLength = 1000;
+      }
+    }
+
+    if (mentions === "mention" || mentions === "tag" || mentions === "id" || mentions === "username") {
+      overrides.mentionStyle = mentions;
+    }
+
+    return overrides;
+  }
 }

@@ -2,7 +2,7 @@ import { PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { expandAlias, parseEvidence, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
-import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
+import { buildModCaseEmbed } from "../_shared/ModCaseEmbed.js";
 
 /**
  * Warn Command - Warns a user with configurable points
@@ -92,17 +92,32 @@ export class WarnCommand extends ModerationCommand {
       // Get user's total points for display
       const totalPoints = await this.client.moderationManager.getInfractionPoints(this.guild.id, targetUser.id);
 
-      // Success response with better formatting
-      const pointsText = points === 1 ? "1 point" : `${points} points`;
+      const embed = await buildModCaseEmbed(
+        this.client,
+        (k, o) => this.t(k, o),
+        {
+          action: "WARN",
+          title: `⚠️ ${await this.t("moderation:common.types.WARN")}`,
+          target: {
+            id: targetUser.id,
+            username: targetUser.username,
+            avatarURL: targetUser.displayAvatarURL({ size: 128 }),
+          },
+          moderator: {
+            id: this.user.id,
+            username: this.user.username,
+            avatarURL: this.user.displayAvatarURL({ size: 128 }),
+          },
+          reason,
+          caseNumber: case_.caseNumber,
+          notified: !silent,
+          timestamp: new Date(),
+          thumbnailUser: "target",
+        },
+        this.getThemeOverrides()
+      );
 
-      return buildModSuccess({
-        title: "Warning Issued",
-        target: targetUser,
-        moderator: this.user,
-        reason,
-        notified: !silent,
-        caseNumber: case_.caseNumber,
-      });
+      return { embeds: [embed], ephemeral: true };
     } catch (error) {
       return this.createModerationError(
         "warn",
@@ -141,4 +156,27 @@ export const builder = new SlashCommandBuilder()
       .setMaxValue(10)
       .setRequired(false)
   )
-  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false));
+  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false))
+  .addStringOption((opt) =>
+    opt
+      .setName("style")
+      .setDescription("Embed style")
+      .addChoices(
+        { name: "Compact", value: "compact" },
+        { name: "Standard", value: "standard" },
+        { name: "Detailed", value: "detailed" }
+      )
+      .setRequired(false)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("mentions")
+      .setDescription("How to show users in embeds")
+      .addChoices(
+        { name: "Mention", value: "mention" },
+        { name: "Username", value: "username" },
+        { name: "ID", value: "id" },
+        { name: "Tag", value: "tag" }
+      )
+      .setRequired(false)
+  );

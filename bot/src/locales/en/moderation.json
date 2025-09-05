@@ -1,4 +1,30 @@
 {
+  "common": {
+    "labels": {
+      "case": "Case",
+      "type": "Type",
+      "target": "Target",
+      "moderator": "Moderator",
+      "reason": "Reason",
+      "duration": "Duration",
+      "notified": "User Notified"
+    },
+    "values": {
+      "noReason": "No reason provided."
+    },
+    "types": {
+      "BAN": "Ban",
+      "KICK": "Kick",
+      "TIMEOUT": "Timeout",
+      "UNBAN": "Unban",
+      "UNTIMEOUT": "Timeout Removed",
+      "WARN": "Warn",
+      "NOTE": "Note",
+      "PURGE": "Purge",
+      "MASSBAN": "Mass Ban",
+      "BULK": "Bulk Moderation"
+    }
+  },
   "bulk": {
     "queue": {
       "ban": {
@@ -33,6 +59,14 @@
       "failedToQueueBan": "Failed to queue bulk ban: {{error}}",
       "failedToQueueKick": "Failed to queue bulk kick: {{error}}",
       "failedToQueueTimeout": "Failed to queue bulk timeout: {{error}}"
+    }
+  },
+  "ban": {
+    "title": "Ban Applied",
+    "errors": {
+      "invalidFormat": "❌ Invalid duration format: **{{duration}}**\n\n**Correct format examples:**\n• `30m` - 30 minutes\n• `2h` - 2 hours\n• `1d` - 1 day\n• `7d` - 7 days\n• `30d` - 30 days\n\n**Allowed units:** s(econds), m(inutes), h(ours), d(ays), w(eeks), mo(nths), y(ears)\n\n💡 **Tip:** Leave duration blank for permanent ban.",
+      "validationTip": "💡 **Tip:** Make sure you have appropriate permissions and role hierarchy.",
+      "commonSolutions": "💡 **Common solutions:**\n• Check if you have ban permissions\n• Verify role hierarchy\n• Ensure the bot has necessary permissions\n\n📖 **Need help?** Contact an administrator."
     }
   }
 }

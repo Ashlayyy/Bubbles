@@ -324,21 +324,19 @@ export class PurgeCommand extends ModerationCommand {
         },
       });
 
-      // Create summary embed
+      // Create summary embed (Wick-style) with optional mention style
+      const showAs = (this.getStringOption("mentions") as "mention" | "username" | "id" | "tag" | null) ?? "mention";
+      const moderatorDisplay =
+        showAs === "mention" ? `<@${this.user.id}>` : showAs === "id" ? this.user.id : this.user.username;
+
       const embed = this.client.genEmbed({
-        title: "🧹 Purge Complete",
-        color: 0x00ff00,
+        title: `🧹 Purge Complete`,
+        color: 0x95a5a6,
         fields: [
-          {
-            name: "📊 Summary",
-            value: [
-              `**Messages Deleted:** ${deletedCount}`,
-              `**Channel:** <#${channel.id}>`,
-              `**Moderator:** ${this.user}`,
-              `**Reason:** ${reason}`,
-            ].join("\n"),
-            inline: false,
-          },
+          { name: "Channel", value: `<#${channel.id}>`, inline: true },
+          { name: "Moderator", value: moderatorDisplay, inline: true },
+          { name: "Deleted", value: String(deletedCount), inline: true },
+          { name: "Reason", value: reason ?? "No reason provided.", inline: false },
         ],
         timestamp: new Date(),
       });
@@ -448,6 +446,18 @@ export const builder = new SlashCommandBuilder()
         { name: "video", value: "video" },
         { name: "audio", value: "audio" },
         { name: "file", value: "file" }
+      )
+      .setRequired(false)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("mentions")
+      .setDescription("How to show users in embeds")
+      .addChoices(
+        { name: "Mention", value: "mention" },
+        { name: "Username", value: "username" },
+        { name: "ID", value: "id" },
+        { name: "Tag", value: "tag" }
       )
       .setRequired(false)
   );

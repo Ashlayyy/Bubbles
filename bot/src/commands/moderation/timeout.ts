@@ -2,7 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { expandAlias, parseDuration, parseEvidence, type CommandConfig, type CommandResponse } from "../_core/index.js";
 import { ModerationCommand } from "../_core/specialized/ModerationCommand.js";
-import { buildModSuccess } from "../_shared/ModResponseBuilder.js";
+import { buildModCaseEmbed } from "../_shared/ModCaseEmbed.js";
 
 /**
  * Timeout Command - Timeout a user (mute them temporarily)
@@ -109,16 +109,33 @@ export class TimeoutCommand extends ModerationCommand {
           interactionLatency: Date.now() - this.interaction.createdTimestamp,
         }
       );
+      const embed = await buildModCaseEmbed(
+        this.client,
+        (k, o) => this.t(k, o),
+        {
+          action: "TIMEOUT",
+          title: `⏱️ ${await this.t("moderation:common.types.TIMEOUT")} (${this.formatDuration(duration)})`,
+          target: {
+            id: targetUser.id,
+            username: targetUser.username,
+            avatarURL: targetUser.displayAvatarURL({ size: 128 }),
+          },
+          moderator: {
+            id: this.user.id,
+            username: this.user.username,
+            avatarURL: this.user.displayAvatarURL({ size: 128 }),
+          },
+          reason,
+          durationSeconds: duration,
+          caseNumber: case_.caseNumber,
+          notified: !silent,
+          timestamp: new Date(),
+          thumbnailUser: "target",
+        },
+        this.getThemeOverrides()
+      );
 
-      return buildModSuccess({
-        title: `Timeout (${this.formatDuration(duration)}) | Case #${case_.caseNumber}`,
-        target: targetUser,
-        moderator: this.user,
-        reason,
-        duration,
-        notified: !silent,
-        caseNumber: case_.caseNumber,
-      });
+      return { embeds: [embed], ephemeral: true };
     } catch (error) {
       if (error instanceof Error && error.message.includes("hierarchy")) {
         return this.createModerationError(
@@ -168,4 +185,27 @@ export const builder = new SlashCommandBuilder()
   .addStringOption((option) =>
     option.setName("evidence").setDescription("Evidence links (comma-separated)").setRequired(false)
   )
-  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false));
+  .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the user").setRequired(false))
+  .addStringOption((opt) =>
+    opt
+      .setName("style")
+      .setDescription("Embed style")
+      .addChoices(
+        { name: "Compact", value: "compact" },
+        { name: "Standard", value: "standard" },
+        { name: "Detailed", value: "detailed" }
+      )
+      .setRequired(false)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("mentions")
+      .setDescription("How to show users in embeds")
+      .addChoices(
+        { name: "Mention", value: "mention" },
+        { name: "Username", value: "username" },
+        { name: "ID", value: "id" },
+        { name: "Tag", value: "tag" }
+      )
+      .setRequired(false)
+  );
