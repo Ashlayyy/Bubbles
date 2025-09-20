@@ -19,5 +19,178 @@
       "description": "Kick a user from the server",
       "success": "Successfully kicked {{username}}"
     }
+  },
+  "config": {
+    "description": "Configure server settings",
+    "updated": "Configuration updated successfully",
+    "invalid_option": "Invalid configuration option"
+  },
+  "labels": {
+    "user": "User",
+    "joined": "Joined",
+    "message": "Message",
+    "embedEnabled": "Embed Enabled"
+  },
+  "welcome": {
+    "errors": {
+      "noConfig": {
+        "title": "No Configuration",
+        "description": "Welcome system has not been configured yet. Use `/setup welcome` first."
+      },
+      "welcomeDisabled": {
+        "title": "Welcome Disabled",
+        "description": "Welcome messages are currently disabled."
+      },
+      "goodbyeDisabled": {
+        "title": "Goodbye Disabled",
+        "description": "Goodbye messages are currently disabled."
+      },
+      "noChannel": {
+        "title": "No Channel Set",
+        "description": "{{type, select, welcome{Welcome} goodbye{Goodbye} other{}}} channel is not configured."
+      },
+      "invalidChannel": {
+        "title": "Invalid Channel",
+        "description": "The {{type}} channel is not accessible."
+      }
+    },
+    "test": {
+      "titleWelcome": "👋 Welcome!",
+      "titleGoodbye": "👋 Goodbye!",
+      "descriptionWelcome": "Welcome to **{{server}}**, {{user}}! We're glad to have you here.",
+      "descriptionGoodbye": "Goodbye, {{user}}! We'll miss you.",
+      "sent": {
+        "title": "Test Message Sent",
+        "description": "Test {{type}} message has been sent to {{channel}}."
+      },
+      "failed": {
+        "title": "Failed to Send",
+        "description": "Could not send test message to {{channel}}. Check bot permissions."
+      }
+    },
+    "labels": {
+      "memberCount": "Member Count"
+    },
+    "message": {
+      "updated": {
+        "title": "✅ Message Updated",
+        "description": "{{type, select, welcome{Welcome} goodbye{Goodbye} other{}}} message has been updated."
+      },
+      "usingDefault": "Using default message"
+    },
+    "stats": {
+      "title": "📊 Welcome System Statistics",
+      "description": "Current configuration and recent activity:",
+      "labels": {
+        "welcomeChannel": "👋 Welcome Channel",
+        "welcomeEnabled": "👋 Welcome Enabled",
+        "goodbyeChannel": "👋 Goodbye Channel",
+        "goodbyeEnabled": "👋 Goodbye Enabled",
+        "autoRoles": "🎭 Auto-Roles",
+        "recentJoins": "📈 Recent Joins",
+        "totalMembers": "👥 Total Members"
+      },
+      "values": {
+        "recentJoins": "{{count}} members in the last 7 days"
+      }
+    }
+  },
+  "ticket": {
+    "assign": {
+      "title": "✅ Ticket Assigned",
+      "description": "Ticket #{{number}} has been assigned.",
+      "notify": "This ticket has been assigned to {{assignee}} by {{moderator}}.",
+      "fields": {
+        "ticket": "🎫 Ticket",
+        "assignedTo": "👤 Assigned to",
+        "assignedBy": "👮 Assigned by",
+        "reason": "📝 Reason",
+        "prevAssignee": "👤 Previous Assignee",
+        "newAssignee": "👤 New Assignee",
+        "staffMembers": "👥 Staff Members",
+        "assignments": "📊 Assignments"
+      }
+    },
+    "unassign": {
+      "title": "🔄 Ticket Unassigned",
+      "description": "Ticket #{{number}} has been unassigned.",
+      "notify": "This ticket has been unassigned by {{moderator}}."
+    },
+    "reassign": {
+      "title": "🔄 Ticket Reassigned",
+      "description": "Ticket #{{number}} has been reassigned.",
+      "notify": "This ticket has been reassigned to {{assignee}} by {{moderator}}."
+    },
+    "auto": {
+      "title": "🤖 Auto Assignment Complete",
+      "description": "Successfully assigned **{{count}}** tickets to staff members."
+    },
+    "list": {
+      "title": "📋 Assigned Tickets",
+      "description": "Found **{{count}}** assigned tickets:"
+    },
+    "errors": {
+      "notFound": {
+        "title": "Ticket Not Found",
+        "description": "Ticket #{{number}} not found or already closed."
+      },
+      "invalidAssignee": {
+        "title": "Invalid Assignee",
+        "description": "Assignee is not a member of this server."
+      },
+      "insufficientPerms": {
+        "title": "Insufficient Permissions",
+        "description": "Assignee must have Manage Channels permission."
+      },
+      "alreadyAssigned": {
+        "title": "Ticket Already Assigned",
+        "description": "This ticket is already assigned to {{assignee}}."
+      },
+      "notAssigned": {
+        "title": "Ticket Not Assigned",
+        "description": "This ticket is not currently assigned."
+      },
+      "noStaff": {
+        "title": "No Staff Available",
+        "description": "No staff members found with appropriate permissions."
+      },
+      "noUnassigned": {
+        "title": "No Unassigned Tickets",
+        "description": "No unassigned tickets found matching the criteria."
+      },
+      "noAssigned": {
+        "title": "No Assigned Tickets",
+        "description": "No assigned tickets found matching the criteria."
+      }
+    }
+  },
+  "server": {
+    "errors": {
+      "unknownSub": "❌ Unknown subcommand",
+      "unexpected": "❌ An unexpected error occurred.",
+      "noRoles": "❌ No roles found.",
+      "noUsers": "❌ No users found matching your criteria.",
+      "fetchMembersFailed": "❌ Failed to fetch server members. This may be due to missing permissions or Discord API issues."
+    },
+    "roles": {
+      "title": "🎭 Server Roles {{manageable}}",
+      "description": "Found {{count}} role{{plural}}",
+      "field": "Roles",
+      "footer": {
+        "showing": "Showing first 25 of {{count}} roles",
+        "total": "Total: {{count}} roles"
+      }
+    },
+    "users": {
+      "title": "👥 Server Users{{filtered}}",
+      "description": "Found {{count}} user{{plural}}{{showing}}",
+      "footer": "Total members: {{total}} | Non-bot members: {{nonBot}}"
+    },
+    "commands": {
+      "title": "🤖 Bot Commands",
+      "description": "Available commands{{inCategory}}",
+      "fieldName": "📁 {{name}} ({{count}})",
+      "footer": "Total commands: {{count}}"
+    }
   }
 }

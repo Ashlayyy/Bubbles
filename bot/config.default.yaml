@@ -1,0 +1,16 @@
+name: "Bubbles"
+activities:
+  - name: "with Discord users"
+    type: "playing"
+  - name: "for server activity"
+    type: "watching"
+welcome:
+  messages:
+    - title: Welcome to ${server}!
+      description: We're glad you're here <@${userID}>! Please read the rules and have fun.
+      color: "#00ff00"
+goodbye:
+  messages:
+    - title: Goodbye ${user}!
+      description: Thanks for being part of our community <@${userID}>. You're always welcome back!
+      color: "#ff6600"

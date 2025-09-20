@@ -146,7 +146,7 @@ export class UnbanCommand extends ModerationCommand {
           target: {
             id: target.id,
             username: target.username,
-            avatarURL: ("displayAvatarURL" in target ? target.displayAvatarURL({ size: 128 }) : null) as string | null,
+            avatarURL: "displayAvatarURL" in target ? target.displayAvatarURL({ size: 128 }) : null,
           },
           moderator: {
             id: this.user.id,

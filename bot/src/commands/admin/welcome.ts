@@ -60,44 +60,63 @@ export class WelcomeCommand extends AdminCommand {
 
     if (!config) {
       return this.createAdminError(
-        "No Configuration",
-        "Welcome system has not been configured yet. Use `/setup welcome` first."
+        await this.t("commands:welcome.errors.noConfig.title"),
+        await this.t("commands:welcome.errors.noConfig.description")
       );
     }
 
     if (type === "welcome" && !config.welcomeEnabled) {
-      return this.createAdminError("Welcome Disabled", "Welcome messages are currently disabled.");
+      return this.createAdminError(
+        await this.t("commands:welcome.errors.welcomeDisabled.title"),
+        await this.t("commands:welcome.errors.welcomeDisabled.description")
+      );
     }
 
     if (type === "goodbye" && !config.goodbyeEnabled) {
-      return this.createAdminError("Goodbye Disabled", "Goodbye messages are currently disabled.");
+      return this.createAdminError(
+        await this.t("commands:welcome.errors.goodbyeDisabled.title"),
+        await this.t("commands:welcome.errors.goodbyeDisabled.description")
+      );
     }
 
     const channelId = type === "welcome" ? config.welcomeChannelId : config.goodbyeChannelId;
     if (!channelId) {
       return this.createAdminError(
-        "No Channel Set",
-        `${type === "welcome" ? "Welcome" : "Goodbye"} channel is not configured.`
+        await this.t("commands:welcome.errors.noChannel.title"),
+        await this.t("commands:welcome.errors.noChannel.description", { type })
       );
     }
 
     const channel = this.guild.channels.cache.get(channelId);
     if (!channel?.isTextBased()) {
-      return this.createAdminError("Invalid Channel", `The ${type} channel is not accessible.`);
+      return this.createAdminError(
+        await this.t("commands:welcome.errors.invalidChannel.title"),
+        await this.t("commands:welcome.errors.invalidChannel.description", { type })
+      );
     }
 
     // Create test message
     const embed = this.client.genEmbed({
-      title: type === "welcome" ? "👋 Welcome!" : "👋 Goodbye!",
+      title:
+        type === "welcome"
+          ? await this.t("commands:welcome.test.titleWelcome")
+          : await this.t("commands:welcome.test.titleGoodbye"),
       description:
         type === "welcome"
-          ? `Welcome to **${this.guild.name}**, ${testUser}! We're glad to have you here.`
-          : `Goodbye, ${testUser}! We'll miss you.`,
+          ? await this.t("commands:welcome.test.descriptionWelcome", {
+              server: this.guild.name,
+              user: String(testUser),
+            })
+          : await this.t("commands:welcome.test.descriptionGoodbye", { user: String(testUser) }),
       color: type === "welcome" ? 0x2ecc71 : 0xe74c3c,
       fields: [
-        { name: "👤 User", value: `${testUser} (${testUser.id})`, inline: true },
-        { name: "📅 Joined", value: `<t:${Math.floor(testUser.createdAt.getTime() / 1000)}:F>`, inline: true },
-        { name: "🎭 Member Count", value: `${this.guild.memberCount}`, inline: true },
+        { name: await this.t("commands:labels.user"), value: `${testUser} (${testUser.id})`, inline: true },
+        {
+          name: await this.t("commands:labels.joined"),
+          value: `<t:${Math.floor(testUser.createdAt.getTime() / 1000)}:F>`,
+          inline: true,
+        },
+        { name: await this.t("commands:welcome.labels.memberCount"), value: `${this.guild.memberCount}`, inline: true },
       ],
       thumbnail: { url: testUser.displayAvatarURL() },
     });
@@ -105,11 +124,14 @@ export class WelcomeCommand extends AdminCommand {
     try {
       await channel.send({ embeds: [embed] });
 
-      return this.createAdminSuccess("Test Message Sent", `Test ${type} message has been sent to <#${channelId}>.`);
+      return this.createAdminSuccess(
+        await this.t("commands:welcome.test.sent.title"),
+        await this.t("commands:welcome.test.sent.description", { type, channel: `<#${channelId}>` })
+      );
     } catch (error) {
       return this.createAdminError(
-        "Failed to Send",
-        `Could not send test message to <#${channelId}>. Check bot permissions.`
+        await this.t("commands:welcome.test.failed.title"),
+        await this.t("commands:welcome.test.failed.description", { channel: `<#${channelId}>` })
       );
     }
   }
@@ -124,8 +146,8 @@ export class WelcomeCommand extends AdminCommand {
 
     if (!config) {
       return this.createAdminError(
-        "No Configuration",
-        "Welcome system has not been configured yet. Use `/setup welcome` first."
+        await this.t("commands:welcome.errors.noConfig.title"),
+        await this.t("commands:welcome.errors.noConfig.description")
       );
     }
 
@@ -225,12 +247,16 @@ export class WelcomeCommand extends AdminCommand {
     });
 
     const embed = this.client.genEmbed({
-      title: "✅ Message Updated",
-      description: `${type === "welcome" ? "Welcome" : "Goodbye"} message has been updated.`,
+      title: await this.t("commands:welcome.message.updated.title"),
+      description: await this.t("commands:welcome.message.updated.description", { type }),
       color: 0x2ecc71,
       fields: [
-        { name: "📝 Message", value: message ?? "Using default message", inline: false },
-        { name: "🎨 Embed Enabled", value: embedEnabled ? "✅ Yes" : "❌ No", inline: true },
+        {
+          name: await this.t("commands:labels.message"),
+          value: message ?? (await this.t("commands:welcome.message.usingDefault")),
+          inline: false,
+        },
+        { name: await this.t("commands:labels.embedEnabled"), value: embedEnabled ? "✅" : "❌", inline: true },
       ],
     });
 
@@ -244,8 +270,8 @@ export class WelcomeCommand extends AdminCommand {
 
     if (!config) {
       return this.createAdminError(
-        "No Configuration",
-        "Welcome system has not been configured yet. Use `/setup welcome` first."
+        await this.t("commands:welcome.errors.noConfig.title"),
+        await this.t("commands:welcome.errors.noConfig.description")
       );
     }
 
@@ -254,29 +280,47 @@ export class WelcomeCommand extends AdminCommand {
     const recentMembers = this.guild.members.cache.filter((member) => member.joinedAt && member.joinedAt > oneWeekAgo);
 
     const embed = this.client.genEmbed({
-      title: "📊 Welcome System Statistics",
-      description: "Current configuration and recent activity:",
+      title: await this.t("commands:welcome.stats.title"),
+      description: await this.t("commands:welcome.stats.description"),
       color: 0x3498db,
       fields: [
         {
-          name: "👋 Welcome Channel",
-          value: config.welcomeChannelId ? `<#${config.welcomeChannelId}>` : "Not set",
+          name: await this.t("commands:welcome.stats.labels.welcomeChannel"),
+          value: config.welcomeChannelId ? `<#${config.welcomeChannelId}>` : await this.t("common:none"),
           inline: true,
         },
-        { name: "👋 Welcome Enabled", value: config.welcomeEnabled ? "✅ Yes" : "❌ No", inline: true },
         {
-          name: "👋 Goodbye Channel",
-          value: config.goodbyeChannelId ? `<#${config.goodbyeChannelId}>` : "Not set",
+          name: await this.t("commands:welcome.stats.labels.welcomeEnabled"),
+          value: config.welcomeEnabled ? "✅" : "❌",
           inline: true,
         },
-        { name: "👋 Goodbye Enabled", value: config.goodbyeEnabled ? "✅ Yes" : "❌ No", inline: true },
         {
-          name: "🎭 Auto-Roles",
-          value: config.moderatorRoleIds.length ? config.moderatorRoleIds.map((id) => `<@&${id}>`).join(", ") : "None",
+          name: await this.t("commands:welcome.stats.labels.goodbyeChannel"),
+          value: config.goodbyeChannelId ? `<#${config.goodbyeChannelId}>` : await this.t("common:none"),
+          inline: true,
+        },
+        {
+          name: await this.t("commands:welcome.stats.labels.goodbyeEnabled"),
+          value: config.goodbyeEnabled ? "✅" : "❌",
+          inline: true,
+        },
+        {
+          name: await this.t("commands:welcome.stats.labels.autoRoles"),
+          value: config.moderatorRoleIds.length
+            ? config.moderatorRoleIds.map((id) => `<@&${id}>`).join(", ")
+            : await this.t("common:none"),
           inline: false,
         },
-        { name: "📈 Recent Joins", value: `${recentMembers.size} members in the last 7 days`, inline: true },
-        { name: "👥 Total Members", value: `${this.guild.memberCount}`, inline: true },
+        {
+          name: await this.t("commands:welcome.stats.labels.recentJoins"),
+          value: await this.t("commands:welcome.stats.values.recentJoins", { count: recentMembers.size }),
+          inline: true,
+        },
+        {
+          name: await this.t("commands:welcome.stats.labels.totalMembers"),
+          value: `${this.guild.memberCount}`,
+          inline: true,
+        },
       ],
     });
 

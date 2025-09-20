@@ -144,6 +144,7 @@ export async function buildModCaseEmbed(
 
   const titleText = (() => {
     const base = title ?? `${emoji} ${typeLabel}`;
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-template-expression
     if (!theme.showTypeInTitle) return title ?? `${emoji}`;
     if (theme.variant === "compact" && caseNumber != null) return `${base} • #${String(caseNumber)}`;
     return base;
@@ -153,18 +154,17 @@ export async function buildModCaseEmbed(
     title: titleText,
     color: theme.colorOverride ?? color,
     timestamp: timestamp ?? new Date(),
-    thumbnail:
-      theme.showThumbnails && thumbnailUser !== "none"
-        ? {
-            url:
-              (thumbnailUser === "moderator" ? moderator.avatarURL : target.avatarURL) ??
-              target.avatarURL ??
-              moderator.avatarURL ??
-              undefined,
-          }
-        : undefined,
+    thumbnail: (() => {
+      if (!theme.showThumbnails || thumbnailUser === "none") return undefined;
+      const resolvedUrl =
+        (thumbnailUser === "moderator" ? moderator.avatarURL : target.avatarURL) ??
+        target.avatarURL ??
+        moderator.avatarURL ??
+        undefined;
+      return typeof resolvedUrl === "string" ? { url: resolvedUrl } : undefined;
+    })(),
     fields: (() => {
-      const fields: Array<{ name: string; value: string; inline?: boolean }> = [];
+      const fields: { name: string; value: string; inline?: boolean }[] = [];
 
       if (theme.variant !== "compact" && theme.showCaseField && caseNumber != null) {
         fields.push({ name: labels.case, value: `#${String(caseNumber)}`, inline: true });

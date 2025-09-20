@@ -254,6 +254,18 @@ export const builder = new SlashCommandBuilder()
       .setName("view")
       .setDescription("View a specific case")
       .addIntegerOption((opt) => opt.setName("number").setDescription("Case number to view").setRequired(true))
+      .addStringOption((opt) =>
+        opt
+          .setName("mentions")
+          .setDescription("How to show users in embeds")
+          .addChoices(
+            { name: "Mention", value: "mention" },
+            { name: "Username", value: "username" },
+            { name: "ID", value: "id" },
+            { name: "Tag", value: "tag" }
+          )
+          .setRequired(false)
+      )
   )
   .addSubcommand((sub) =>
     sub
@@ -299,16 +311,4 @@ export const builder = new SlashCommandBuilder()
       .setName("delete")
       .setDescription("Delete a moderation case")
       .addIntegerOption((opt) => opt.setName("number").setDescription("Case number").setRequired(true))
-  )
-  .addStringOption((opt) =>
-    opt
-      .setName("mentions")
-      .setDescription("How to show users in embeds")
-      .addChoices(
-        { name: "Mention", value: "mention" },
-        { name: "Username", value: "username" },
-        { name: "ID", value: "id" },
-        { name: "Tag", value: "tag" }
-      )
-      .setRequired(false)
   );
