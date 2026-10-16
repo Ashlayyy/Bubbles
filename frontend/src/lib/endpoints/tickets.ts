@@ -23,4 +23,33 @@ export const ticketsEndpoints = {
 		apiClient().post(`/guilds/${guildId}/tickets/${ticketId}/close`),
 	claimTicket: (guildId: string, ticketId: string) =>
 		apiClient().post(`/guilds/${guildId}/tickets/${ticketId}/claim`),
+
+	// Assignment endpoints
+	assignTicket: (
+		guildId: string,
+		ticketId: string,
+		payload: { assignedTo: string; reason?: string }
+	) =>
+		apiClient().post(`/guilds/${guildId}/tickets/${ticketId}/assign`, payload),
+	unassignTicket: (
+		guildId: string,
+		ticketId: string,
+		payload: { reason?: string }
+	) =>
+		apiClient().post(
+			`/guilds/${guildId}/tickets/${ticketId}/unassign`,
+			payload
+		),
+	bulkAssignTickets: (
+		guildId: string,
+		payload: { ticketIds: string[]; assignedTo: string; reason?: string }
+	) => apiClient().post(`/guilds/${guildId}/tickets/bulk-assign`, payload),
+	autoAssignTickets: (
+		guildId: string,
+		payload: { staffIds: string[]; maxAssignments?: number }
+	) => apiClient().post(`/guilds/${guildId}/tickets/auto-assign`, payload),
+	getAssignmentStatistics: (guildId: string, params?: { period?: string }) =>
+		apiClient().get(`/guilds/${guildId}/tickets/assignment-statistics`, {
+			params,
+		}),
 };

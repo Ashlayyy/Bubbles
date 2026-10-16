@@ -15,7 +15,7 @@ import logger from "../logger.js";
 import type Client from "../structures/Client.js";
 import { cacheService } from "./cacheService.js";
 
-function isAutoModTriggerConfig(obj: unknown): obj is AutoModTriggerConfig {
+function _isAutoModTriggerConfig(obj: unknown): obj is AutoModTriggerConfig {
   return typeof obj === "object" && obj !== null;
 }
 
@@ -29,10 +29,14 @@ function isLegacyAction(action: unknown): action is LegacyActionType {
 
 const ruleCache = new Map<string, { rules: AutoModRule[]; timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000;
+const userMessageHistory = new Map<string, number[]>(); // key = `${guildId}:${userId}`
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class
 export class AutoModService {
   static async processMessage(client: Client, message: Message): Promise<void> {
     if (!message.guild || !message.member || message.author.bot) return;
+
+    // Record message timestamp for behavioral spam detection
+    AutoModService.recordMessageTimestamp(message);
 
     try {
       const rules = await AutoModService.getActiveRules(message.guild.id);
@@ -82,6 +86,18 @@ export class AutoModService {
     }
   }
 
+  private static recordMessageTimestamp(message: Message): void {
+    if (!message.guild) return;
+    const key = `${message.guild.id}:${message.author.id}`;
+    const now = Date.now();
+    const timestamps = userMessageHistory.get(key) ?? [];
+    // Remove timestamps older than 60 seconds to prevent unbounded growth
+    const cutoff = now - 60 * 1000;
+    const pruned = timestamps.filter((ts) => ts >= cutoff);
+    pruned.push(now);
+    userMessageHistory.set(key, pruned);
+  }
+
   private static async getActiveRules(guildId: string): Promise<AutoModRule[]> {
     const cached = ruleCache.get(guildId);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
@@ -91,7 +107,7 @@ export class AutoModService {
     try {
       // Use Redis cache service for better caching
       const cacheKey = `automod:rules:${guildId}`;
-      const cachedRules = await cacheService.get<AutoModRule[]>(cacheKey, "autoModRules");
+      const cachedRules = await cacheService.get<AutoModRule[]>(cacheKey);
 
       if (cachedRules) {
         // Update memory cache for backwards compatibility
@@ -132,7 +148,7 @@ export class AutoModService {
       }));
 
       // Cache in both Redis and memory
-      await cacheService.set(cacheKey, rules, "autoModRules");
+      await cacheService.set(cacheKey, rules);
       ruleCache.set(guildId, { rules, timestamp: Date.now() });
 
       return rules;
@@ -190,7 +206,7 @@ export class AutoModService {
 
     switch (rule.type as AutoModRuleType) {
       case "spam":
-        return AutoModService.testSpamRule(content, triggers, rule.sensitivity);
+        return AutoModService.testSpamRule(message, triggers, rule.sensitivity);
 
       case "caps":
         return AutoModService.testCapsRule(content, triggers, rule.sensitivity);
@@ -207,6 +223,9 @@ export class AutoModService {
       case "mentions":
         return AutoModService.testMentionsRule(content, triggers, rule.sensitivity);
 
+      case "emojis":
+        return AutoModService.testEmojisRule(content, triggers, rule.sensitivity);
+
       default:
         return { triggered: false };
     }
@@ -215,26 +234,50 @@ export class AutoModService {
   /**
    * Test spam detection
    */
-  private static testSpamRule(content: string, triggers: AutoModTriggerConfig, sensitivity: string): AutoModTestResult {
-    // Check for duplicate words/phrases
+  private static testSpamRule(
+    message: Message,
+    triggers: AutoModTriggerConfig,
+    sensitivity: string
+  ): AutoModTestResult {
+    const content = message.content;
+    // Duplicate word/phrase detection (existing logic)
     const words = content.toLowerCase().split(/\s+/);
     const wordCounts = new Map<string, number>();
 
     for (const word of words) {
-      if (word.length < 3) continue; // Skip short words
+      if (word.length < 3) continue;
       wordCounts.set(word, (wordCounts.get(word) ?? 0) + 1);
     }
 
-    const baseThreshold = triggers.duplicateThreshold ?? 3;
-    const threshold = AutoModService.adjustThresholdBySensitivity(baseThreshold, sensitivity);
+    const baseDuplicateThreshold = triggers.duplicateThreshold ?? 3;
+    const duplicateThreshold = AutoModService.adjustThresholdBySensitivity(baseDuplicateThreshold, sensitivity);
 
     for (const [word, count] of wordCounts) {
-      if (count >= threshold) {
+      if (count >= duplicateThreshold) {
         return {
           triggered: true,
-          reason: `Spam detected: "${word}" repeated ${count} times`,
-          severity: count >= threshold * 2 ? "HIGH" : "MEDIUM",
+          reason: `Spam detected: "${word}" repeated ${String(count)} times`,
+          severity: count >= duplicateThreshold * 2 ? "HIGH" : "MEDIUM",
           matchedContent: word,
+        };
+      }
+    }
+
+    // Behavioral spam detection: too many messages in a short time window
+    const maxMessages = triggers.maxMessages ?? 5;
+    const timeWindow = (triggers.timeWindow ?? 10) * 1000; // convert to ms
+    if (maxMessages > 0 && timeWindow > 0 && message.guild) {
+      const key = `${message.guild.id}:${message.author.id}`;
+      const timestamps = userMessageHistory.get(key) ?? [];
+      const now = Date.now();
+      const recentCount = timestamps.filter((ts) => ts >= now - timeWindow).length;
+      const threshold = AutoModService.adjustThresholdBySensitivity(maxMessages, sensitivity);
+
+      if (recentCount >= threshold) {
+        return {
+          triggered: true,
+          reason: `Message spam detected: ${String(recentCount)} messages within ${String(timeWindow / 1000)}s (threshold: ${String(threshold)})`,
+          severity: recentCount >= threshold * 2 ? "HIGH" : "MEDIUM",
         };
       }
     }
@@ -258,7 +301,7 @@ export class AutoModService {
     if (capsPercent >= threshold) {
       return {
         triggered: true,
-        reason: `Excessive caps: ${Math.round(capsPercent)}% (threshold: ${threshold}%)`,
+        reason: `Excessive caps: ${String(Math.round(capsPercent))}% (threshold: ${String(threshold)}%)`,
         severity: capsPercent >= threshold * 1.2 ? "HIGH" : "MEDIUM",
       };
     }
@@ -272,7 +315,7 @@ export class AutoModService {
   private static testWordsRule(
     content: string,
     triggers: AutoModTriggerConfig,
-    sensitivity: string
+    _sensitivity: string
   ): AutoModTestResult {
     const blockedWords = triggers.blockedWords ?? [];
     const checkContent = triggers.ignoreCase ? content.toLowerCase() : content;
@@ -372,8 +415,8 @@ export class AutoModService {
    */
   private static testInvitesRule(
     content: string,
-    triggers: AutoModTriggerConfig,
-    sensitivity: string
+    _triggers: AutoModTriggerConfig,
+    _sensitivity: string
   ): AutoModTestResult {
     const inviteRegex = /(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\/[a-zA-Z0-9]+/gi;
     const matches = content.match(inviteRegex);
@@ -405,8 +448,42 @@ export class AutoModService {
     if (mentionCount >= threshold) {
       return {
         triggered: true,
-        reason: `Excessive mentions: ${mentionCount} (threshold: ${threshold})`,
+        reason: `Excessive mentions: ${String(mentionCount)} (threshold: ${String(threshold)})`,
         severity: mentionCount >= threshold * 2 ? "HIGH" : "MEDIUM",
+      };
+    }
+
+    return { triggered: false };
+  }
+
+  /**
+   * Test emoji spam
+   */
+  private static testEmojisRule(
+    content: string,
+    triggers: AutoModTriggerConfig,
+    sensitivity: string
+  ): AutoModTestResult {
+    // Regex for custom Discord emojis <a:name:id> or <:name:id>
+    const customEmojiRegex = /<a?:\w+:\d+>/g;
+    const customCount = (content.match(customEmojiRegex) ?? []).length;
+
+    // Regex for standard unicode emojis using Extended_Pictographic
+    const unicodeEmojiRegex = /[\p{Extended_Pictographic}]/u;
+    const unicodeCount = Array.from(content.matchAll(unicodeEmojiRegex)).length;
+
+    const totalEmojis = customCount + unicodeCount;
+    const maxTotal = triggers.maxEmojis ?? 10;
+    const maxCustom = triggers.maxCustomEmojis ?? 5;
+
+    const totalThreshold = AutoModService.adjustThresholdBySensitivity(maxTotal, sensitivity);
+    const customThreshold = AutoModService.adjustThresholdBySensitivity(maxCustom, sensitivity);
+
+    if (totalEmojis >= totalThreshold || customCount >= customThreshold) {
+      return {
+        triggered: true,
+        reason: `Excessive emoji usage: ${String(totalEmojis)} emojis (threshold: ${String(totalThreshold)})`,
+        severity: totalEmojis >= totalThreshold * 2 ? "HIGH" : "MEDIUM",
       };
     }
 
@@ -438,7 +515,7 @@ export class AutoModService {
 
       if (message.channel.isSendable()) {
         const reply = await message.reply({
-          content: `⚠️ ${message.author}, your message violated server rules: ${reasons.join("; ")}`,
+          content: `⚠️ ${String(message.author)}, your message violated server rules: ${reasons.join("; ")}`,
           allowedMentions: { repliedUser: false },
         });
 
@@ -502,7 +579,7 @@ export class AutoModService {
   }
 
   private static async executeAutoModAction(
-    client: Client,
+    _client: Client,
     message: Message,
     rule: AutoModRule,
     result: AutoModTestResult
@@ -585,7 +662,7 @@ export class AutoModService {
   private static async executeComplexActions(
     actions: AutoModActionConfig,
     message: Message,
-    rule: AutoModRule,
+    _rule: AutoModRule,
     result: AutoModTestResult
   ): Promise<void> {
     if (!message.guild || !message.member) return;
@@ -635,7 +712,8 @@ export class AutoModService {
 
     // Reply in channel if specified
     if (actions.replyInChannel && !actions.delete) {
-      const replyMessage = actions.customMessage ?? `${message.author}, your message violated server rules: ${reason}`;
+      const replyMessage =
+        actions.customMessage ?? `${String(message.author)}, your message violated server rules: ${reason}`;
 
       const reply = await message.reply(replyMessage);
 
@@ -660,7 +738,7 @@ export class AutoModService {
     try {
       const content =
         customMessage ??
-        `⚠️ Your message in **${message.guild?.name}** was flagged by auto-moderation.\n\n**Reason:** ${reason}\n**Rule:** ${rule.name}`;
+        `⚠️ Your message in **${String(message.guild?.name)}** was flagged by auto-moderation.\n\n**Reason:** ${reason}\n**Rule:** ${rule.name}`;
 
       await message.author.send({ content });
     } catch {

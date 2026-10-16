@@ -72,4 +72,14 @@ export const moderationEndpoints = {
 
 	deleteAutomodRule: (guildId: string, ruleId: string) =>
 		apiClient().delete(`/guilds/${guildId}/moderation/automod/${ruleId}`),
+
+	// Bulk moderation actions
+	bulkBan: (guildId: string, payload: Record<string, unknown>) =>
+		apiClient().post(`/guilds/${guildId}/moderation/bulk/ban`, payload),
+
+	bulkKick: (guildId: string, payload: Record<string, unknown>) =>
+		apiClient().post(`/guilds/${guildId}/moderation/bulk/kick`, payload),
+
+	bulkTimeout: (guildId: string, payload: Record<string, unknown>) =>
+		apiClient().post(`/guilds/${guildId}/moderation/bulk/timeout`, payload),
 };

@@ -1,10 +1,10 @@
 import http from "http";
 import { collectDefaultMetrics, Counter, Gauge } from "prom-client";
 import { metricsRegistry } from "./metrics/registry.js";
-import type { UnifiedQueueService } from "./services/unifiedQueueService.js";
+import type { BotQueueService } from "./services/botQueueService.js";
 import type Client from "./structures/Client.js";
 
-export function startMetricsServer(client: Client, queueService: UnifiedQueueService | null, port = 9321) {
+export function startMetricsServer(client: Client, queueService: BotQueueService | null, port = 9321) {
   const register = metricsRegistry;
   collectDefaultMetrics({ register });
 
@@ -37,18 +37,28 @@ export function startMetricsServer(client: Client, queueService: UnifiedQueueSer
     shardCount.set(client.shard?.count ?? 1);
 
     if (queueService) {
-      try {
-        const metrics = queueService.getMetrics();
-        const workers = metrics.workers;
-        queueActive.set(workers.activeWorkers || 0);
-        const completed = (workers as any).completedJobs ?? 0;
-        if (completed > lastCompleted) {
-          jobsProcessed.inc(completed - lastCompleted);
-          lastCompleted = completed;
-        }
-      } catch (err) {
-        console.error("[Metrics] Update error", err);
-      }
+      queueService
+        .getAllQueueMetrics()
+        .then((metrics) => {
+          let totalActive = 0;
+          let totalCompleted = 0;
+
+          for (const queueMetrics of Object.values(metrics)) {
+            if (queueMetrics && typeof queueMetrics === "object" && !queueMetrics.error) {
+              totalActive += Number(queueMetrics.active) || 0;
+              totalCompleted += Number(queueMetrics.completed) || 0;
+            }
+          }
+
+          queueActive.set(totalActive);
+          if (totalCompleted > lastCompleted) {
+            jobsProcessed.inc(totalCompleted - lastCompleted);
+            lastCompleted = totalCompleted;
+          }
+        })
+        .catch((err: unknown) => {
+          console.error("[Metrics] Update error", err);
+        });
     }
   }, 15000).unref();
 
@@ -67,17 +77,48 @@ export function startMetricsServer(client: Client, queueService: UnifiedQueueSer
         });
     } else if (req.url === "/health") {
       // Basic health information; extend as needed
-      const overall = "ok";
-      const payload = {
-        overall,
-        timestamp: Date.now(),
-        components: {
-          discord: client.isReady(),
-          queue: !!queueService,
-        },
-      };
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(payload));
+      if (queueService) {
+        queueService
+          .getSystemHealth()
+          .then((health) => {
+            const overall = client.isReady() && health.overall ? "ok" : "degraded";
+            const payload = {
+              overall,
+              timestamp: Date.now(),
+              components: {
+                discord: client.isReady(),
+                queue: health.overall,
+              },
+            };
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(payload));
+          })
+          .catch((err: unknown) => {
+            console.error("[Health] Queue health check error", err);
+            const payload = {
+              overall: "degraded",
+              timestamp: Date.now(),
+              components: {
+                discord: client.isReady(),
+                queue: false,
+              },
+            };
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(payload));
+          });
+      } else {
+        const overall = client.isReady() ? "ok" : "degraded";
+        const payload = {
+          overall,
+          timestamp: Date.now(),
+          components: {
+            discord: client.isReady(),
+            queue: false,
+          },
+        };
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(payload));
+      }
     } else {
       res.writeHead(404);
       res.end();

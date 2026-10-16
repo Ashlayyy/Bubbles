@@ -2,6 +2,7 @@ import type { MessageReaction, PartialMessageReaction, PartialUser, User } from 
 import { Events } from "discord.js";
 
 import { getReactionRoleByEmojiAndMessage, logReactionRoleAction } from "../../database/ReactionRoles.js";
+import { ComplimentWheelService } from "../../services/complimentWheelService.js";
 import { ClientEvent } from "../../structures/Event.js";
 
 export default new ClientEvent(
@@ -24,6 +25,21 @@ export default new ClientEvent(
         user = await user.fetch();
       } catch (error) {
         return;
+      }
+    }
+
+    // Check if this is a compliment wheel message
+    if (reaction.message.guild) {
+      const wheelService = ComplimentWheelService.getInstance(client);
+      const wheelConfig = await wheelService.getWheelConfig(reaction.message.guild.id);
+
+      if (wheelConfig && wheelConfig.messageId === reaction.message.id) {
+        // Check if the reaction is for the configured emoji
+        const reactionEmoji = reaction.emoji.toString();
+        if (reactionEmoji === wheelConfig.emoji) {
+          // Remove user from compliment wheel
+          await wheelService.removeParticipant(reaction.message.guild.id, user.id);
+        }
       }
     }
 

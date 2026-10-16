@@ -147,7 +147,7 @@ export const builder = new SlashCommandBuilder()
   .setName("kick")
   .setDescription("Kick a user from the server")
   .setDefaultMemberPermissions(0) // Hide from all regular users
-  .addUserOption((option) => option.setName("user").setDescription("The user to kick").setRequired(false))
+  .addUserOption((option) => option.setName("user").setDescription("The user to kick").setRequired(true))
   .addStringOption((opt) =>
     opt.setName("users").setDescription("User IDs separated by space/comma/newline to kick").setRequired(false)
   )

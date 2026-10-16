@@ -28,6 +28,7 @@ export { AdminCommand } from "./specialized/AdminCommand.js";
 export { DevCommand } from "./specialized/DevCommand.js";
 export { GeneralCommand } from "./specialized/GeneralCommand.js";
 export { ModerationCommand } from "./specialized/ModerationCommand.js";
+export { PublicCommand } from "./specialized/PublicCommand.js";
 
 // Response building
 export { ResponseBuilder } from "../_shared/responses/ResponseBuilder.js";

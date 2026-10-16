@@ -48,19 +48,19 @@ export const getAutomationRules = async (req: AuthRequest, res: Response) => {
 
 		// Fetch rules with pagination
 		const [rules, total] = await Promise.all([
-			prisma.automationRule.findMany({
+			prisma.automation.findMany({
 				where,
 				orderBy: { createdAt: 'desc' },
 				skip,
 				take,
 				include: {
 					executions: {
-						orderBy: { timestamp: 'desc' },
+						orderBy: { triggeredAt: 'desc' },
 						take: 5,
 					},
 				},
 			}),
-			prisma.automationRule.count({ where }),
+			prisma.automation.count({ where }),
 		]);
 
 		const formattedRules = rules.map((rule: any) => ({
@@ -109,14 +109,14 @@ export const getAutomationRule = async (req: AuthRequest, res: Response) => {
 		const { guildId, ruleId } = req.params;
 		const prisma = getPrismaClient();
 
-		const rule = await prisma.automationRule.findFirst({
+		const rule = await prisma.automation.findFirst({
 			where: {
 				id: ruleId,
 				guildId,
 			},
 			include: {
 				executions: {
-					orderBy: { timestamp: 'desc' },
+					orderBy: { triggeredAt: 'desc' },
 					take: 50,
 				},
 			},
@@ -160,20 +160,17 @@ export const createAutomationRule = async (req: AuthRequest, res: Response) => {
 		}
 
 		// Create automation rule
-		const rule = await prisma.automationRule.create({
+		const rule = await prisma.automation.create({
 			data: {
 				guildId,
 				name,
 				description,
-				category,
 				trigger,
 				conditions,
 				actions,
 				enabled,
-				priority,
-				cooldownSeconds,
-				maxExecutions,
-				currentExecutions: 0,
+				createdBy: req.user?.id || 'unknown',
+				runCount: 0,
 			},
 		});
 
@@ -206,7 +203,7 @@ export const updateAutomationRule = async (req: AuthRequest, res: Response) => {
 		const prisma = getPrismaClient();
 
 		// Check if rule exists
-		const existingRule = await prisma.automationRule.findFirst({
+		const existingRule = await prisma.automation.findFirst({
 			where: {
 				id: ruleId,
 				guildId,
@@ -218,7 +215,7 @@ export const updateAutomationRule = async (req: AuthRequest, res: Response) => {
 		}
 
 		// Update rule
-		const updatedRule = await prisma.automationRule.update({
+		const updatedRule = await prisma.automation.update({
 			where: { id: ruleId },
 			data: {
 				...updateData,
@@ -251,7 +248,7 @@ export const deleteAutomationRule = async (req: AuthRequest, res: Response) => {
 		const prisma = getPrismaClient();
 
 		// Check if rule exists
-		const existingRule = await prisma.automationRule.findFirst({
+		const existingRule = await prisma.automation.findFirst({
 			where: {
 				id: ruleId,
 				guildId,
@@ -263,7 +260,7 @@ export const deleteAutomationRule = async (req: AuthRequest, res: Response) => {
 		}
 
 		// Delete rule and its executions
-		await prisma.automationRule.delete({
+		await prisma.automation.delete({
 			where: { id: ruleId },
 		});
 
@@ -293,7 +290,7 @@ export const executeAutomationRule = async (
 		const prisma = getPrismaClient();
 
 		// Get rule
-		const rule = await prisma.automationRule.findFirst({
+		const rule = await prisma.automation.findFirst({
 			where: {
 				id: ruleId,
 				guildId,
@@ -308,39 +305,22 @@ export const executeAutomationRule = async (
 			return res.failure('Automation rule is disabled', 400);
 		}
 
-		// Check execution limits
-		if (rule.maxExecutions && rule.currentExecutions >= rule.maxExecutions) {
-			return res.failure('Rule has reached maximum execution limit', 400);
-		}
-
-		// Check cooldown
-		if (rule.cooldownSeconds > 0 && rule.lastExecuted) {
-			const cooldownEnd = new Date(
-				rule.lastExecuted.getTime() + rule.cooldownSeconds * 1000
-			);
-			if (new Date() < cooldownEnd) {
-				return res.failure('Rule is still in cooldown period', 400);
-			}
-		}
-
 		// Create execution record
-		const execution = await prisma.automationRuleExecution.create({
+		const execution = await prisma.automationExecution.create({
 			data: {
-				guildId,
-				ruleId,
-				trigger: 'MANUAL',
-				context,
-				success: true, // Assume success for manual execution
-				timestamp: new Date(),
+				automationId: ruleId,
+				triggeredBy: req.user?.id,
+				status: 'completed',
+				result: context,
 			},
 		});
 
 		// Update rule execution count and last executed
-		await prisma.automationRule.update({
+		await prisma.automation.update({
 			where: { id: ruleId },
 			data: {
-				currentExecutions: { increment: 1 },
-				lastExecuted: new Date(),
+				runCount: { increment: 1 },
+				lastRun: new Date(),
 			},
 		});
 
@@ -369,27 +349,29 @@ export const getRuleExecutions = async (req: AuthRequest, res: Response) => {
 		const take = parseInt(limit as string);
 
 		// Build where clause
-		const where: any = { guildId, ruleId };
-		if (success !== undefined) where.success = success === 'true';
+		const where: any = { automationId: ruleId };
+		if (success !== undefined)
+			where.status = success === 'true' ? 'completed' : 'failed';
 
 		// Fetch executions with pagination
 		const [executions, total] = await Promise.all([
-			prisma.automationRuleExecution.findMany({
+			prisma.automationExecution.findMany({
 				where,
-				orderBy: { timestamp: 'desc' },
+				orderBy: { triggeredAt: 'desc' },
 				skip,
 				take,
 			}),
-			prisma.automationRuleExecution.count({ where }),
+			prisma.automationExecution.count({ where }),
 		]);
 
 		const formattedExecutions = executions.map((execution: any) => ({
 			id: execution.id,
-			trigger: execution.trigger,
-			success: execution.success,
-			error: execution.error,
-			context: execution.context,
-			timestamp: execution.timestamp,
+			triggeredBy: execution.triggeredBy,
+			status: execution.status,
+			result: execution.result,
+			errorMessage: execution.errorMessage,
+			duration: execution.duration,
+			timestamp: execution.triggeredAt,
 		}));
 
 		res.success({
@@ -426,52 +408,46 @@ export const getAutomationStatistics = async (
 			activeRules,
 			totalExecutions,
 			successfulExecutions,
-			categoryBreakdown,
 			triggerBreakdown,
 			dailyActivity,
 		] = await Promise.all([
-			prisma.automationRule.count({ where: { guildId } }),
-			prisma.automationRule.count({ where: { guildId, enabled: true } }),
-			prisma.automationRuleExecution.count({
+			prisma.automation.count({ where: { guildId } }),
+			prisma.automation.count({ where: { guildId, enabled: true } }),
+			prisma.automationExecution.count({
 				where: {
-					guildId,
-					timestamp: { gte: startDate },
+					automation: { guildId },
+					triggeredAt: { gte: startDate },
 				},
 			}),
-			prisma.automationRuleExecution.count({
+			prisma.automationExecution.count({
 				where: {
-					guildId,
-					success: true,
-					timestamp: { gte: startDate },
+					automation: { guildId },
+					status: 'completed',
+					triggeredAt: { gte: startDate },
 				},
 			}),
-			prisma.automationRule.groupBy({
-				by: ['category'],
-				where: { guildId },
-				_count: { category: true },
-			}),
-			prisma.automationRule.groupBy({
+			prisma.automation.groupBy({
 				by: ['trigger'],
 				where: { guildId },
 				_count: { trigger: true },
 			}),
-			prisma.automationRuleExecution.groupBy({
-				by: ['timestamp'],
+			prisma.automationExecution.groupBy({
+				by: ['triggeredAt'],
 				where: {
-					guildId,
-					timestamp: { gte: startDate },
+					automation: { guildId },
+					triggeredAt: { gte: startDate },
 				},
-				_count: { timestamp: true },
+				_count: { triggeredAt: true },
 			}),
 		]);
 
 		// Process daily activity
 		const dailyMap = new Map<string, number>();
 		dailyActivity.forEach((day: any) => {
-			const dateKey = day.timestamp.toISOString().split('T')[0];
+			const dateKey = day.triggeredAt.toISOString().split('T')[0];
 			dailyMap.set(
 				dateKey,
-				(dailyMap.get(dateKey) || 0) + day._count.timestamp
+				(dailyMap.get(dateKey) || 0) + day._count.triggeredAt
 			);
 		});
 
@@ -491,10 +467,6 @@ export const getAutomationStatistics = async (
 				),
 			},
 			breakdown: {
-				categories: categoryBreakdown.reduce((acc: any, cat: any) => {
-					acc[cat.category] = cat._count.category;
-					return acc;
-				}, {}),
 				triggers: triggerBreakdown.reduce((acc: any, trigger: any) => {
 					acc[trigger.trigger] = trigger._count.trigger;
 					return acc;
@@ -541,7 +513,7 @@ export const getAvailableTriggers = async (req: AuthRequest, res: Response) => {
 		const { guildId } = req.params;
 		const prisma = getPrismaClient();
 
-		const triggers = await prisma.automationRule.findMany({
+		const triggers = await prisma.automation.findMany({
 			where: { guildId },
 			select: { trigger: true },
 			distinct: ['trigger'],
@@ -560,7 +532,7 @@ export const getAvailableActions = async (req: AuthRequest, res: Response) => {
 		const { guildId } = req.params;
 		const prisma = getPrismaClient();
 
-		const actionsRaw = await prisma.automationRule.findMany({
+		const actionsRaw = await prisma.automation.findMany({
 			where: { guildId },
 			select: { actions: true },
 		});

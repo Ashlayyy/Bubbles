@@ -4,8 +4,8 @@ import { cacheService } from "../services/cacheService.js";
 
 // Legacy compatibility functions for existing code
 export function setCachedGuildConfig(guildId: string, config: GuildConfig): void {
-  // Set in new cache service asynchronously
-  void cacheService.set(`guild:config:${guildId}`, config, "guildConfig");
+  // Set in new cache service asynchronously (TTL: 5 minutes)
+  cacheService.set(`guild:config:${guildId}`, config, 5 * 60 * 1000);
   logger.debug(`Cached guild config for ${guildId}`);
 }
 
@@ -24,41 +24,38 @@ export class GuildConfigCacheManager {
    * Get guild config from cache
    */
   static async getGuildConfigCached(guildId: string): Promise<GuildConfig | null> {
-    return await cacheService.get<GuildConfig>(`${this.CACHE_PREFIX}${guildId}`, "guildConfig");
+    return await cacheService.get<GuildConfig>(`${this.CACHE_PREFIX}${guildId}`);
   }
 
   /**
    * Set guild config in cache
    */
   static async setGuildConfigCached(guildId: string, config: GuildConfig): Promise<void> {
-    await cacheService.set(`${this.CACHE_PREFIX}${guildId}`, config, "guildConfig");
+    cacheService.set(`${this.CACHE_PREFIX}${guildId}`, config, 5 * 60 * 1000); // 5 minutes TTL
   }
 
   /**
    * Delete guild config from cache
    */
   static async deleteGuildConfigCached(guildId: string): Promise<void> {
-    await cacheService.delete(`${this.CACHE_PREFIX}${guildId}`);
+    cacheService.delete(`${this.CACHE_PREFIX}${guildId}`);
   }
 
   /**
    * Get or set guild config with cache
    */
   static async getOrSetGuildConfig(guildId: string, getter: () => Promise<GuildConfig>): Promise<GuildConfig> {
-    return await cacheService.getOrSet(`${this.CACHE_PREFIX}${guildId}`, getter, "guildConfig");
+    return await cacheService.getOrSet(`${this.CACHE_PREFIX}${guildId}`, getter, 5 * 60 * 1000); // 5 minutes TTL
   }
 
   /**
    * Bulk cache multiple guild configs
    */
   static async bulkCacheGuildConfigs(configs: { guildId: string; config: GuildConfig }[]): Promise<void> {
-    const entries = configs.map(({ guildId, config }) => ({
-      key: `${this.CACHE_PREFIX}${guildId}`,
-      value: config,
-      type: "guildConfig" as const,
-    }));
-
-    await cacheService.setBulk(entries);
+    // Since setBulk doesn't exist, we'll use individual set calls
+    for (const { guildId, config } of configs) {
+      cacheService.set(`${this.CACHE_PREFIX}${guildId}`, config, 5 * 60 * 1000);
+    }
     logger.info(`Bulk cached ${configs.length} guild configurations`);
   }
 
@@ -66,7 +63,7 @@ export class GuildConfigCacheManager {
    * Clear all guild config caches
    */
   static async clearAllGuildConfigs(): Promise<void> {
-    await cacheService.deletePattern(`${this.CACHE_PREFIX}*`);
+    cacheService.invalidatePattern(`${this.CACHE_PREFIX}.*`);
     logger.info("Cleared all guild config caches");
   }
 

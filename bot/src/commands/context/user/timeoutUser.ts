@@ -190,25 +190,46 @@ class TimeoutUserCommand extends ModerationCommand {
     });
   }
 
+  private buildModerationEmbed(
+    duration: string,
+    caseNumber: number,
+    targetUser: User,
+    moderator: User,
+    reason?: string
+  ): EmbedBuilder {
+    const embed = new EmbedBuilder()
+      .setColor(0xe67e22)
+      .setTitle(`✅ Timeout (${duration}) | Case #${caseNumber}`)
+      .addFields(
+        { name: "Target", value: `<@${targetUser.id}> | ${targetUser.tag}`, inline: true },
+        { name: "Moderator", value: `<@${moderator.id}> | ${moderator.tag}`, inline: true }
+      )
+      .setTimestamp();
+    if (reason) {
+      embed.addFields({ name: "Reason", value: reason, inline: false });
+    }
+    return embed;
+  }
+
   private async handleQuickTimeout(buttonInteraction: ButtonInteraction, targetUser: User): Promise<void> {
     await buttonInteraction.deferUpdate();
 
     // Quick timeout with default reason and 10 minutes duration
     const reason = "Timed out via user context menu (Quick Timeout)";
+    const durationSeconds = 10 * 60;
 
     try {
       const case_ = await this.client.moderationManager.timeout(
         this.guild,
         targetUser.id,
         this.user.id,
-        10 * 60, // 10 minutes in seconds
+        durationSeconds,
         reason,
         [] // No evidence for user context menu
       );
 
       await buttonInteraction.editReply({
-        content: `✅ **${targetUser.tag}** has been timed out for 10 minutes.\n📋 **Case #${case_.caseNumber}** created.`,
-        embeds: [],
+        embeds: [this.buildModerationEmbed("10m", case_.caseNumber, targetUser, this.user, reason)],
         components: [],
       });
     } catch (error) {
@@ -297,14 +318,15 @@ class TimeoutUserCommand extends ModerationCommand {
       );
 
       await modalInteraction.editReply({
-        content: `✅ **${targetUser.tag}** has been timed out for ${formatDuration(durationSeconds)}.\n📋 **Case #${case_.caseNumber}** created.`,
-      });
-
-      // Update the original interaction
-      await this.interaction.editReply({
-        content: `✅ **${targetUser.tag}** has been timed out for ${formatDuration(durationSeconds)}.\n📋 **Case #${case_.caseNumber}** created.`,
-        embeds: [],
-        components: [],
+        embeds: [
+          this.buildModerationEmbed(
+            formatDuration(durationSeconds),
+            case_.caseNumber,
+            targetUser,
+            modalInteraction.user,
+            reason
+          ),
+        ],
       });
     } catch (error) {
       await modalInteraction.editReply({

@@ -6,7 +6,7 @@ import { getGuildConfig } from "../database/GuildConfig.js";
 import { prisma } from "../database/index.js";
 import logger from "../logger.js";
 import { cacheService } from "../services/cacheService.js";
-import ModerationMutex, { MutexError } from "../utils/ModerationMutex.js";
+import { ModerationMutex, MutexError } from "../utils/ModerationMutex.js";
 import { ModerationThrottle, ThrottleError } from "../utils/ModerationThrottle.js";
 import type Client from "./Client.js";
 import type LogManager from "./LogManager.js";
@@ -295,10 +295,10 @@ export default class ModerationManager {
    * Get user's moderation history
    */
   async getUserHistory(guildId: string, userId: string, limit = 50): Promise<ModerationCase[]> {
-    const cacheKey = `moderation:history:${guildId}:${userId}:${limit}`;
+    const cacheKey = `moderation:history:${guildId}:${userId}:${String(limit)}`;
 
     // Try to get from cache first
-    const cached = await cacheService.get<ModerationCase[]>(cacheKey, "userInfractions");
+    const cached = await cacheService.get<ModerationCase[]>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -319,7 +319,7 @@ export default class ModerationManager {
     });
 
     // Cache the result
-    await cacheService.set(cacheKey, cases, "userInfractions");
+    cacheService.set(cacheKey, cases);
 
     return cases as unknown as ModerationCase[];
   }
@@ -382,7 +382,7 @@ export default class ModerationManager {
     const cacheKey = `moderation:points:${guildId}:${userId}`;
 
     // Try to get from cache first
-    const cached = await cacheService.get<number>(cacheKey, "userInfractions");
+    const cached = await cacheService.get<number>(cacheKey);
     if (cached !== null) {
       return cached;
     }
@@ -401,7 +401,7 @@ export default class ModerationManager {
       const points = infractions?.totalPoints ?? 0;
 
       // Cache the result with shorter TTL since points change frequently
-      await cacheService.set(cacheKey, points, "userInfractions");
+      cacheService.set(cacheKey, points, 60 * 1000); // 1 minute TTL
 
       return points;
     } catch (error) {
@@ -454,9 +454,10 @@ export default class ModerationManager {
       // Use unified queue system if available
       if (this.client.queueService) {
         try {
+          let queueResult;
           switch (action.type) {
             case "KICK": {
-              await this.client.queueService.processRequest({
+              queueResult = await this.client.queueService.processRequest({
                 type: "KICK_USER",
                 data: {
                   targetUserId: action.userId,
@@ -468,12 +469,11 @@ export default class ModerationManager {
                 guildId: guild.id,
                 requiresReliability: true,
               });
-              success = true;
               break;
             }
 
             case "BAN": {
-              await this.client.queueService.processRequest({
+              queueResult = await this.client.queueService.processRequest({
                 type: "BAN_USER",
                 data: {
                   targetUserId: action.userId,
@@ -485,13 +485,12 @@ export default class ModerationManager {
                 guildId: guild.id,
                 requiresReliability: true,
               });
-              success = true;
               break;
             }
 
             case "TIMEOUT": {
               // Pass duration in seconds; processor will convert to milliseconds once
-              await this.client.queueService.processRequest({
+              queueResult = await this.client.queueService.processRequest({
                 type: "TIMEOUT_USER",
                 data: {
                   targetUserId: action.userId,
@@ -504,12 +503,11 @@ export default class ModerationManager {
                 guildId: guild.id,
                 requiresReliability: true,
               });
-              success = true;
               break;
             }
 
             case "UNBAN": {
-              await this.client.queueService.processRequest({
+              queueResult = await this.client.queueService.processRequest({
                 type: "UNBAN_USER",
                 data: {
                   targetUserId: action.userId,
@@ -521,12 +519,11 @@ export default class ModerationManager {
                 guildId: guild.id,
                 requiresReliability: true,
               });
-              success = true;
               break;
             }
 
             case "UNTIMEOUT": {
-              await this.client.queueService.processRequest({
+              queueResult = await this.client.queueService.processRequest({
                 type: "TIMEOUT_USER",
                 data: {
                   targetUserId: action.userId,
@@ -539,7 +536,6 @@ export default class ModerationManager {
                 guildId: guild.id,
                 requiresReliability: true,
               });
-              success = true;
               break;
             }
 
@@ -550,7 +546,14 @@ export default class ModerationManager {
               break;
           }
 
-          logger.info(`Processed Discord action ${action.type} via unified queue system`);
+          // Check if queue operation was successful
+          if (queueResult && queueResult.success) {
+            success = true;
+            logger.info(`Processed Discord action ${action.type} via unified queue system`);
+          } else {
+            logger.warn(`Queue operation failed for ${action.type}, falling back to direct execution`);
+            success = false;
+          }
         } catch (queueError) {
           logger.warn(`Unified queue failed for ${action.type}, falling back to direct execution:`, queueError);
           success = false;
@@ -610,7 +613,7 @@ export default class ModerationManager {
         if (action.duration) {
           const timeoutDuration = action.duration * 1000; // Convert to milliseconds
           await member.timeout(timeoutDuration, action.reason);
-          logger.info(`Direct timeout executed for user ${action.userId} for ${action.duration}s`);
+          logger.info(`Direct timeout executed for user ${action.userId} for ${String(action.duration)}s`);
         } else {
           throw new Error("Duration is required for timeout action");
         }
@@ -654,7 +657,7 @@ export default class ModerationManager {
         .setColor(this.getActionColor(case_.type))
         .addFields(
           { name: "Action", value: case_.type, inline: true },
-          { name: "Case #", value: case_.caseNumber.toString(), inline: true },
+          { name: "Case #", value: String(case_.caseNumber), inline: true },
           { name: "Reason", value: case_.reason ?? "No reason provided", inline: false }
         )
         .setTimestamp()
@@ -700,7 +703,7 @@ export default class ModerationManager {
       });
 
       // Invalidate cache entries for this user
-      await cacheService.deletePattern(`moderation:*:${guildId}:${userId}*`);
+      cacheService.invalidatePattern(`moderation:.*:${guildId}:${userId}.*`);
     } catch (error) {
       logger.error("Error updating infraction points:", error);
     }
@@ -761,11 +764,11 @@ export default class ModerationManager {
     for (const unit of units) {
       const count = Math.floor(seconds / unit.seconds);
       if (count > 0) {
-        return `${count} ${unit.name}${count !== 1 ? "s" : ""}`;
+        return `${String(count)} ${unit.name}${count !== 1 ? "s" : ""}`;
       }
     }
 
-    return `${seconds} second${seconds !== 1 ? "s" : ""}`;
+    return `${String(seconds)} second${seconds !== 1 ? "s" : ""}`;
   }
 
   /**

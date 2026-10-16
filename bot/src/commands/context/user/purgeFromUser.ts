@@ -168,6 +168,29 @@ class PurgeFromUserCommand extends ModerationCommand {
     });
   }
 
+  private buildModerationEmbed(
+    caseNumber: number | null,
+    targetUser: User,
+    moderator: User,
+    deletedCount: number,
+    reason?: string
+  ): EmbedBuilder {
+    const embed = new EmbedBuilder()
+      .setColor(0xff6b6b)
+      .setTitle(
+        `✅ Purge | ${deletedCount} message${deletedCount !== 1 ? "s" : ""}${caseNumber ? ` | Case #${caseNumber}` : ""}`
+      )
+      .addFields(
+        { name: "Target", value: `<@${targetUser.id}> | ${targetUser.tag}`, inline: true },
+        { name: "Moderator", value: `<@${moderator.id}> | ${moderator.tag}`, inline: true }
+      )
+      .setTimestamp();
+    if (reason) {
+      embed.addFields({ name: "Reason", value: reason, inline: false });
+    }
+    return embed;
+  }
+
   private async handleQuickPurge(buttonInteraction: ButtonInteraction, targetUser: User): Promise<void> {
     await buttonInteraction.deferUpdate();
 
@@ -175,10 +198,8 @@ class PurgeFromUserCommand extends ModerationCommand {
 
     try {
       const deletedCount = await this.purgeUserMessages(targetUser.id, 50, reason);
-
       await buttonInteraction.editReply({
-        content: `✅ Successfully purged **${deletedCount}** message${deletedCount !== 1 ? "s" : ""} from **${targetUser.tag}**.`,
-        embeds: [],
+        embeds: [this.buildModerationEmbed(null, targetUser, this.user, deletedCount, reason)],
         components: [],
       });
     } catch (error) {
@@ -251,16 +272,8 @@ class PurgeFromUserCommand extends ModerationCommand {
 
     try {
       const deletedCount = await this.purgeUserMessages(targetUser.id, count, reason);
-
       await modalInteraction.editReply({
-        content: `✅ Successfully purged **${deletedCount}** message${deletedCount !== 1 ? "s" : ""} from **${targetUser.tag}**.`,
-      });
-
-      // Update the original interaction
-      await this.interaction.editReply({
-        content: `✅ Successfully purged **${deletedCount}** message${deletedCount !== 1 ? "s" : ""} from **${targetUser.tag}**.`,
-        embeds: [],
-        components: [],
+        embeds: [this.buildModerationEmbed(null, targetUser, modalInteraction.user, deletedCount, reason)],
       });
     } catch (error) {
       await modalInteraction.editReply({

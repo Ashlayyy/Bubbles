@@ -8,6 +8,7 @@ import type {
   MessageContextMenuCommandInteraction,
   RESTGetAPIApplicationCommandsResult,
   RESTPostAPIApplicationCommandsJSONBody,
+  UserContextMenuCommandInteraction,
 } from "discord.js";
 import {
   ActionRowBuilder,
@@ -31,8 +32,8 @@ import { connect as connectToDB } from "../database/index.js";
 import { isDevEnvironment } from "../functions/general/environment.js";
 import logger from "../logger.js";
 import { startMetricsServer } from "../metricsServer.js";
+import { BotQueueService } from "../services/botQueueService.js";
 import { ScheduledActionService } from "../services/scheduledActionService.js";
-import { UnifiedQueueService } from "../services/unifiedQueueService.js";
 import { WebSocketService } from "../services/websocketService.js";
 import Command from "./Command.js";
 import type LogManager from "./LogManager.js";
@@ -79,7 +80,7 @@ export default class Client extends DiscordClient {
   // WebSocket service for API communication
   public wsService: WebSocketService | null = null;
   // Queue service for unified queue processing
-  public queueService: UnifiedQueueService | null = null;
+  public queueService: BotQueueService | null = null;
   // Health service for monitoring
   public healthService: any = null;
   public scheduledActionService: ScheduledActionService | null = null;
@@ -125,6 +126,11 @@ export default class Client extends DiscordClient {
 
     try {
       logger.info("*** DISCORD.JS BOT: CONSTRUCTION ***");
+
+      // Debug environment variables
+      logger.info(`Environment check - DISABLE_QUEUES: ${process.env.DISABLE_QUEUES}`);
+      logger.info(`Environment check - DISABLE_API: ${process.env.DISABLE_API}`);
+      logger.info(`Environment check - NODE_ENV: ${process.env.NODE_ENV}`);
 
       this.devMode = isDevEnvironment();
       logger.info(`Loading in ${this.devMode ? "DEVELOPMENT" : "PRODUCTION"} MODE`);
@@ -189,8 +195,11 @@ export default class Client extends DiscordClient {
       // Warm up cache with current guilds if any
       const guildIds = this.guilds.cache.map((guild) => guild.id);
       if (guildIds.length > 0) {
-        logger.info(`Warming up cache for ${guildIds.length} guilds...`);
-        cacheService.warmup(guildIds);
+        logger.info(`Warming up cache for ${String(guildIds.length)} guilds...`);
+        // Note: warmUp currently just logs, actual implementation pending
+        for (const guildId of guildIds) {
+          await cacheService.warmUp(guildId);
+        }
       }
 
       logger.info("Logging into Discord... ");
@@ -246,9 +255,11 @@ export default class Client extends DiscordClient {
 
       // Start metrics server (Prometheus pull model)
       try {
-        const port = Number(process.env.METRICS_PORT ?? "9321");
-        startMetricsServer(this, this.queueService, port);
-        logger.info(`Metrics server started on port ${port}`);
+        if (process.env.METRICS_ENABLED === "true") {
+          const port = Number(process.env.METRICS_PORT ?? "9321");
+          startMetricsServer(this, this.queueService, port);
+          logger.info(`Metrics server started on port ${String(port)}`);
+        }
       } catch (error) {
         logger.warn("Failed to start metrics server:", error);
       }
@@ -256,9 +267,9 @@ export default class Client extends DiscordClient {
       this.started = true;
 
       // Log cache statistics after startup
-      const stats = cacheService.getStats();
+      const stats = await cacheService.getStats();
       logger.info(
-        `Cache service ready - Memory entries: ${stats.memoryEntries}, Redis connected: ${stats.redisConnected}`
+        `Cache service ready - Total keys: ${String(stats.totalKeys)}, Memory usage: ${String(stats.memoryUsage)} bytes`
       );
     } catch (error) {
       logger.error(error);
@@ -270,14 +281,14 @@ export default class Client extends DiscordClient {
   /** Start queue processors */
   private async startQueueProcessors(): Promise<void> {
     try {
-      const { UnifiedQueueService } = await import("../services/unifiedQueueService.js");
-      const queueService = new UnifiedQueueService(this);
+      const { BotQueueService } = await import("../services/botQueueService.js");
+      const queueService = new BotQueueService(this);
       await queueService.initialize();
 
       // Store reference for access throughout the application
       this.queueService = queueService;
 
-      logger.info("Unified Queue Service initialization completed");
+      logger.info("✅ Bot Queue Service initialization completed");
     } catch (error) {
       logger.error("Failed to initialize unified queue service:", error);
       logger.warn("Bot will continue with fallback mode for queue operations");
@@ -666,7 +677,7 @@ export default class Client extends DiscordClient {
 
   async runCommand(
     command: Command | BaseCommand,
-    interaction: ChatInputCommandInteraction | MessageContextMenuCommandInteraction
+    interaction: ChatInputCommandInteraction | MessageContextMenuCommandInteraction | UserContextMenuCommandInteraction
   ): Promise<void> {
     // Handle BaseCommand instances
     if (command instanceof BaseCommand) {

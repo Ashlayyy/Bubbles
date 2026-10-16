@@ -1,4 +1,4 @@
-import { jwtKeyManager } from "../../../shared/src/utils/JwtKeyManager.js";
+import { jwtKeyManager } from "@shared/utils/JwtKeyManager.js";
 
 void (async () => {
   try {

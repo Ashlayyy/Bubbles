@@ -1,3 +1,4 @@
+import { bullMQRegistry } from "@shared/queue";
 import { SlashCommandBuilder, type User } from "discord.js";
 import { PermissionLevel } from "../../structures/PermissionTypes.js";
 import { type CommandConfig, type CommandResponse, type SlashCommandInteraction } from "../_core/index.js";
@@ -38,10 +39,6 @@ export class BulkCommand extends ModerationCommand {
           return await this.handleBulkKick();
         case "timeout":
           return await this.handleBulkTimeout();
-        case "warn":
-          return await this.handleBulkWarn();
-        case "unban":
-          return await this.handleBulkUnban();
         default:
           throw new Error("Unknown subcommand");
       }
@@ -57,7 +54,7 @@ export class BulkCommand extends ModerationCommand {
   private async handleBulkBan(): Promise<CommandResponse> {
     const userIds = this.getStringOption("users", true);
     const reason = this.getStringOption("reason", true);
-    const deleteDays = this.getIntegerOption("delete-days") ?? 1;
+    const deleteMessages = this.getBooleanOption("delete-messages") ?? false;
     const silent = this.getBooleanOption("silent") ?? false;
 
     const userIdList = userIds.split(/[,\s]+/).filter((id) => id.trim().length > 0);
@@ -70,72 +67,60 @@ export class BulkCommand extends ModerationCommand {
       );
     }
 
-    if (userIdList.length > 10) {
+    if (userIdList.length > 100) {
       return this.createModerationError(
         "bulk ban",
         { username: "N/A", id: "unknown" } as User,
-        "Maximum 10 users can be banned at once for safety."
+        "Maximum 100 users can be banned at once."
       );
     }
 
-    const results = {
-      successful: [] as string[],
-      failed: [] as { userId: string; reason: string }[],
-    };
+    try {
+      // Queue the bulk ban operation
+      const queue = bullMQRegistry.getQueue("bulk-moderation");
+      const job = await queue.add("BULK_BAN", {
+        type: "BULK_BAN",
+        guildId: this.guild.id,
+        userIds: userIdList,
+        reason,
+        deleteMessages,
+        moderatorId: this.user.id,
+        id: `bulk_ban_${Date.now()}`,
+        timestamp: Date.now(),
+      });
 
-    for (const userId of userIdList) {
-      try {
-        const user = await this.client.users.fetch(userId);
-        const member = await this.guild.members.fetch(userId).catch(() => null);
-
-        if (member) {
-          this.validateModerationTarget(member);
-        }
-
-        const case_ = await this.client.moderationManager.ban(
-          this.guild,
-          userId,
-          this.user.id,
-          reason,
-          undefined, // Permanent ban
-          undefined,
-          !silent,
+      const embed = this.client.genEmbed({
+        title: "🔨 Bulk Ban Queued",
+        description: `Bulk ban operation has been queued for ${userIdList.length} users.`,
+        color: 0x3498db,
+        fields: [
           {
-            interactionId: this.interaction.id,
-            commandName: this.interaction.commandName,
-            interactionLatency: Date.now() - this.interaction.createdTimestamp,
-          }
-        );
+            name: "Job ID",
+            value: job.id as string,
+            inline: true,
+          },
+          {
+            name: "Users to Process",
+            value: userIdList.length.toString(),
+            inline: true,
+          },
+          {
+            name: "Reason",
+            value: reason,
+            inline: false,
+          },
+        ],
+        footer: { text: "Check the audit log for progress updates" },
+      });
 
-        results.successful.push(`${user.username} (Case #${case_.caseNumber})`);
-      } catch (error) {
-        results.failed.push({
-          userId,
-          reason: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
+      return this.createModerationError(
+        "bulk ban",
+        { username: "N/A", id: "unknown" } as User,
+        `Failed to queue bulk ban: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
-
-    const embed = this.client.genEmbed({
-      title: "🔨 Bulk Ban Results",
-      color: results.failed.length === 0 ? 0x2ecc71 : 0xf39c12,
-      fields: [
-        {
-          name: "✅ Successful Bans",
-          value: results.successful.length > 0 ? results.successful.join("\n") : "None",
-          inline: false,
-        },
-        {
-          name: "❌ Failed Bans",
-          value:
-            results.failed.length > 0 ? results.failed.map((f) => `<@${f.userId}>: ${f.reason}`).join("\n") : "None",
-          inline: false,
-        },
-      ],
-      footer: { text: `Processed ${userIdList.length} users` },
-    });
-
-    return { embeds: [embed], ephemeral: true };
   }
 
   private async handleBulkKick(): Promise<CommandResponse> {
@@ -153,75 +138,65 @@ export class BulkCommand extends ModerationCommand {
       );
     }
 
-    if (userIdList.length > 10) {
+    if (userIdList.length > 100) {
       return this.createModerationError(
         "bulk kick",
         { username: "N/A", id: "unknown" } as User,
-        "Maximum 10 users can be kicked at once for safety."
+        "Maximum 100 users can be kicked at once."
       );
     }
 
-    const results = {
-      successful: [] as string[],
-      failed: [] as { userId: string; reason: string }[],
-    };
+    try {
+      // Queue the bulk kick operation
+      const queue = bullMQRegistry.getQueue("bulk-moderation");
+      const job = await queue.add("BULK_KICK", {
+        type: "BULK_KICK",
+        guildId: this.guild.id,
+        userIds: userIdList,
+        reason,
+        moderatorId: this.user.id,
+        id: `bulk_kick_${Date.now()}`,
+        timestamp: Date.now(),
+      });
 
-    for (const userId of userIdList) {
-      try {
-        const user = await this.client.users.fetch(userId);
-        const member = await this.guild.members.fetch(userId);
-
-        this.validateModerationTarget(member);
-
-        const case_ = await this.client.moderationManager.kick(
-          this.guild,
-          userId,
-          this.user.id,
-          reason,
-          undefined,
-          !silent,
+      const embed = this.client.genEmbed({
+        title: "👢 Bulk Kick Queued",
+        description: `Bulk kick operation has been queued for ${userIdList.length} users.`,
+        color: 0x3498db,
+        fields: [
           {
-            interactionId: this.interaction.id,
-            commandName: this.interaction.commandName,
-            interactionLatency: Date.now() - this.interaction.createdTimestamp,
-          }
-        );
+            name: "Job ID",
+            value: job.id as string,
+            inline: true,
+          },
+          {
+            name: "Users to Process",
+            value: userIdList.length.toString(),
+            inline: true,
+          },
+          {
+            name: "Reason",
+            value: reason,
+            inline: false,
+          },
+        ],
+        footer: { text: "Check the audit log for progress updates" },
+      });
 
-        results.successful.push(`${user.username} (Case #${case_.caseNumber})`);
-      } catch (error) {
-        results.failed.push({
-          userId,
-          reason: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
+      return this.createModerationError(
+        "bulk kick",
+        { username: "N/A", id: "unknown" } as User,
+        `Failed to queue bulk kick: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
-
-    const embed = this.client.genEmbed({
-      title: "👢 Bulk Kick Results",
-      color: results.failed.length === 0 ? 0x2ecc71 : 0xf39c12,
-      fields: [
-        {
-          name: "✅ Successful Kicks",
-          value: results.successful.length > 0 ? results.successful.join("\n") : "None",
-          inline: false,
-        },
-        {
-          name: "❌ Failed Kicks",
-          value:
-            results.failed.length > 0 ? results.failed.map((f) => `<@${f.userId}>: ${f.reason}`).join("\n") : "None",
-          inline: false,
-        },
-      ],
-      footer: { text: `Processed ${userIdList.length} users` },
-    });
-
-    return { embeds: [embed], ephemeral: true };
   }
 
   private async handleBulkTimeout(): Promise<CommandResponse> {
     const userIds = this.getStringOption("users", true);
     const reason = this.getStringOption("reason", true);
-    const duration = this.getStringOption("duration", true);
+    const durationStr = this.getStringOption("duration", true);
     const silent = this.getBooleanOption("silent") ?? false;
 
     const userIdList = userIds.split(/[,\s]+/).filter((id) => id.trim().length > 0);
@@ -234,226 +209,82 @@ export class BulkCommand extends ModerationCommand {
       );
     }
 
-    if (userIdList.length > 10) {
+    if (userIdList.length > 100) {
       return this.createModerationError(
         "bulk timeout",
         { username: "N/A", id: "unknown" } as User,
-        "Maximum 10 users can be timed out at once for safety."
+        "Maximum 100 users can be timed out at once."
       );
     }
 
-    const parsedDuration = this.parseDuration(duration);
-    if (!parsedDuration) {
+    const duration = this.parseDuration(durationStr);
+    if (!duration) {
       return this.createModerationError(
         "bulk timeout",
         { username: "N/A", id: "unknown" } as User,
-        "Invalid duration format. Use: 30s, 5m, 2h, 1d, etc."
+        "Invalid duration format. Use formats like '5m', '1h', '2d'."
       );
     }
 
-    const results = {
-      successful: [] as string[],
-      failed: [] as { userId: string; reason: string }[],
-    };
+    if (duration < 60 || duration > 2419200) {
+      return this.createModerationError(
+        "bulk timeout",
+        { username: "N/A", id: "unknown" } as User,
+        "Duration must be between 60 seconds and 28 days."
+      );
+    }
 
-    for (const userId of userIdList) {
-      try {
-        const user = await this.client.users.fetch(userId);
-        const member = await this.guild.members.fetch(userId);
+    try {
+      // Queue the bulk timeout operation
+      const queue = bullMQRegistry.getQueue("bulk-moderation");
+      const job = await queue.add("BULK_TIMEOUT", {
+        type: "BULK_TIMEOUT",
+        guildId: this.guild.id,
+        userIds: userIdList,
+        reason,
+        duration,
+        moderatorId: this.user.id,
+        id: `bulk_timeout_${Date.now()}`,
+        timestamp: Date.now(),
+      });
 
-        this.validateModerationTarget(member);
-
-        const case_ = await this.client.moderationManager.timeout(
-          this.guild,
-          userId,
-          this.user.id,
-          parsedDuration,
-          reason,
-          undefined,
-          !silent,
+      const embed = this.client.genEmbed({
+        title: "⏰ Bulk Timeout Queued",
+        description: `Bulk timeout operation has been queued for ${userIdList.length} users.`,
+        color: 0x3498db,
+        fields: [
           {
-            interactionId: this.interaction.id,
-            commandName: this.interaction.commandName,
-            interactionLatency: Date.now() - this.interaction.createdTimestamp,
-          }
-        );
-
-        results.successful.push(`${user.username} (Case #${case_.caseNumber})`);
-      } catch (error) {
-        results.failed.push({
-          userId,
-          reason: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    }
-
-    const embed = this.client.genEmbed({
-      title: "⏰ Bulk Timeout Results",
-      color: results.failed.length === 0 ? 0x2ecc71 : 0xf39c12,
-      fields: [
-        {
-          name: "✅ Successful Timeouts",
-          value: results.successful.length > 0 ? results.successful.join("\n") : "None",
-          inline: false,
-        },
-        {
-          name: "❌ Failed Timeouts",
-          value:
-            results.failed.length > 0 ? results.failed.map((f) => `<@${f.userId}>: ${f.reason}`).join("\n") : "None",
-          inline: false,
-        },
-      ],
-      footer: { text: `Processed ${userIdList.length} users | Duration: ${duration}` },
-    });
-
-    return { embeds: [embed], ephemeral: true };
-  }
-
-  private async handleBulkWarn(): Promise<CommandResponse> {
-    const userIds = this.getStringOption("users", true);
-    const reason = this.getStringOption("reason", true);
-    const silent = this.getBooleanOption("silent") ?? false;
-
-    const userIdList = userIds.split(/[,\s]+/).filter((id) => id.trim().length > 0);
-
-    if (userIdList.length === 0) {
-      return this.createModerationError(
-        "bulk warn",
-        { username: "N/A", id: "unknown" } as User,
-        "No valid user IDs provided."
-      );
-    }
-
-    if (userIdList.length > 10) {
-      return this.createModerationError(
-        "bulk warn",
-        { username: "N/A", id: "unknown" } as User,
-        "Maximum 10 users can be warned at once for safety."
-      );
-    }
-
-    const results = {
-      successful: [] as string[],
-      failed: [] as { userId: string; reason: string }[],
-    };
-
-    for (const userId of userIdList) {
-      try {
-        const user = await this.client.users.fetch(userId);
-        const member = await this.guild.members.fetch(userId).catch(() => null);
-
-        if (member) {
-          this.validateModerationTarget(member);
-        }
-
-        const case_ = await this.client.moderationManager.warn(
-          this.guild,
-          userId,
-          this.user.id,
-          reason,
-          undefined,
-          1,
-          !silent,
+            name: "Job ID",
+            value: job.id as string,
+            inline: true,
+          },
           {
-            interactionId: this.interaction.id,
-            commandName: this.interaction.commandName,
-            interactionLatency: Date.now() - this.interaction.createdTimestamp,
-          }
-        );
+            name: "Users to Process",
+            value: userIdList.length.toString(),
+            inline: true,
+          },
+          {
+            name: "Duration",
+            value: durationStr,
+            inline: true,
+          },
+          {
+            name: "Reason",
+            value: reason,
+            inline: false,
+          },
+        ],
+        footer: { text: "Check the audit log for progress updates" },
+      });
 
-        results.successful.push(`${user.username} (Case #${case_.caseNumber})`);
-      } catch (error) {
-        results.failed.push({
-          userId,
-          reason: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    }
-
-    const embed = this.client.genEmbed({
-      title: "⚠️ Bulk Warn Results",
-      color: results.failed.length === 0 ? 0x2ecc71 : 0xf39c12,
-      fields: [
-        {
-          name: "✅ Successful Warnings",
-          value: results.successful.length > 0 ? results.successful.join("\n") : "None",
-          inline: false,
-        },
-        {
-          name: "❌ Failed Warnings",
-          value:
-            results.failed.length > 0 ? results.failed.map((f) => `<@${f.userId}>: ${f.reason}`).join("\n") : "None",
-          inline: false,
-        },
-      ],
-      footer: { text: `Processed ${userIdList.length} users` },
-    });
-
-    return { embeds: [embed], ephemeral: true };
-  }
-
-  private async handleBulkUnban(): Promise<CommandResponse> {
-    const userIds = this.getStringOption("users", true);
-    const reason = this.getStringOption("reason") ?? "Bulk unban";
-
-    const userIdList = userIds.split(/[,\s]+/).filter((id) => id.trim().length > 0);
-
-    if (userIdList.length === 0) {
+      return { embeds: [embed], ephemeral: true };
+    } catch (error) {
       return this.createModerationError(
-        "bulk unban",
+        "bulk timeout",
         { username: "N/A", id: "unknown" } as User,
-        "No valid user IDs provided."
+        `Failed to queue bulk timeout: ${error instanceof Error ? error.message : "Unknown error"}`
       );
     }
-
-    if (userIdList.length > 10) {
-      return this.createModerationError(
-        "bulk unban",
-        { username: "N/A", id: "unknown" } as User,
-        "Maximum 10 users can be unbanned at once for safety."
-      );
-    }
-
-    const results = {
-      successful: [] as string[],
-      failed: [] as { userId: string; reason: string }[],
-    };
-
-    for (const userId of userIdList) {
-      try {
-        const user = await this.client.users.fetch(userId);
-
-        await this.guild.members.unban(userId, reason);
-
-        results.successful.push(user.username);
-      } catch (error) {
-        results.failed.push({
-          userId,
-          reason: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    }
-
-    const embed = this.client.genEmbed({
-      title: "🔓 Bulk Unban Results",
-      color: results.failed.length === 0 ? 0x2ecc71 : 0xf39c12,
-      fields: [
-        {
-          name: "✅ Successful Unbans",
-          value: results.successful.length > 0 ? results.successful.join("\n") : "None",
-          inline: false,
-        },
-        {
-          name: "❌ Failed Unbans",
-          value:
-            results.failed.length > 0 ? results.failed.map((f) => `<@${f.userId}>: ${f.reason}`).join("\n") : "None",
-          inline: false,
-        },
-      ],
-      footer: { text: `Processed ${userIdList.length} users` },
-    });
-
-    return { embeds: [embed], ephemeral: true };
   }
 
   private parseDuration(durationStr: string): number | null {
@@ -499,9 +330,7 @@ export const builder = new SlashCommandBuilder()
         option.setName("users").setDescription("Comma-separated list of user IDs").setRequired(true)
       )
       .addStringOption((option) => option.setName("reason").setDescription("Reason for the ban").setRequired(true))
-      .addIntegerOption((option) =>
-        option.setName("delete-days").setDescription("Days of messages to delete (0-7)").setMinValue(0).setMaxValue(7)
-      )
+      .addBooleanOption((option) => option.setName("delete-messages").setDescription("Delete messages from the users"))
       .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the users"))
   )
   .addSubcommand((subcommand) =>
@@ -526,23 +355,4 @@ export const builder = new SlashCommandBuilder()
         option.setName("duration").setDescription("Duration (e.g., 30s, 5m, 2h, 1d)").setRequired(true)
       )
       .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the users"))
-  )
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName("warn")
-      .setDescription("Warn multiple users at once")
-      .addStringOption((option) =>
-        option.setName("users").setDescription("Comma-separated list of user IDs").setRequired(true)
-      )
-      .addStringOption((option) => option.setName("reason").setDescription("Reason for the warning").setRequired(true))
-      .addBooleanOption((option) => option.setName("silent").setDescription("Don't notify the users"))
-  )
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName("unban")
-      .setDescription("Unban multiple users at once")
-      .addStringOption((option) =>
-        option.setName("users").setDescription("Comma-separated list of user IDs").setRequired(true)
-      )
-      .addStringOption((option) => option.setName("reason").setDescription("Reason for the unban"))
   );

@@ -14,6 +14,10 @@ export default new ClientEvent(Events.VoiceStateUpdate, async (oldState: VoiceSt
     const member = newState.member ?? oldState.member;
     if (!member || member.user.bot) return;
 
+    // Handle voice XP tracking
+    const { levelingService } = await import("../../services/levelingService.js");
+    await levelingService.handleVoiceStateUpdate(oldState, newState);
+
     // Log voice state changes for moderation
     await logVoiceStateChange(client, oldState, newState, guild.id, member.id);
   } catch (error) {

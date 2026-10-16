@@ -24,7 +24,7 @@ function initLogger() {
           ignore: "pid,hostname",
         },
       },
-      base: { service },
+      //base: { service },
     });
   }
 
@@ -32,7 +32,7 @@ function initLogger() {
   return pino({
     name: service,
     level: "info",
-    base: { service },
+    //base: { service },
   });
 }
 

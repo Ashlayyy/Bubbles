@@ -33,8 +33,6 @@ export class WelcomeCommand extends AdminCommand {
 
     try {
       switch (subcommand) {
-        case "setup":
-          return await this.handleSetup();
         case "test":
           return await this.handleTest();
         case "auto-role":
@@ -52,68 +50,6 @@ export class WelcomeCommand extends AdminCommand {
     }
   }
 
-  private async handleSetup(): Promise<CommandResponse> {
-    const welcomeChannelId = this.getStringOption("welcome-channel", true);
-    const goodbyeChannelId = this.getStringOption("goodbye-channel");
-    const autoRoleId = this.getStringOption("auto-role");
-    const welcomeEnabled = this.getBooleanOption("welcome-enabled") ?? true;
-    const goodbyeEnabled = this.getBooleanOption("goodbye-enabled") ?? true;
-
-    // Validate channels
-    const welcomeChannel = this.guild.channels.cache.get(welcomeChannelId);
-    if (!welcomeChannel?.isTextBased()) {
-      return this.createAdminError(
-        "Invalid Welcome Channel",
-        "The specified welcome channel is not a valid text channel."
-      );
-    }
-
-    if (goodbyeChannelId) {
-      const goodbyeChannel = this.guild.channels.cache.get(goodbyeChannelId);
-      if (!goodbyeChannel?.isTextBased()) {
-        return this.createAdminError(
-          "Invalid Goodbye Channel",
-          "The specified goodbye channel is not a valid text channel."
-        );
-      }
-    }
-
-    // Validate auto-role
-    if (autoRoleId) {
-      const autoRole = this.guild.roles.cache.get(autoRoleId);
-      if (!autoRole) {
-        return this.createAdminError("Invalid Auto-Role", "The specified auto-role does not exist.");
-      }
-    }
-
-    // Update guild config
-    await prisma.guildConfig.update({
-      where: { guildId: this.guild.id },
-      data: {
-        welcomeChannelId,
-        goodbyeChannelId: goodbyeChannelId ?? null,
-        welcomeEnabled,
-        goodbyeEnabled,
-        moderatorRoleIds: autoRoleId ? [autoRoleId] : [],
-      },
-    });
-
-    const embed = this.client.genEmbed({
-      title: "✅ Welcome System Configured",
-      description: "Welcome and goodbye system has been configured successfully.",
-      color: 0x2ecc71,
-      fields: [
-        { name: "👋 Welcome Channel", value: `<#${welcomeChannelId}>`, inline: true },
-        { name: "👋 Welcome Enabled", value: welcomeEnabled ? "✅ Yes" : "❌ No", inline: true },
-        { name: "👋 Goodbye Channel", value: goodbyeChannelId ? `<#${goodbyeChannelId}>` : "Not set", inline: true },
-        { name: "👋 Goodbye Enabled", value: goodbyeEnabled ? "✅ Yes" : "❌ No", inline: true },
-        { name: "🎭 Auto-Role", value: autoRoleId ? `<@&${autoRoleId}>` : "Not set", inline: true },
-      ],
-    });
-
-    return { embeds: [embed], ephemeral: true };
-  }
-
   private async handleTest(): Promise<CommandResponse> {
     const type = this.getStringOption("type", true) as "welcome" | "goodbye";
     const testUser = this.getUserOption("user") ?? this.user;
@@ -125,7 +61,7 @@ export class WelcomeCommand extends AdminCommand {
     if (!config) {
       return this.createAdminError(
         "No Configuration",
-        "Welcome system has not been configured yet. Use `/welcome setup` first."
+        "Welcome system has not been configured yet. Use `/setup welcome` first."
       );
     }
 
@@ -189,7 +125,7 @@ export class WelcomeCommand extends AdminCommand {
     if (!config) {
       return this.createAdminError(
         "No Configuration",
-        "Welcome system has not been configured yet. Use `/welcome setup` first."
+        "Welcome system has not been configured yet. Use `/setup welcome` first."
       );
     }
 
@@ -273,7 +209,7 @@ export class WelcomeCommand extends AdminCommand {
     if (!config) {
       return this.createAdminError(
         "No Configuration",
-        "Welcome system has not been configured yet. Use `/welcome setup` first."
+        "Welcome system has not been configured yet. Use `/setup welcome` first."
       );
     }
 
@@ -309,7 +245,7 @@ export class WelcomeCommand extends AdminCommand {
     if (!config) {
       return this.createAdminError(
         "No Configuration",
-        "Welcome system has not been configured yet. Use `/welcome setup` first."
+        "Welcome system has not been configured yet. Use `/setup welcome` first."
       );
     }
 
@@ -356,20 +292,6 @@ export const builder = new SlashCommandBuilder()
   .setName("welcome")
   .setDescription("Manage welcome messages and auto-role assignment")
   .setDefaultMemberPermissions(0)
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName("setup")
-      .setDescription("Configure welcome and goodbye system")
-      .addStringOption((option) =>
-        option.setName("welcome-channel").setDescription("Channel for welcome messages").setRequired(true)
-      )
-      .addStringOption((option) => option.setName("goodbye-channel").setDescription("Channel for goodbye messages"))
-      .addStringOption((option) =>
-        option.setName("auto-role").setDescription("Role to automatically assign to new members")
-      )
-      .addBooleanOption((option) => option.setName("welcome-enabled").setDescription("Enable welcome messages"))
-      .addBooleanOption((option) => option.setName("goodbye-enabled").setDescription("Enable goodbye messages"))
-  )
   .addSubcommand((subcommand) =>
     subcommand
       .setName("test")

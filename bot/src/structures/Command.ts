@@ -6,6 +6,7 @@ import type {
   SlashCommandBuilder,
   SlashCommandOptionsOnlyBuilder,
   SlashCommandSubcommandsOnlyBuilder,
+  UserContextMenuCommandInteraction,
 } from "discord.js";
 
 import { BaseCommand } from "../commands/_core/BaseCommand.js";
@@ -16,10 +17,14 @@ import { PermissionLevel } from "./PermissionTypes.js";
 // ChatInputCommandInteraction<"raw" | "cached"> means that ChatInputCommandInteraction.inGuild() is true
 export type GuildChatInputCommandInteraction = ChatInputCommandInteraction<"raw" | "cached">;
 export type GuildMessageContextMenuCommandInteraction = MessageContextMenuCommandInteraction<"raw" | "cached">;
+export type GuildUserContextMenuCommandInteraction = UserContextMenuCommandInteraction<"raw" | "cached">;
 
 type RunFunction = (
   client: Client,
-  interaction: GuildChatInputCommandInteraction | GuildMessageContextMenuCommandInteraction
+  interaction:
+    | GuildChatInputCommandInteraction
+    | GuildMessageContextMenuCommandInteraction
+    | GuildUserContextMenuCommandInteraction
 ) => Awaitable<unknown>;
 
 type Builder =

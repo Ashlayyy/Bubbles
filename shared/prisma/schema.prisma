@@ -214,6 +214,7 @@ model TicketMessage {
   ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   messageId   String
   userId      String
+  userIcon    String
   content     String
   attachments String[]
   embeds      Json[]
@@ -956,4 +957,997 @@ model UserPermission {
 
   @@unique([guildId, userId])
   @@index([guildId])
+}
+
+// Ticket role configuration
+model TicketRoleConfig {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String   @unique
+  autoAddRoles    String[] @default([])
+  persistentRoles String[] @default([])
+  roleHierarchy   Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  supportRoles   TicketSupportRole[]
+  categoryRoles  TicketCategoryRole[]
+  temporaryRoles TicketTemporaryRole[]
+}
+
+// Ticket support roles
+model TicketSupportRole {
+  id       String           @id @default(auto()) @map("_id") @db.ObjectId
+  configId String
+  roleId   String
+  config   TicketRoleConfig @relation(fields: [configId], references: [guildId], onDelete: Cascade)
+
+  @@unique([configId, roleId])
+}
+
+// Category-specific roles
+model TicketCategoryRole {
+  id       String           @id @default(auto()) @map("_id") @db.ObjectId
+  configId String
+  category String
+  roleIds  String[]
+  config   TicketRoleConfig @relation(fields: [configId], references: [guildId], onDelete: Cascade)
+
+  @@unique([configId, category])
+}
+
+// Temporary roles
+model TicketTemporaryRole {
+  id       String           @id @default(auto()) @map("_id") @db.ObjectId
+  configId String
+  roleId   String
+  config   TicketRoleConfig @relation(fields: [configId], references: [guildId], onDelete: Cascade)
+
+  @@unique([configId, roleId])
+}
+
+// Ticket role assignments
+model TicketRoleAssignment {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String
+  roleId       String
+  ticketId     String
+  isPersistent Boolean   @default(false)
+  expiresAt    DateTime?
+  assignedAt   DateTime  @default(now())
+
+  @@unique([userId, roleId, ticketId])
+  @@index([ticketId])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// Server statistics snapshots
+model ServerStatsSnapshot {
+  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId              String
+  memberCount          Int
+  onlineCount          Int
+  channelCount         Int
+  roleCount            Int
+  messageCount24h      Int      @default(0)
+  moderationCases24h   Int      @default(0)
+  ticketsCreated24h    Int      @default(0)
+  commandsExecuted24h  Int      @default(0)
+  voiceMinutes24h      Int      @default(0)
+  reactionRoleUsage24h Int      @default(0)
+  timestamp            DateTime @default(now())
+
+  @@index([guildId, timestamp])
+  @@index([timestamp])
+}
+
+// Message statistics (for tracking message activity)
+model MessageStats {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  channelId String
+  userId    String
+  messageId String   @unique
+  content   String?
+  timestamp DateTime @default(now())
+  edited    Boolean  @default(false)
+  deleted   Boolean  @default(false)
+
+  @@index([guildId, timestamp])
+  @@index([channelId, timestamp])
+  @@index([userId, timestamp])
+}
+
+// Voice activity tracking
+model VoiceActivity {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  channelId String
+  userId    String
+  joinedAt  DateTime
+  leftAt    DateTime?
+  duration  Int? // in seconds
+  isActive  Boolean   @default(true)
+
+  @@index([guildId, joinedAt])
+  @@index([userId, joinedAt])
+  @@index([channelId, joinedAt])
+}
+
+// User activity summary
+model UserActivitySummary {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId          String
+  userId           String
+  date             DateTime // Date for the summary (daily)
+  messageCount     Int      @default(0)
+  voiceMinutes     Int      @default(0)
+  commandsExecuted Int      @default(0)
+  reactionsAdded   Int      @default(0)
+  lastActive       DateTime @default(now())
+
+  @@unique([guildId, userId, date])
+  @@index([guildId, date])
+  @@index([userId, date])
+}
+
+// Ticket categories with custom workflows
+model TicketCategory {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String
+  name            String
+  description     String?
+  emoji           String?
+  color           String?  @default("#5865F2")
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  maxTickets      Int? // Max tickets per user in this category
+  autoAssignRoles String[] @default([])
+  requiredRoles   String[] @default([]) // Roles required to create tickets
+  allowedChannels String[] @default([]) // Channels where category can be used
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Workflow configuration
+  workflows TicketCategoryWorkflow[]
+  fields    TicketCategoryField[]
+
+  @@unique([guildId, name])
+  @@index([guildId, isActive])
+}
+
+// Custom workflows for ticket categories
+model TicketCategoryWorkflow {
+  id          String               @id @default(auto()) @map("_id") @db.ObjectId
+  categoryId  String               @db.ObjectId
+  category    TicketCategory       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  isDefault   Boolean              @default(false)
+  steps       TicketWorkflowStep[]
+
+  @@unique([categoryId, name])
+}
+
+// Workflow steps
+model TicketWorkflowStep {
+  id             String                 @id @default(auto()) @map("_id") @db.ObjectId
+  workflowId     String                 @db.ObjectId
+  workflow       TicketCategoryWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  stepOrder      Int
+  name           String
+  description    String?
+  type           String // MESSAGE, ROLE_ASSIGN, STATUS_CHANGE, ESCALATION, etc.
+  config         Json // Step-specific configuration
+  conditions     Json? // Conditions for step execution
+  autoExecute    Boolean                @default(false)
+  timeoutMinutes Int? // Auto-execute after timeout
+
+  @@unique([workflowId, stepOrder])
+  @@index([workflowId])
+}
+
+// Custom fields for ticket categories
+model TicketCategoryField {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  categoryId   String         @db.ObjectId
+  category     TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name         String
+  label        String
+  description  String?
+  type         String // TEXT, TEXTAREA, SELECT, MULTISELECT, BOOLEAN, NUMBER, DATE
+  required     Boolean        @default(false)
+  options      String[]       @default([]) // For SELECT/MULTISELECT fields
+  defaultValue String?
+  validation   Json? // Validation rules
+  displayOrder Int            @default(0)
+
+  @@unique([categoryId, name])
+  @@index([categoryId])
+}
+
+// Ticket field values
+model TicketFieldValue {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId  String   @db.ObjectId
+  fieldName String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([ticketId, fieldName])
+  @@index([ticketId])
+}
+
+// Ticket workflow executions
+model TicketWorkflowExecution {
+  id             String                        @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId       String                        @db.ObjectId
+  workflowId     String                        @db.ObjectId
+  currentStep    Int                           @default(0)
+  status         String                        @default("RUNNING") // RUNNING, COMPLETED, FAILED, PAUSED
+  startedAt      DateTime                      @default(now())
+  completedAt    DateTime?
+  error          String?
+  stepExecutions TicketWorkflowStepExecution[]
+
+  @@unique([ticketId, workflowId])
+  @@index([ticketId])
+  @@index([workflowId])
+}
+
+// Individual step executions
+model TicketWorkflowStepExecution {
+  id          String                  @id @default(auto()) @map("_id") @db.ObjectId
+  executionId String                  @db.ObjectId
+  execution   TicketWorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  stepId      String                  @db.ObjectId
+  stepOrder   Int
+  status      String                  @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED, SKIPPED
+  startedAt   DateTime?
+  completedAt DateTime?
+  error       String?
+  result      Json? // Step execution result
+
+  @@unique([executionId, stepOrder])
+  @@index([executionId])
+}
+
+// Ticket analytics and metrics
+model TicketAnalytics {
+  id                   String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId              String
+  ticketId             String    @db.ObjectId
+  category             String
+  assigneeId           String?
+  createdAt            DateTime
+  firstResponseAt      DateTime?
+  firstResponseTime    Int? // in minutes
+  resolvedAt           DateTime?
+  resolutionTime       Int? // in minutes
+  closedAt             DateTime?
+  totalResponseTime    Int? // total time to respond to all messages
+  messageCount         Int       @default(0)
+  staffMessageCount    Int       @default(0)
+  userMessageCount     Int       @default(0)
+  escalationCount      Int       @default(0)
+  satisfactionScore    Int? // 1-5 scale
+  satisfactionFeedback String?
+  tags                 String[]  @default([])
+  priority             String    @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+
+  @@unique([ticketId])
+  @@index([guildId, category])
+  @@index([guildId, createdAt])
+  @@index([assigneeId])
+}
+
+// Daily ticket statistics aggregation
+model TicketDailyStats {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId    String
+  date       DateTime // Date for the stats (daily)
+  category   String? // null for all categories
+  assigneeId String? // null for all assignees
+
+  // Ticket counts
+  ticketsCreated   Int @default(0)
+  ticketsResolved  Int @default(0)
+  ticketsClosed    Int @default(0)
+  ticketsEscalated Int @default(0)
+
+  // Response metrics
+  avgFirstResponseTime Float? // in minutes
+  avgResolutionTime    Float? // in minutes
+  totalResponseTime    Int    @default(0)
+
+  // Satisfaction metrics
+  avgSatisfactionScore  Float?
+  satisfactionResponses Int    @default(0)
+
+  // Message metrics
+  totalMessages Int @default(0)
+  staffMessages Int @default(0)
+  userMessages  Int @default(0)
+
+  @@unique([guildId, date, category, assigneeId])
+  @@index([guildId, date])
+  @@index([category])
+  @@index([assigneeId])
+}
+
+// Ticket satisfaction surveys
+model TicketSatisfactionSurvey {
+  id         String  @id @default(auto()) @map("_id") @db.ObjectId
+  guildId    String
+  ticketId   String  @db.ObjectId
+  userId     String
+  assigneeId String?
+  category   String
+
+  // Survey responses
+  overallSatisfaction Int // 1-5 scale
+  responseSpeed       Int? // 1-5 scale
+  helpfulness         Int? // 1-5 scale
+  professionalism     Int? // 1-5 scale
+  resolutionQuality   Int? // 1-5 scale
+
+  // Feedback
+  feedback       String?
+  suggestions    String?
+  wouldRecommend Boolean?
+
+  // Metadata
+  submittedAt   DateTime @default(now())
+  surveyVersion String   @default("1.0")
+
+  @@unique([ticketId])
+  @@index([guildId, category])
+  @@index([assigneeId])
+  @@index([submittedAt])
+}
+
+// Performance metrics for staff members
+model TicketStaffMetrics {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  staffId     String
+  period      String // DAILY, WEEKLY, MONTHLY
+  periodStart DateTime
+  periodEnd   DateTime
+
+  // Ticket metrics
+  ticketsAssigned Int @default(0)
+  ticketsResolved Int @default(0)
+  ticketsClosed   Int @default(0)
+
+  // Performance metrics
+  avgFirstResponseTime Float? // in minutes
+  avgResolutionTime    Float? // in minutes
+  avgSatisfactionScore Float?
+  totalWorkingTime     Int    @default(0) // in minutes
+
+  // Quality metrics
+  escalationsReceived Int @default(0)
+  escalationsGiven    Int @default(0)
+  reopenedTickets     Int @default(0)
+
+  // Activity metrics
+  messagesPosted   Int @default(0)
+  actionsPerformed Int @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([guildId, staffId, period, periodStart])
+  @@index([guildId, period])
+  @@index([staffId])
+}
+
+// Ticket templates for quick ticket creation
+model TicketTemplate {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId         String
+  name            String
+  description     String?
+  category        String
+  title           String
+  content         String?
+  priority        String   @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  tags            String[] @default([])
+  autoAssignRoles String[] @default([])
+  autoAssignUsers String[] @default([])
+  isActive        Boolean  @default(true)
+  isPublic        Boolean  @default(true) // Can be used by regular users
+  usageCount      Int      @default(0)
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Template configuration
+  fields  TicketTemplateField[]
+  actions TicketTemplateAction[]
+
+  @@unique([guildId, name])
+  @@index([guildId, category])
+  @@index([guildId, isActive])
+}
+
+// Custom fields for ticket templates
+model TicketTemplateField {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  templateId   String         @db.ObjectId
+  template     TicketTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name         String
+  label        String
+  description  String?
+  type         String // TEXT, TEXTAREA, SELECT, MULTISELECT, BOOLEAN, NUMBER, DATE, USER, ROLE, CHANNEL
+  required     Boolean        @default(false)
+  options      String[]       @default([]) // For SELECT/MULTISELECT fields
+  defaultValue String?
+  placeholder  String?
+  validation   Json? // Validation rules
+  displayOrder Int            @default(0)
+
+  @@unique([templateId, name])
+  @@index([templateId])
+}
+
+// Automated actions for ticket templates
+model TicketTemplateAction {
+  id             String         @id @default(auto()) @map("_id") @db.ObjectId
+  templateId     String         @db.ObjectId
+  template       TicketTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name           String
+  type           String // MESSAGE, ROLE_ASSIGN, NOTIFICATION, WORKFLOW_TRIGGER, STATUS_CHANGE
+  trigger        String         @default("ON_CREATE") // ON_CREATE, ON_ASSIGN, ON_FIRST_RESPONSE, DELAYED
+  delay          Int? // Delay in minutes for DELAYED trigger
+  config         Json // Action-specific configuration
+  conditions     Json? // Conditions for action execution
+  isActive       Boolean        @default(true)
+  executionOrder Int            @default(0)
+
+  @@unique([templateId, name])
+  @@index([templateId])
+}
+
+// Template usage tracking
+model TicketTemplateUsage {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  templateId  String   @db.ObjectId
+  ticketId    String   @db.ObjectId
+  userId      String
+  fieldValues Json // Field values used when creating the ticket
+  usedAt      DateTime @default(now())
+
+  @@unique([templateId, ticketId])
+  @@index([templateId])
+  @@index([ticketId])
+  @@index([userId])
+}
+
+// Pre-defined ticket types with common configurations
+model TicketType {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId          String
+  name             String
+  description      String?
+  emoji            String?
+  color            String?  @default("#5865F2")
+  category         String
+  priority         String   @default("NORMAL")
+  estimatedTime    Int? // Estimated resolution time in minutes
+  slaTime          Int? // SLA time in minutes
+  autoClose        Boolean  @default(false)
+  autoCloseTime    Int? // Auto close time in hours
+  requiresApproval Boolean  @default(false)
+  approvalRoles    String[] @default([])
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([guildId, name])
+  @@index([guildId, category])
+  @@index([guildId, isActive])
+}
+
+// Many-to-many relation for ticket types and templates
+model TicketTypeTemplate {
+  id         String  @id @default(auto()) @map("_id") @db.ObjectId
+  typeId     String  @db.ObjectId
+  templateId String  @db.ObjectId
+  isDefault  Boolean @default(false)
+
+  @@unique([typeId, templateId])
+  @@index([typeId])
+  @@index([templateId])
+}
+
+// Template categories for organization
+model TicketTemplateCategory {
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  name        String
+  description String?
+  emoji       String?
+  color       String? @default("#5865F2")
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  @@unique([guildId, name])
+  @@index([guildId, isActive])
+}
+
+// Ticket user management and permissions
+model TicketUser {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId    String    @db.ObjectId
+  userId      String
+  addedBy     String
+  permissions String[]  @default([]) // VIEW, MESSAGE, MANAGE, CLOSE
+  addedAt     DateTime  @default(now())
+  removedAt   DateTime?
+  removedBy   String?
+  isActive    Boolean   @default(true)
+  reason      String? // Reason for adding/removing
+
+  @@unique([ticketId, userId])
+  @@index([ticketId])
+  @@index([userId])
+  @@index([addedBy])
+}
+
+// Ticket permission presets
+model TicketPermissionPreset {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  name        String
+  description String?
+  permissions String[] @default([])
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, name])
+  @@index([guildId, isActive])
+}
+
+// Ticket access requests
+model TicketAccessRequest {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId    String    @db.ObjectId
+  userId      String
+  requestedBy String
+  reason      String?
+  status      String    @default("PENDING") // PENDING, APPROVED, DENIED
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  reviewNotes String?
+  requestedAt DateTime  @default(now())
+  expiresAt   DateTime?
+
+  @@unique([ticketId, userId])
+  @@index([ticketId])
+  @@index([userId])
+  @@index([status])
+}
+
+// Ticket user activity tracking
+model TicketUserActivity {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId    String   @db.ObjectId
+  userId      String
+  action      String // ADDED, REMOVED, PERMISSION_CHANGED, MESSAGE_SENT, FILE_UPLOADED
+  details     Json? // Additional action details
+  performedBy String
+  timestamp   DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([userId])
+  @@index([timestamp])
+}
+
+// Ticket sharing configurations
+model TicketSharingConfig {
+  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId               String   @unique
+  allowUserAdditions    Boolean  @default(true)
+  requireApproval       Boolean  @default(false)
+  approvalRoles         String[] @default([])
+  maxUsersPerTicket     Int      @default(10)
+  defaultPermissions    String[] @default(["VIEW", "MESSAGE"])
+  autoRemoveInactive    Boolean  @default(false)
+  inactiveThresholdDays Int      @default(7)
+  logChannel            String?
+}
+
+/// -------------------------
+/// Music System Models
+/// -------------------------
+
+model MusicPlaylist {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  name      String
+  tracks    Json // Array of track objects
+  public    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guildId, userId])
+  @@index([public])
+}
+
+model MusicHistory {
+  id       String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId  String
+  userId   String
+  trackId  String
+  title    String
+  artist   String
+  duration Int
+  playedAt DateTime @default(now())
+
+  @@index([guildId, playedAt])
+  @@index([userId, playedAt])
+}
+
+/// -------------------------
+/// Economy System Models
+/// -------------------------
+
+model UserEconomy {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  balance   BigInt    @default(0)
+  bank      BigInt    @default(0)
+  xp        Int       @default(0)
+  level     Int       @default(1)
+  lastDaily DateTime?
+  streak    Int       @default(0)
+  inventory Json      @default("[]")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  transactions EconomyTransaction[]
+
+  @@unique([guildId, userId])
+  @@index([guildId, level])
+}
+
+model EconomyTransaction {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  userId    String
+  type      String // earn, spend, transfer, daily
+  amount    BigInt
+  reason    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user UserEconomy @relation(fields: [guildId, userId], references: [guildId, userId])
+
+  @@index([guildId, userId, createdAt])
+}
+
+model EconomyShop {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  itemId      String
+  name        String
+  description String
+  price       BigInt
+  category    String
+  stock       Int? // Null = unlimited
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, itemId])
+  @@index([guildId, category])
+}
+
+/// -------------------------
+/// Event Management Models
+/// -------------------------
+
+model Event {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId          String
+  createdBy        String
+  title            String
+  description      String?
+  startTime        DateTime
+  endTime          DateTime?
+  timezone         String
+  location         String? // Voice channel or external location
+  maxAttendees     Int?
+  requiresApproval Boolean   @default(false)
+  recurring        Json? // Recurring event configuration
+  reminderTimes    Int[] // Minutes before event for reminders
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  rsvps EventRSVP[]
+
+  @@index([guildId, startTime])
+}
+
+model EventRSVP {
+  id      String   @id @default(auto()) @map("_id") @db.ObjectId
+  eventId String
+  userId  String
+  status  String // going, maybe, not_going
+  notes   String?
+  rsvpAt  DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id])
+
+  @@unique([eventId, userId])
+  @@index([eventId, status])
+}
+
+/// -------------------------
+/// Advanced Polling Models
+/// -------------------------
+
+model PollAdvanced {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  channelId   String
+  messageId   String?
+  createdBy   String
+  title       String
+  description String?
+  type        String // single, multiple, ranked, rating
+  options     Json // Poll options
+  settings    Json // Privacy, duration, etc.
+  anonymous   Boolean   @default(false)
+  multiSelect Boolean   @default(false)
+  maxChoices  Int?
+  endTime     DateTime?
+  status      String // active, closed, scheduled
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  votes PollVote[]
+
+  @@index([guildId, status])
+  @@index([createdBy])
+}
+
+model PollVote {
+  id      String   @id @default(auto()) @map("_id") @db.ObjectId
+  pollId  String
+  userId  String
+  choices String[] // Selected option IDs
+  ranking Json? // For ranked voting
+  rating  Int? // For rating polls
+  votedAt DateTime @default(now())
+
+  poll PollAdvanced @relation(fields: [pollId], references: [id])
+
+  @@unique([pollId, userId])
+  @@index([pollId, votedAt])
+}
+
+/// -------------------------
+/// Automation System Models
+/// -------------------------
+
+model Automation {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId     String
+  name        String
+  description String?
+  enabled     Boolean   @default(true)
+  trigger     Json // Trigger configuration
+  conditions  Json // Condition logic
+  actions     Json // Action sequence
+  schedule    String? // Cron expression for scheduled automation
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastRun     DateTime?
+  runCount    Int       @default(0)
+
+  executions AutomationExecution[]
+
+  @@index([guildId, enabled])
+}
+
+model AutomationExecution {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  automationId String
+  triggeredBy  String?
+  triggeredAt  DateTime @default(now())
+  status       String // running, completed, failed
+  result       Json?
+  errorMessage String?
+  duration     Int? // Execution time in milliseconds
+
+  automation Automation @relation(fields: [automationId], references: [id])
+
+  @@index([automationId, triggeredAt])
+}
+
+/// -------------------------
+/// Premium System Models
+/// -------------------------
+
+model GuildSubscription {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String    @unique
+  tier         String // free, premium
+  status       String // active, canceled, expired
+  subscribedAt DateTime?
+  expiresAt    DateTime?
+  features     String[] // Enabled premium features
+  limits       Json // Usage limits configuration
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  usage FeatureUsage[]
+
+  @@index([tier, status])
+}
+
+model FeatureUsage {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId   String
+  feature   String
+  usage     Int      @default(0)
+  limit     Int
+  resetAt   DateTime // Monthly reset
+  createdAt DateTime @default(now())
+
+  subscription GuildSubscription @relation(fields: [guildId], references: [guildId])
+
+  @@unique([guildId, feature])
+  @@index([resetAt])
+}
+
+/// -------------------------
+/// Custom Commands Enhancement
+/// -------------------------
+
+model CustomCommand {
+  id                  String    @id @default(auto()) @map("_id") @db.ObjectId
+  guildId             String
+  name                String
+  description         String?
+  content             String
+  aliases             String[]  @default([])
+  category            String    @default("general")
+  enabled             Boolean   @default(true)
+  cooldownSeconds     Int       @default(0)
+  requiredRoles       String[]  @default([])
+  requiredPermissions String[]  @default([])
+  allowedChannels     String[]  @default([])
+  script              String? // JavaScript code for complex commands
+  usageCount          Int       @default(0)
+  lastUsed            DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  logs CustomCommandLog[]
+
+  @@unique([guildId, name])
+  @@index([guildId, category])
+  @@index([guildId, enabled])
+}
+
+model CustomCommandLog {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId       String
+  commandId     String
+  commandName   String
+  userId        String
+  channelId     String?
+  success       Boolean
+  error         String?
+  executionTime Int? // Execution time in milliseconds
+  timestamp     DateTime @default(now())
+
+  command CustomCommand @relation(fields: [commandId], references: [id])
+
+  @@index([guildId, commandId, timestamp])
+  @@index([userId, timestamp])
+}
+
+/// -------------------------
+/// Reminder System Models
+/// -------------------------
+
+model ReminderAdvanced {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId    String
+  userId     String
+  channelId  String?
+  message    String
+  reminderAt DateTime
+  recurring  Json? // Recurring reminder configuration
+  completed  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([reminderAt, completed])
+  @@index([guildId, userId])
+}
+
+/// -------------------------
+/// Giveaway System Models
+/// -------------------------
+
+model GiveawayAdvanced {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  guildId      String
+  channelId    String
+  messageId    String?
+  createdBy    String
+  title        String
+  description  String?
+  prize        String
+  winnerCount  Int      @default(1)
+  requirements Json? // Entry requirements
+  startTime    DateTime @default(now())
+  endTime      DateTime
+  status       String   @default("active") // active, ended, cancelled
+  winners      String[] @default([])
+  entryCount   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  entries GiveawayEntryAdvanced[]
+
+  @@index([guildId, status])
+  @@index([endTime])
+}
+
+model GiveawayEntryAdvanced {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  giveawayId String
+  userId     String
+  enteredAt  DateTime @default(now())
+
+  giveaway GiveawayAdvanced @relation(fields: [giveawayId], references: [id])
+
+  @@unique([giveawayId, userId])
+  @@index([giveawayId])
+}
+
+/// -------------------------
+/// Compliment Wheel System Models
+/// -------------------------
+
+model ComplimentWheel {
+  id                  String                @id @default(auto()) @map("_id") @db.ObjectId
+  guildId             String                @unique
+  messageId           String // The message ID to monitor for reactions
+  channelId           String // Channel where the message is located
+  complimentChannelId String // Channel where daily compliments are announced
+  emoji               String                @default("❤️") // The emoji to monitor for reactions
+  customMessage       String? // Custom embed message for daily compliments
+  pinnedRoleId        String? // Role to pin in the compliment message
+  isActive            Boolean               @default(true)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  drawnUsers          ComplimentDrawnUser[]
+}
+
+model ComplimentDrawnUser {
+  id          String          @id @default(auto()) @map("_id") @db.ObjectId
+  wheelId     String          @db.ObjectId
+  wheel       ComplimentWheel @relation(fields: [wheelId], references: [id], onDelete: Cascade)
+  userId      String
+  username    String
+  drawnAt     DateTime        @default(now())
+  cycleNumber Int // Which cycle this user was drawn in
+
+  @@unique([wheelId, userId, cycleNumber])
+  @@index([wheelId])
+  @@index([userId])
 }

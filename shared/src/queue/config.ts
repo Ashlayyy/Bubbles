@@ -18,7 +18,7 @@ export const getQueueConfig = (): QueueConfig => {
 		redis: {
 			host: process.env.REDIS_HOST || 'localhost',
 			port: parseInt(process.env.REDIS_PORT || '6379'),
-			password: process.env.REDIS_PASSWORD,
+			password: process.env.REDIS_PASSWORD || undefined,
 			db: 0,
 		},
 		defaultJobOptions: {
@@ -33,71 +33,27 @@ export const getQueueConfig = (): QueueConfig => {
 	};
 };
 
-export const createRedisConnection = (config?: QueueConfig['redis']): Redis => {
-	const redisConfig = config || getQueueConfig().redis;
-
-	// Using the default export of the ioredis namespace for proper constructor typing in NodeNext
+export function createRedisConnection(): Redis {
+	// Using the default export of the ioredis namespace for proper constructor typing
 	// eslint-disable-next-line new-cap
-	const redis = new (IORedis.default as unknown as {
+	return new (IORedis.default as unknown as {
 		new (options: any): Redis;
 	})({
-		host: redisConfig.host,
-		port: redisConfig.port,
-		password: redisConfig.password,
-		db: redisConfig.db,
-		lazyConnect: true,
-		maxRetriesPerRequest: 3,
+		host: process.env.REDIS_HOST || 'localhost',
+		port: parseInt(process.env.REDIS_PORT || '6379', 10),
+		password: process.env.REDIS_PASSWORD || undefined,
+		db: parseInt(process.env.REDIS_DB || '0', 10),
+		maxRetriesPerRequest: null, // Required for BullMQ compatibility - prevents deprecation warnings
 		enableReadyCheck: true,
-		// Connection timeout settings
-		connectTimeout: 5000,
-		commandTimeout: 5000,
+		connectTimeout: 30_000,
+		commandTimeout: 30_000,
+		enableOfflineQueue: false,
+		lazyConnect: true,
+		keepAlive: 30000,
+		family: 4, // Force IPv4 for WSL compatibility
+		showFriendlyErrorStack: true,
 	});
-
-	let reconnectAttempts = 0;
-	const maxReconnectAttempts = 10;
-	let reconnectBackoff = 1000; // Start with 1 second
-
-	// Add error handling for Redis connection
-	redis.on('error', (err: Error) => {
-		console.warn(`Redis connection error: ${err.message}`);
-	});
-
-	redis.on('connect', () => {
-		console.log('Redis connection established');
-		// Reset reconnect attempts on successful connection
-		reconnectAttempts = 0;
-		reconnectBackoff = 1000;
-	});
-
-	redis.on('ready', () => {
-		console.log('Redis is ready to accept commands');
-	});
-
-	redis.on('close', () => {
-		console.warn('Redis connection closed');
-	});
-
-	redis.on('reconnecting', (delay: number) => {
-		reconnectAttempts++;
-
-		if (reconnectAttempts > maxReconnectAttempts) {
-			console.error(
-				`Redis reconnection failed after ${maxReconnectAttempts} attempts. Stopping reconnection.`
-			);
-			redis.disconnect(false); // Stop reconnecting
-			return;
-		}
-
-		console.log(
-			`Redis reconnecting... (attempt ${reconnectAttempts}/${maxReconnectAttempts}, delay: ${delay}ms)`
-		);
-
-		// Exponential backoff
-		reconnectBackoff = Math.min(reconnectBackoff * 1.5, 30000); // Max 30 seconds
-	});
-
-	return redis;
-};
+}
 
 export const createQueue = (name: QueueName, redisConnection?: Redis): any => {
 	const config = getQueueConfig();
@@ -120,7 +76,7 @@ export const createQueue = (name: QueueName, redisConnection?: Redis): any => {
 	) => {
 		const handler = typeof processor === 'function' ? processor : callback;
 		const worker = new BullWorker(name, handler, {
-			connection: bullQueue.client,
+			connection: redis,
 		});
 		return worker;
 	};

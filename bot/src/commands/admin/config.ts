@@ -182,31 +182,102 @@ export class ConfigCommand extends AdminCommand {
     return this.createAdminSuccess("Goodbye Channel Set", `Goodbye channel has been set to <#${channel.id}>.`);
   }
 
+  private formatConfigValue(key: string, value: any): string {
+    console.debug(`[config display] Formatting key:`, key, "value:", value, "type:", typeof value);
+
+    if (value === null || value === undefined || value === "") return "Not set";
+    if (typeof value === "boolean") return boolEmoji(value);
+    if (typeof value === "number") return value.toString();
+
+    // Check for arrays FIRST
+    if (Array.isArray(value)) {
+      if (value.length === 0) return "Not set";
+      if (key.toLowerCase().includes("channel")) return value.map((v: string) => `<#${v}>`).join(", ");
+      if (key.toLowerCase().includes("role")) return value.map((v: string) => `<@&${v}>`).join(", ");
+      if (key.toLowerCase().includes("user")) return value.map((v: string) => `<@${v}>`).join(", ");
+      return value.join(", ");
+    }
+
+    // Now check for objects (but not arrays)
+    if (typeof value === "object") {
+      // This will only match non-array objects now
+      if (!value || Object.keys(value).length === 0) return "Not set";
+      return "Not set";
+    }
+
+    if (typeof value === "string") {
+      if (key.toLowerCase().includes("channel")) return `<#${value}>`;
+      if (key.toLowerCase().includes("role")) return `<@&${value}>`;
+      if (key.toLowerCase().includes("user")) return `<@${value}>`;
+      return value;
+    }
+
+    return String(value);
+  }
+
   private async handleDisplaySettings(): Promise<CommandResponse> {
     const config = await getGuildConfig(this.guild.id);
+    console.debug("[config display] Full config:", config);
 
     const embed = new EmbedBuilder().setTitle(`⚙️ ${this.guild.name} Settings`).setColor(0x3498db).setTimestamp();
 
-    // Add key settings as fields
-    embed.addFields(
+    // Define config sections in the order and grouping as in the screenshot
+    const configSections = [
       {
-        name: "Welcome Channel",
-        value: config.welcomeChannelId ? `<#${config.welcomeChannelId}>` : "Not set",
-        inline: true,
+        title: "Channels",
+        keys: ["musicChannelId", "welcomeChannelId", "goodbyeChannelId", "ticketChannelId", "reportChannelId"],
       },
       {
-        name: "Goodbye Channel",
-        value: config.goodbyeChannelId ? `<#${config.goodbyeChannelId}>` : "Not set",
-        inline: true,
+        title: "Roles",
+        keys: ["reportPingRoleId"],
       },
-      { name: "Music Channel", value: config.musicChannelId ? `<#${config.musicChannelId}>` : "Not set", inline: true },
-      { name: "Max Messages Cleared", value: String(config.maxMessagesCleared), inline: true },
       {
-        name: "Moderation Notifications",
-        value: boolEmoji((config as unknown as { notify_user?: boolean }).notify_user ?? false),
-        inline: true,
+        title: "Welcome/Goodbye",
+        keys: ["welcomeEnabled", "goodbyeEnabled"],
+      },
+      {
+        title: "Moderation",
+        keys: ["maxMessagesCleared", "notify_user"],
+      },
+      {
+        title: "Tickets",
+        keys: ["useTicketThreads", "ticketSilentClaim"],
+      },
+      {
+        title: "Other",
+        keys: ["preferredLanguage"],
+      },
+    ];
+
+    const fields: any[] = [];
+    for (const section of configSections) {
+      // Add section header as a full-width field
+      fields.push({
+        name: `__${section.title}__`,
+        value: "\u200B", // zero-width space for a blank value
+        inline: false,
+      });
+      // Add fields for this section, all inline
+      for (const key of section.keys) {
+        if (config[key] !== undefined) {
+          // Format field name: remove trailing 'Id' if present
+          let displayName = key
+            .replace(/([A-Z])/g, " $1")
+            .replace(/^./, (s) => s.toUpperCase())
+            .replace("_", " ")
+            .trim();
+          if (displayName.endsWith(" Id")) {
+            displayName = displayName.slice(0, -3);
+          }
+          fields.push({
+            name: displayName,
+            value: this.formatConfigValue(key, config[key]),
+            inline: true,
+          });
+        }
       }
-    );
+    }
+    embed.addFields(fields);
 
     return { embeds: [embed], ephemeral: true };
   }

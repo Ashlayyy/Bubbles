@@ -496,7 +496,7 @@ export default class PermissionManager {
 
     try {
       // Try cache first
-      const cached = await cacheService.get(cacheKey, "permissions");
+      const cached = await cacheService.get<any>(cacheKey);
       if (cached !== null) {
         return cached;
       }
@@ -511,8 +511,8 @@ export default class PermissionManager {
         },
       });
 
-      // Cache result
-      await cacheService.set(cacheKey, permission, "permissions");
+      // Cache result (TTL: 5 minutes)
+      cacheService.set(cacheKey, permission, 5 * 60 * 1000);
       return permission;
     } catch (error) {
       logger.error(`Error checking command permission for ${guildId}:${command}:`, error);
@@ -528,7 +528,7 @@ export default class PermissionManager {
 
     try {
       // Try cache first
-      const cached = await cacheService.get<any[]>(cacheKey, "permissions");
+      const cached = await cacheService.get<any[]>(cacheKey);
       if (cached) {
         return cached;
       }
@@ -539,8 +539,8 @@ export default class PermissionManager {
         include: { assignments: true },
       });
 
-      // Cache result
-      await cacheService.set(cacheKey, roles, "permissions");
+      // Cache result (TTL: 5 minutes)
+      cacheService.set(cacheKey, roles, 5 * 60 * 1000);
       return roles;
     } catch (error) {
       logger.error(`Error getting custom roles for ${guildId}:`, error);
@@ -556,7 +556,7 @@ export default class PermissionManager {
 
     try {
       // Try cache first
-      const cached = await cacheService.get<boolean>(cacheKey, "permissions");
+      const cached = await cacheService.get<boolean>(cacheKey);
       if (cached !== null) {
         return cached;
       }
@@ -568,8 +568,8 @@ export default class PermissionManager {
 
       const isEnabled = maintenance?.isEnabled ?? false;
 
-      // Cache result with shorter TTL since this is critical
-      await cacheService.set(cacheKey, isEnabled, "permissions");
+      // Cache result with shorter TTL since this is critical (1 minute)
+      cacheService.set(cacheKey, isEnabled, 60 * 1000);
       return isEnabled;
     } catch (error) {
       logger.error("Error checking maintenance mode:", error);
@@ -581,6 +581,6 @@ export default class PermissionManager {
    * Invalidate permission caches for a guild
    */
   static async invalidatePermissionCache(guildId: string): Promise<void> {
-    await cacheService.deletePattern(`permissions:*:${guildId}*`);
+    cacheService.invalidatePattern(`permissions:.*:${guildId}.*`);
   }
 }

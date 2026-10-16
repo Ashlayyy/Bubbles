@@ -25,6 +25,10 @@ import {
 	addModeratorNote,
 	updateModeratorNote,
 	deleteModeratorNote,
+	bulkBanUsers,
+	bulkKickUsers,
+	bulkTimeoutUsers,
+	getBulkOperationStatus,
 } from '../controllers/moderationController.js';
 import {
 	validateModerationCase,
@@ -267,6 +271,43 @@ addRoute(
 	{ discordPermissions: ['MANAGE_MESSAGES'], permissionsOverride: true },
 	moderationRateLimit,
 	deleteModeratorNote
+);
+
+// Bulk operations
+addRoute(
+	router,
+	'post',
+	'/bulk/ban',
+	{ discordPermissions: ['BAN_MEMBERS'], permissionsOverride: true },
+	moderationRateLimit,
+	bulkBanUsers
+);
+
+addRoute(
+	router,
+	'post',
+	'/bulk/kick',
+	{ discordPermissions: ['KICK_MEMBERS'], permissionsOverride: true },
+	moderationRateLimit,
+	bulkKickUsers
+);
+
+addRoute(
+	router,
+	'post',
+	'/bulk/timeout',
+	{ discordPermissions: ['MODERATE_MEMBERS'], permissionsOverride: true },
+	moderationRateLimit,
+	bulkTimeoutUsers
+);
+
+addRoute(
+	router,
+	'get',
+	'/bulk/status/:jobId',
+	{ discordPermissions: ['MODERATE_MEMBERS'], permissionsOverride: true },
+	moderationRateLimit,
+	getBulkOperationStatus
 );
 
 export default router;

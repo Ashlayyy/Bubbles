@@ -33,13 +33,13 @@ if (process.env.SENTRY_DSN) {
 
   // Capture unhandled rejections
   process.on("unhandledRejection", (reason, promise) => {
-    console.error("Unhandled Rejection at:", promise, "reason:", reason);
+    logger.error("Unhandled Rejection at:", promise, "reason:", reason);
     Sentry.captureException(reason);
   });
 
   // Capture uncaught exceptions
   process.on("uncaughtException", (error) => {
-    console.error("Uncaught Exception:", error);
+    logger.error("Uncaught Exception:", error);
     Sentry.captureException(error);
     process.exit(1);
   });
@@ -49,7 +49,31 @@ if (process.env.SENTRY_DSN) {
 import { loadEnvironment } from "./functions/general/environmentLoader.js";
 loadEnvironment();
 
+import logger from "./logger.js";
 import Client from "./structures/Client.js";
 
 const client = await Client.get();
 await client.start();
+
+// Start periodic voice XP processing
+import { levelingService } from "./services/levelingService.js";
+setInterval(() => {
+  (async () => {
+    try {
+      await levelingService.processVoiceXP();
+    } catch (error) {
+      logger.error("Error processing voice XP:", error);
+    }
+  })();
+}, 60000); // Process every minute
+
+// Start periodic database sync (every 15 minutes)
+setInterval(() => {
+  (async () => {
+    try {
+      await levelingService.syncAllUserData();
+    } catch (error) {
+      logger.error("Error syncing user data:", error);
+    }
+  })();
+}, 900000); // Sync every 15 minutes

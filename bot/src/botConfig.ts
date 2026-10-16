@@ -82,12 +82,14 @@ export function getConfigFile(): BotConfig {
       console.info(`Generating "${configFileName}"`);
 
       if (isDev) {
-        // Edit and then copy
+        // Edit and then copy - but keep raw data to preserve string types
+        const fileContent = readFileSync(DEFAULT_CONFIG_FILE_NAME, "utf-8");
+        const rawData = parseYaml(fileContent) as Record<string, unknown>;
 
-        const defaultConfig = parseFile(DEFAULT_CONFIG_FILE_NAME);
-        defaultConfig.name = defaultConfig.name + "-dev";
+        // Only modify the name, keep everything else as-is
+        rawData.name = (rawData.name as string) + "-dev";
 
-        writeFileSync(configFileName, stringifyYaml(defaultConfig), {
+        writeFileSync(configFileName, stringifyYaml(rawData), {
           encoding: "utf-8",
           flag: "wx", // error if already exists
         });

@@ -16,6 +16,7 @@ export class TicketAssignCommand extends AdminCommand {
       category: "admin",
       permissions: {
         level: PermissionLevel.MODERATOR,
+        discordPermissions: ["ManageChannels"],
         isConfigurable: true,
       },
       ephemeral: true,
@@ -55,7 +56,7 @@ export class TicketAssignCommand extends AdminCommand {
 
   private async handleAssign(): Promise<CommandResponse> {
     const ticketNumber = this.getIntegerOption("ticket", true);
-    const assigneeId = this.getStringOption("assignee", true);
+    const assignee = this.getUserOption("assignee", true);
     const reason = this.getStringOption("reason");
 
     // Validate ticket exists
@@ -74,22 +75,29 @@ export class TicketAssignCommand extends AdminCommand {
       );
     }
 
-    // Validate assignee is a member
-    const assignee = await this.guild.members.fetch(assigneeId).catch(() => null);
-    if (!assignee) {
+    // Check if assignee has appropriate permissions
+    const assigneeMember = await this.guild.members.fetch(assignee.id).catch(() => null);
+    if (!assigneeMember) {
       return this.createAdminError("Invalid Assignee", "Assignee is not a member of this server.");
     }
 
-    // Check if assignee has appropriate permissions
-    if (!assignee.permissions.has("ManageChannels")) {
+    if (!assigneeMember.permissions.has("ManageChannels")) {
       return this.createAdminError("Insufficient Permissions", "Assignee must have Manage Channels permission.");
+    }
+
+    // Check if ticket is already assigned
+    if (ticket.assignedTo) {
+      return this.createAdminError(
+        "Ticket Already Assigned",
+        `This ticket is already assigned to <@${ticket.assignedTo}>.`
+      );
     }
 
     // Update ticket
     await prisma.ticket.update({
       where: { id: ticket.id },
       data: {
-        assignedTo: assigneeId,
+        assignedTo: assignee.id,
         status: "PENDING",
       },
     });
@@ -100,11 +108,25 @@ export class TicketAssignCommand extends AdminCommand {
       color: 0x2ecc71,
       fields: [
         { name: "🎫 Ticket", value: `<#${ticket.channelId}>`, inline: true },
-        { name: "👤 Assigned to", value: `<@${assigneeId}>`, inline: true },
+        { name: "👤 Assigned to", value: `<@${assignee.id}>`, inline: true },
         { name: "👮 Assigned by", value: `<@${this.user.id}>`, inline: true },
         { name: "📝 Reason", value: reason ?? "No reason provided", inline: false },
       ],
     });
+
+    // Send notification to ticket channel
+    const ticketChannel = this.guild.channels.cache.get(ticket.channelId);
+    if (ticketChannel?.isTextBased()) {
+      await ticketChannel.send({
+        embeds: [
+          this.client.genEmbed({
+            title: "👨‍💼 Ticket Assigned",
+            description: `This ticket has been assigned to ${assignee} by ${this.user}.`,
+            color: 0x3498db,
+          }),
+        ],
+      });
+    }
 
     return { embeds: [embed], ephemeral: true };
   }
@@ -155,12 +177,26 @@ export class TicketAssignCommand extends AdminCommand {
       ],
     });
 
+    // Send notification to ticket channel
+    const ticketChannel = this.guild.channels.cache.get(ticket.channelId);
+    if (ticketChannel?.isTextBased()) {
+      await ticketChannel.send({
+        embeds: [
+          this.client.genEmbed({
+            title: "🔄 Ticket Unassigned",
+            description: `This ticket has been unassigned by ${this.user}.`,
+            color: 0xf39c12,
+          }),
+        ],
+      });
+    }
+
     return { embeds: [embed], ephemeral: true };
   }
 
   private async handleReassign(): Promise<CommandResponse> {
     const ticketNumber = this.getIntegerOption("ticket", true);
-    const newAssigneeId = this.getStringOption("assignee", true);
+    const newAssignee = this.getUserOption("assignee", true);
     const reason = this.getStringOption("reason");
 
     const ticket = await prisma.ticket.findFirst({
@@ -179,12 +215,12 @@ export class TicketAssignCommand extends AdminCommand {
     }
 
     // Validate new assignee
-    const newAssignee = await this.guild.members.fetch(newAssigneeId).catch(() => null);
-    if (!newAssignee) {
+    const newAssigneeMember = await this.guild.members.fetch(newAssignee.id).catch(() => null);
+    if (!newAssigneeMember) {
       return this.createAdminError("Invalid Assignee", "New assignee is not a member of this server.");
     }
 
-    if (!newAssignee.permissions.has("ManageChannels")) {
+    if (!newAssigneeMember.permissions.has("ManageChannels")) {
       return this.createAdminError("Insufficient Permissions", "New assignee must have Manage Channels permission.");
     }
 
@@ -194,7 +230,7 @@ export class TicketAssignCommand extends AdminCommand {
     await prisma.ticket.update({
       where: { id: ticket.id },
       data: {
-        assignedTo: newAssigneeId,
+        assignedTo: newAssignee.id,
       },
     });
 
@@ -205,11 +241,25 @@ export class TicketAssignCommand extends AdminCommand {
       fields: [
         { name: "🎫 Ticket", value: `<#${ticket.channelId}>`, inline: true },
         { name: "👤 Previous Assignee", value: previousAssignee ? `<@${previousAssignee}>` : "None", inline: true },
-        { name: "👤 New Assignee", value: `<@${newAssigneeId}>`, inline: true },
+        { name: "👤 New Assignee", value: `<@${newAssignee.id}>`, inline: true },
         { name: "👮 Reassigned by", value: `<@${this.user.id}>`, inline: true },
         { name: "📝 Reason", value: reason ?? "No reason provided", inline: false },
       ],
     });
+
+    // Send notification to ticket channel
+    const ticketChannel = this.guild.channels.cache.get(ticket.channelId);
+    if (ticketChannel?.isTextBased()) {
+      await ticketChannel.send({
+        embeds: [
+          this.client.genEmbed({
+            title: "🔄 Ticket Reassigned",
+            description: `This ticket has been reassigned to ${newAssignee} by ${this.user}.`,
+            color: 0x3498db,
+          }),
+        ],
+      });
+    }
 
     return { embeds: [embed], ephemeral: true };
   }
@@ -289,15 +339,15 @@ export class TicketAssignCommand extends AdminCommand {
   }
 
   private async handleListAssigned(): Promise<CommandResponse> {
-    const assigneeId = this.getStringOption("assignee");
+    const assignee = this.getUserOption("assignee");
     const status = this.getStringOption("status");
 
     const whereClause: Prisma.TicketWhereInput = {
       guildId: this.guild.id,
     };
 
-    if (assigneeId) {
-      whereClause.assignedTo = assigneeId;
+    if (assignee) {
+      whereClause.assignedTo = assignee.id;
     } else {
       whereClause.assignedTo = { not: null };
     }
@@ -344,8 +394,8 @@ export const builder = new SlashCommandBuilder()
       .setName("assign")
       .setDescription("Assign a ticket to a staff member")
       .addIntegerOption((option) => option.setName("ticket").setDescription("Ticket number").setRequired(true))
-      .addStringOption((option) =>
-        option.setName("assignee").setDescription("User ID to assign the ticket to").setRequired(true)
+      .addUserOption((option) =>
+        option.setName("assignee").setDescription("User to assign the ticket to").setRequired(true)
       )
       .addStringOption((option) => option.setName("reason").setDescription("Reason for assignment"))
   )
@@ -361,7 +411,7 @@ export const builder = new SlashCommandBuilder()
       .setName("reassign")
       .setDescription("Reassign a ticket to a different staff member")
       .addIntegerOption((option) => option.setName("ticket").setDescription("Ticket number").setRequired(true))
-      .addStringOption((option) => option.setName("assignee").setDescription("New assignee user ID").setRequired(true))
+      .addUserOption((option) => option.setName("assignee").setDescription("New assignee").setRequired(true))
       .addStringOption((option) => option.setName("reason").setDescription("Reason for reassignment"))
   )
   .addSubcommand((subcommand) =>
@@ -374,7 +424,7 @@ export const builder = new SlashCommandBuilder()
     subcommand
       .setName("list-assigned")
       .setDescription("List assigned tickets")
-      .addStringOption((option) => option.setName("assignee").setDescription("Filter by assignee user ID"))
+      .addUserOption((option) => option.setName("assignee").setDescription("Filter by assignee"))
       .addStringOption((option) =>
         option
           .setName("status")

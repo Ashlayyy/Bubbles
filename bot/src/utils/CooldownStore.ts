@@ -1,4 +1,5 @@
-import Redis from "ioredis";
+import { RedisConnectionFactory } from "@shared/utils/RedisConnectionFactory";
+import type { Redis } from "ioredis";
 
 /**
  * CooldownStore provides per-user per-command cooldown tracking backed by Redis so that cooldowns
@@ -6,14 +7,8 @@ import Redis from "ioredis";
  * Extended to support guild-level rate limiting via requestToken API.
  */
 class CooldownStore {
-  private redis: Redis;
-
-  constructor() {
-    this.redis = new Redis({
-      host: process.env.REDIS_HOST ?? "localhost",
-      port: parseInt(process.env.REDIS_PORT ?? "6379"),
-      password: process.env.REDIS_PASSWORD,
-    });
+  private get redis(): Redis {
+    return RedisConnectionFactory.getSharedConnection();
   }
 
   private getKey(userId: string, commandName: string): string {

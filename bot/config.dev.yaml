@@ -1,0 +1,16 @@
+name: Bubbles-dev
+activities:
+  - name: with Discord users
+    type: playing
+  - name: for server activity
+    type: watching
+welcome:
+  messages:
+    - title: Welcome to the server!
+      description: We're glad you're here! Please read the rules and have fun.
+      color: "#00ff00"
+goodbye:
+  messages:
+    - title: Goodbye!
+      description: Thanks for being part of our community. You're always welcome back!
+      color: "#ff6600"

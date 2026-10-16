@@ -190,6 +190,27 @@ class BanUserCommand extends ModerationCommand {
     });
   }
 
+  private buildModerationEmbed(
+    duration: string | undefined,
+    caseNumber: number,
+    targetUser: User,
+    moderator: User,
+    reason?: string
+  ): EmbedBuilder {
+    const embed = new EmbedBuilder()
+      .setColor(0xe74c3c)
+      .setTitle(`✅ Ban${duration ? ` (${duration})` : " (Permanent)"} | Case #${caseNumber}`)
+      .addFields(
+        { name: "Target", value: `<@${targetUser.id}> | ${targetUser.tag}`, inline: true },
+        { name: "Moderator", value: `<@${moderator.id}> | ${moderator.tag}`, inline: true }
+      )
+      .setTimestamp();
+    if (reason) {
+      embed.addFields({ name: "Reason", value: reason, inline: false });
+    }
+    return embed;
+  }
+
   private async handleQuickBan(buttonInteraction: ButtonInteraction, targetUser: User): Promise<void> {
     await buttonInteraction.deferUpdate();
 
@@ -206,8 +227,7 @@ class BanUserCommand extends ModerationCommand {
       );
 
       await buttonInteraction.editReply({
-        content: `✅ **${targetUser.tag}** has been banned permanently.\n📋 **Case #${case_.caseNumber}** created.`,
-        embeds: [],
+        embeds: [this.buildModerationEmbed(undefined, case_.caseNumber, targetUser, this.user, reason)],
         components: [],
       });
     } catch (error) {
@@ -277,6 +297,7 @@ class BanUserCommand extends ModerationCommand {
 
     // Parse duration
     let duration: number | undefined;
+    let durationText: string | undefined = undefined;
     if (durationStr && durationStr.toLowerCase() !== "permanent") {
       const parsedDuration = parseDuration(durationStr);
       if (!parsedDuration) {
@@ -287,6 +308,7 @@ class BanUserCommand extends ModerationCommand {
         return;
       }
       duration = parsedDuration;
+      durationText = formatDuration(duration);
     }
 
     // Parse evidence
@@ -304,16 +326,8 @@ class BanUserCommand extends ModerationCommand {
         evidence.all
       );
 
-      const durationText = duration ? ` for ${formatDuration(duration)}` : " permanently";
       await modalInteraction.editReply({
-        content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber}** created.`,
-      });
-
-      // Update the original interaction
-      await this.interaction.editReply({
-        content: `✅ **${targetUser.tag}** has been banned${durationText}.\n📋 **Case #${case_.caseNumber}** created.`,
-        embeds: [],
-        components: [],
+        embeds: [this.buildModerationEmbed(durationText, case_.caseNumber, targetUser, modalInteraction.user, reason)],
       });
     } catch (error) {
       await modalInteraction.editReply({

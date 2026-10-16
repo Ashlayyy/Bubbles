@@ -243,7 +243,7 @@ export class BulkOperationHelpers {
 
       // Clear related caches
       const uniqueGuilds = [...new Set(expiredCases.map((c) => c.guildId))];
-      await Promise.all(uniqueGuilds.map((guildId) => cacheService.deletePattern(`moderation:*:${guildId}:*`)));
+      await Promise.all(uniqueGuilds.map((guildId) => cacheService.invalidatePattern(`moderation:.*:${guildId}:.*`)));
 
       logger.info(`Cleaned up ${expiredCases.length} expired moderation cases`);
       return expiredCases.length;

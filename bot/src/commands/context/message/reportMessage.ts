@@ -15,6 +15,7 @@ import {
   type ButtonInteraction,
   type Message,
   type ModalSubmitInteraction,
+  type User,
 } from "discord.js";
 
 import { getGuildConfig } from "../../../database/GuildConfig.js";
@@ -202,6 +203,30 @@ class ReportMessageCommand extends BaseCommand {
     });
   }
 
+  private buildReportEmbed(
+    targetMessage: Message,
+    reporter: User,
+    reason: string,
+    messageLink: string,
+    context?: string
+  ): EmbedBuilder {
+    const embed = new EmbedBuilder()
+      .setColor(0xff4757)
+      .setTitle("🚨 Message Report Submitted")
+      .addFields(
+        { name: "Message Author", value: `<@${targetMessage.author.id}> | ${targetMessage.author.tag}`, inline: true },
+        { name: "Reporter", value: `<@${reporter.id}> | ${reporter.tag}`, inline: true },
+        { name: "Message Content", value: targetMessage.content || "*No text content*", inline: false },
+        { name: "Message Link", value: `[Jump to Message](${messageLink})`, inline: false },
+        { name: "Reason", value: reason, inline: false }
+      )
+      .setTimestamp();
+    if (context) {
+      embed.addFields({ name: "Additional Context", value: context, inline: false });
+    }
+    return embed;
+  }
+
   private async handleQuickReport(
     buttonInteraction: ButtonInteraction,
     targetMessage: Message,
@@ -218,9 +243,7 @@ class ReportMessageCommand extends BaseCommand {
       await this.submitReport(targetMessage, reason, messageLink);
 
       await buttonInteraction.editReply({
-        content:
-          "✅ Your report has been submitted to the moderation team. Thank you for helping keep the server safe!",
-        embeds: [],
+        embeds: [this.buildReportEmbed(targetMessage, this.user, reason, messageLink)],
         components: [],
       });
     } catch (error) {
@@ -294,15 +317,7 @@ class ReportMessageCommand extends BaseCommand {
       await this.submitReport(targetMessage, fullReason, messageLink);
 
       await modalInteraction.editReply({
-        content:
-          "✅ Your detailed report has been submitted to the moderation team. Thank you for the detailed information!",
-      });
-
-      // Update the original interaction
-      await this.interaction.editReply({
-        content: "✅ Your report has been submitted successfully.",
-        embeds: [],
-        components: [],
+        embeds: [this.buildReportEmbed(targetMessage, modalInteraction.user, reason, messageLink, context)],
       });
     } catch (error) {
       await modalInteraction.editReply({
@@ -350,6 +365,7 @@ class ReportMessageCommand extends BaseCommand {
         await reportChannel.send({
           content: config.reportPingRoleId ? `<@&${config.reportPingRoleId}>` : undefined,
           embeds: [embed],
+          allowedMentions: config.reportPingRoleId ? { roles: [config.reportPingRoleId] } : undefined,
         });
       }
     }

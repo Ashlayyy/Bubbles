@@ -1,3 +1,4 @@
+import { RedisConnectionFactory } from "@shared/utils/RedisConnectionFactory";
 import logger from "../../logger.js";
 import type Client from "../Client.js";
 
@@ -29,6 +30,10 @@ export class ShutdownManager {
         logger.info("Stopping scheduled action service...");
         this.client.scheduledActionService.stop();
       }
+
+      // Close shared Redis connection
+      logger.info("Closing shared Redis connection...");
+      await RedisConnectionFactory.closeSharedConnection();
 
       // Destroy Discord client
       logger.info("Destroying Discord client...");

@@ -56,6 +56,12 @@ export class WebSocketService extends EventEmitter {
   }
 
   public connect(): void {
+    // Skip WebSocket connection if API integration is disabled
+    if (process.env.DISABLE_API === "true") {
+      logger.info("API integration disabled via DISABLE_API environment variable");
+      return;
+    }
+
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       logger.warn("WebSocket is already connected");
       return;
@@ -408,6 +414,7 @@ export class WebSocketService extends EventEmitter {
   }
 
   public sendDiscordEvent(eventType: string, eventData: Record<string, unknown>, guildId?: string): void {
+    if (process.env.DISABLE_API === "true") return;
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.authenticated) {
       logger.warn("WebSocket not connected or authenticated. Cannot send event.");
       return;
