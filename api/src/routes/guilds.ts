@@ -7,6 +7,7 @@ import {
 	getGuildMembers,
 	getGuildSettings as getServerSettings,
 	updateGuildSettings as updateServerSettings,
+	deleteGuild as leaveGuild,
 } from '../controllers/guildController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import {
@@ -14,7 +15,7 @@ import {
 	validateGuildAccess,
 	validatePagination,
 } from '../middleware/validation.js';
-import { generalRateLimit } from '../middleware/rateLimit.js';
+import { generalRateLimit } from '../middleware/rateLimiting.js';
 import { addRoute } from '../utils/secureRoute.js';
 
 const router = Router();
@@ -55,6 +56,14 @@ addRoute(
 	'/settings',
 	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	updateServerSettings
+);
+
+addRoute(
+	guildRouter,
+	'post',
+	'/leave',
+	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
+	leaveGuild
 );
 
 export default router;

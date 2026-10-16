@@ -40,7 +40,9 @@ export interface TicketSettings {
   transcriptChannelName: string
   maxTicketsPerUser: number
   closeInactiveAfter: number
-  pingRoleOnCreate: string[]
+    pingRoleOnCreate: string[]
+    requireCloseReason?: boolean
+    autoAssignStaff?: boolean
 }
 
 export const useTicketsStore = defineStore('tickets', () => {

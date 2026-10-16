@@ -6,13 +6,27 @@ import { getPrismaClient } from '../services/databaseService.js';
 
 const logger = createLogger('leveling-controller');
 
-// Schema might not exist yet, so we'll create a simple User XP tracking model conceptually
-interface UserLevel {
-	userId: string;
-	guildId: string;
-	xp: number;
-	level: number;
-	messages: number;
+const DEFAULT_LEVELING_SETTINGS = {
+	enabled: true,
+	xpPerMessage: 15,
+	xpCooldown: 60,
+	levelUpMessage: 'Congratulations {user}! You reached level {level}!',
+	levelUpChannel: null,
+	ignoredChannels: [] as string[],
+	ignoredRoles: [] as string[],
+	multiplierRoles: [] as unknown[],
+	stackMultipliers: false,
+	noXpRoles: [] as string[],
+	levelRoles: [] as unknown[],
+	removeOldLevelRoles: true,
+};
+
+function xpForLevel(level: number): number {
+	return level * level * 100;
+}
+
+function levelFromXp(xp: number): number {
+	return Math.floor(Math.sqrt(Math.max(0, xp) / 100));
 }
 
 // Get leveling settings
@@ -21,8 +35,6 @@ export const getLevelingSettings = async (req: AuthRequest, res: Response) => {
 		const { guildId } = req.params;
 		const prisma = getPrismaClient();
 
-		// For now, we'll use guild config or create a simple leveling settings structure
-		// In a real implementation, you'd want a dedicated LevelingSettings table
 		let guildConfig = await prisma.guildConfig.findUnique({
 			where: { guildId },
 		});
@@ -33,23 +45,13 @@ export const getLevelingSettings = async (req: AuthRequest, res: Response) => {
 			});
 		}
 
-		// Default leveling settings (in a real app, store these in a dedicated table)
-		const settings = {
-			enabled: true,
-			xpPerMessage: 15,
-			xpCooldown: 60, // seconds
-			levelUpMessage: 'Congratulations {user}! You reached level {level}! 🎉',
-			levelUpChannel: null, // Could be stored in guild config
-			ignoredChannels: [],
-			ignoredRoles: [],
-			multiplierRoles: [],
-			stackMultipliers: false,
-			noXpRoles: [],
-			levelRoles: [],
-			removeOldLevelRoles: true,
-		};
+		const stored =
+			guildConfig.levelingSettings &&
+			typeof guildConfig.levelingSettings === 'object'
+				? (guildConfig.levelingSettings as Record<string, unknown>)
+				: {};
 
-		res.success(settings);
+		res.success({ ...DEFAULT_LEVELING_SETTINGS, ...stored });
 	} catch (error) {
 		logger.error('Error fetching leveling settings:', error);
 		res.failure('Failed to fetch leveling settings', 500);
@@ -64,12 +66,18 @@ export const updateLevelingSettings = async (
 	try {
 		const { guildId } = req.params;
 		const settings = req.body;
+		const prisma = getPrismaClient();
 
-		// In a real implementation, you'd update the leveling settings table
-		// For now, we'll just log the update
-		logger.info(`Update leveling settings for guild ${guildId}`, settings);
+		const guildConfig = await prisma.guildConfig.upsert({
+			where: { guildId },
+			create: { guildId, levelingSettings: settings },
+			update: { levelingSettings: settings },
+		});
 
-		res.success({ message: 'Leveling settings updated', data: settings });
+		res.success({
+			message: 'Leveling settings updated',
+			data: guildConfig.levelingSettings,
+		});
 	} catch (error) {
 		logger.error('Error updating leveling settings:', error);
 		res.failure('Failed to update leveling settings', 500);
@@ -80,76 +88,49 @@ export const updateLevelingSettings = async (
 export const getLeaderboard = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId } = req.params;
-		const { page = 1, limit = 50, period = 'all' } = req.query;
+		const { page = 1, limit = 50 } = req.query;
 		const prisma = getPrismaClient();
 
 		const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 		const take = parseInt(limit as string);
 
-		// Since we don't have a dedicated user levels table yet,
-		// we'll simulate this using moderation logs for message activity
-		// In a real implementation, you'd have a UserLevels table
+		const [rows, totalUsers] = await Promise.all([
+			prisma.userXp.findMany({
+				where: { guildId },
+				orderBy: { xp: 'desc' },
+				skip,
+				take,
+			}),
+			prisma.userXp.count({ where: { guildId } }),
+		]);
 
-		// Get message activity from logs as a proxy for XP
-		const messageActivity = await prisma.moderationLog.groupBy({
-			by: ['userId'],
-			where: {
-				guildId,
-				logType: 'messageCreate', // Assuming this log type exists
-				...(period !== 'all' && {
-					timestamp: {
-						gte: new Date(Date.now() - parsePeriod(period as string)),
-					},
-				}),
-			},
-			_count: { userId: true },
-			orderBy: { _count: { userId: 'desc' } },
-			skip,
-			take,
-		});
-
-		// Simulate user level data
-		const leaderboard = messageActivity.map((activity: any, index: number) => {
-			const messageCount = activity._count.userId;
-			const xp = messageCount * 15; // 15 XP per message
-			const level = Math.floor(Math.sqrt(xp / 100)); // Simple level calculation
-			const xpForLevel = level * level * 100;
-			const xpToNext = (level + 1) * (level + 1) * 100 - xp;
-
-			return {
-				userId: activity.userId,
-				username: `User${activity.userId.slice(-4)}`, // Placeholder
-				avatar: null,
-				level,
-				xp,
-				xpToNext,
-				xpForLevel,
-				rank: skip + index + 1,
-				messagesCount: messageCount,
-				joinedAt: Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000, // Placeholder
-			};
-		});
-
-		// Get total count for pagination
-		const totalUsers = await prisma.moderationLog.groupBy({
-			by: ['userId'],
-			where: {
-				guildId,
-				logType: 'messageCreate',
-			},
-			_count: { userId: true },
-		});
+		const leaderboard = rows.map(
+			(
+				row: { userId: string; level: number; xp: number; messages: number; updatedAt: Date },
+				index: number
+			) => ({
+			userId: row.userId,
+			username: `User${row.userId.slice(-4)}`,
+			avatar: null,
+			level: row.level,
+			xp: row.xp,
+			xpToNext: xpForLevel(row.level + 1) - row.xp,
+			xpForLevel: xpForLevel(row.level),
+			rank: skip + index + 1,
+			messagesCount: row.messages,
+			joinedAt: row.updatedAt.getTime(),
+		}));
 
 		res.success({
 			users: leaderboard,
 			pagination: {
 				page: parseInt(page as string),
 				limit: parseInt(limit as string),
-				total: totalUsers.length,
-				pages: Math.ceil(totalUsers.length / take),
+				total: totalUsers,
+				pages: Math.ceil(totalUsers / take),
 			},
 			stats: {
-				totalUsers: totalUsers.length,
+				totalUsers,
 				averageLevel:
 					leaderboard.length > 0
 						? leaderboard.reduce(
@@ -179,85 +160,41 @@ export const getUserLevel = async (req: AuthRequest, res: Response) => {
 		const { guildId, userId } = req.params;
 		const prisma = getPrismaClient();
 
-		// Get user's message count from logs
-		const messageCount = await prisma.moderationLog.count({
-			where: {
-				guildId,
-				userId,
-				logType: 'messageCreate',
-			},
+		const record = await prisma.userXp.findUnique({
+			where: { guildId_userId: { guildId, userId } },
 		});
+		const xp = record?.xp ?? 0;
+		const level = record?.level ?? levelFromXp(xp);
+		const messagesCount = record?.messages ?? 0;
+		const xpForCurrent = xpForLevel(level);
+		const xpToNext = xpForLevel(level + 1) - xp;
 
-		// Calculate level and XP
-		const xp = messageCount * 15;
-		const level = Math.floor(Math.sqrt(xp / 100));
-		const xpForLevel = level * level * 100;
-		const xpToNext = (level + 1) * (level + 1) * 100 - xp;
-
-		// Get user's rank
-		const allUsers = await prisma.moderationLog.groupBy({
-			by: ['userId'],
-			where: {
-				guildId,
-				logType: 'messageCreate',
-			},
-			_count: { userId: true },
-			orderBy: { _count: { userId: 'desc' } },
+		const higher = await prisma.userXp.count({
+			where: { guildId, xp: { gt: xp } },
 		});
+		const rank = record ? higher + 1 : 0;
+		const totalUsers = await prisma.userXp.count({ where: { guildId } });
 
-		const rank = allUsers.findIndex((user: any) => user.userId === userId) + 1;
-
-		// Get recent XP history (last 7 days)
-		const recentActivity = await prisma.moderationLog.groupBy({
-			by: ['timestamp'],
-			where: {
-				guildId,
-				userId,
-				logType: 'messageCreate',
-				timestamp: {
-					gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-				},
-			},
-			_count: { timestamp: true },
-		});
-
-		// Process into daily XP history
-		const xpHistory = [];
-		for (let i = 6; i >= 0; i--) {
-			const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-			const dateKey = date.toISOString().split('T')[0];
-			const dayActivity = recentActivity.find(
-				(a: any) => a.timestamp.toISOString().split('T')[0] === dateKey
-			);
-			xpHistory.push({
-				date: dateKey,
-				xp: (dayActivity?._count.timestamp || 0) * 15,
-			});
-		}
-
-		// Fetch full level history from DB
 		const levelHistoryRecords = await prisma.levelHistory.findMany({
 			where: { guildId, userId },
 			orderBy: { reachedAt: 'asc' },
 		});
 
-		const userLevel = {
+		res.success({
 			userId,
-			username: `User${userId.slice(-4)}`, // Placeholder until cached user info is available
+			username: `User${userId.slice(-4)}`,
 			avatar: null,
 			level,
 			xp,
 			xpToNext,
-			xpForLevel,
+			xpForLevel: xpForCurrent,
 			rank,
-			messagesCount: messageCount,
-			joinedAt: Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000, // Placeholder
-			totalUsers: allUsers.length,
-			xpHistory,
+			messagesCount,
+			joinedAt: record?.updatedAt.getTime() ?? Date.now(),
+			totalUsers,
+			xpHistory: [],
 			levelHistory: levelHistoryRecords,
-		};
-
-		res.success(userLevel);
+		});
 	} catch (error) {
 		logger.error('Error fetching user level:', error);
 		res.failure('Failed to fetch user level', 500);
@@ -269,15 +206,27 @@ export const setUserLevel = async (req: AuthRequest, res: Response) => {
 	try {
 		const { guildId, userId } = req.params;
 		const { level, xp } = req.body;
+		const prisma = getPrismaClient();
+		const nextXp = typeof xp === 'number' ? xp : xpForLevel(Number(level) || 0);
+		const nextLevel = typeof level === 'number' ? level : levelFromXp(nextXp);
 
-		// In a real implementation, you'd update the user's level in the database
-		logger.info(
-			`Set user ${userId} level to ${level} (${xp} XP) in guild ${guildId}`
-		);
+		const record = await prisma.userXp.upsert({
+			where: { guildId_userId: { guildId, userId } },
+			create: {
+				guildId,
+				userId,
+				xp: nextXp,
+				level: nextLevel,
+			},
+			update: {
+				xp: nextXp,
+				level: nextLevel,
+			},
+		});
 
 		res.success({
 			message: 'User level updated successfully',
-			data: { userId, level, xp },
+			data: { userId, level: record.level, xp: record.xp },
 		});
 	} catch (error) {
 		logger.error('Error setting user level:', error);
@@ -353,33 +302,17 @@ export const getLevelingStatistics = async (
 		const periodMs = parsePeriod(period as string);
 		const startDate = new Date(Date.now() - periodMs);
 
-		// Get statistics from message activity
-		const [totalUsers, recentActivity, levelDistribution] = await Promise.all([
-			prisma.moderationLog.groupBy({
-				by: ['userId'],
-				where: { guildId, logType: 'messageCreate' },
-				_count: { userId: true },
-			}),
-			prisma.moderationLog.count({
-				where: {
-					guildId,
-					logType: 'messageCreate',
-					timestamp: { gte: startDate },
-				},
-			}),
-			prisma.moderationLog.groupBy({
-				by: ['userId'],
-				where: { guildId, logType: 'messageCreate' },
-				_count: { userId: true },
-			}),
-		]);
-
-		// Calculate level statistics
-		const userLevels = levelDistribution.map((user: any) => {
-			const messageCount = user._count.userId;
-			const xp = messageCount * 15;
-			return Math.floor(Math.sqrt(xp / 100));
+		const rows = await prisma.userXp.findMany({
+			where: { guildId },
+			select: { userId: true, xp: true, level: true, messages: true, updatedAt: true },
 		});
+		const recentCutoff = startDate.getTime();
+		const recentMessages = rows.reduce(
+			(sum: number, row: { updatedAt: Date; messages: number }) =>
+				row.updatedAt.getTime() >= recentCutoff ? sum + row.messages : sum,
+			0
+		);
+		const userLevels = rows.map((row: { level: number }) => row.level);
 
 		const levelCounts = userLevels.reduce((acc: any, level: number) => {
 			acc[level] = (acc[level] || 0) + 1;
@@ -389,8 +322,8 @@ export const getLevelingStatistics = async (
 		const statistics = {
 			period: period as string,
 			overview: {
-				totalActiveUsers: totalUsers.length,
-				recentMessages: recentActivity,
+				totalActiveUsers: rows.length,
+				recentMessages,
 				averageLevel:
 					userLevels.length > 0
 						? userLevels.reduce((a: number, b: number) => a + b, 0) /

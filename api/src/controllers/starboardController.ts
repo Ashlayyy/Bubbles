@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import { createLogger, type ApiResponse } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
+import { discordApi } from '../services/discordApiService.js';
 import { wsManager } from '../websocket/manager.js';
 
 const logger = createLogger('starboard-controller');
@@ -109,20 +110,34 @@ export const updateStarboardSettings = async (
 			where: { guildId },
 		});
 
+		const mapped = {
+			channelId: updates.channelId,
+			emoji: updates.emoji,
+			threshold: updates.threshold ?? updates.minStars,
+			selfStar: updates.selfStar ?? updates.allowSelfStar,
+			allowNsfw: updates.allowNsfw,
+			ignoredChannels: updates.ignoredChannels,
+			ignoredRoles: updates.ignoredRoles,
+			ignoredUsers: updates.ignoredUsers,
+			color: updates.color,
+			isEnabled: updates.isEnabled ?? updates.enabled,
+		};
+		const data = Object.fromEntries(
+			Object.entries(mapped).filter(([, value]) => value !== undefined)
+		);
+
 		if (!settings) {
-			// Create new settings with updates
 			settings = await prisma.starboardSettings.create({
 				data: {
 					guildId,
-					...updates,
+					...data,
 				},
 			});
 		} else {
-			// Update existing settings
 			settings = await prisma.starboardSettings.update({
 				where: { id: settings.id },
 				data: {
-					...updates,
+					...data,
 					updatedAt: new Date(),
 				},
 			});
@@ -317,7 +332,7 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 						starboardChannelId: settings.channelId,
 						authorId: original.author.id,
 						content: original.content ?? '',
-						attachments: original.attachments.map(a => a.url),
+						attachments: original.attachments.map((a: { url: string }) => a.url),
 						embeds: original.embeds,
 						starCount: 1,
 					},

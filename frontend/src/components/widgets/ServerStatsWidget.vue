@@ -24,20 +24,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useGuildsStore } from '@/stores/guilds';
 
-const stats = ref({
-  memberCount: 12346,
-  onlineMembers: 3421,
-  channelCount: 42,
-  roleCount: 28
-})
+const guildsStore = useGuildsStore();
+const { currentGuildStats } = storeToRefs(guildsStore);
+
+const stats = computed(() => ({
+  memberCount: currentGuildStats.value?.memberCount ?? 0,
+  onlineMembers: currentGuildStats.value?.onlineMembers ?? 0,
+  channelCount: currentGuildStats.value?.channelCount ?? 0,
+  roleCount: currentGuildStats.value?.roleCount ?? 0,
+}));
 
 const formatNumber = (num: number) => {
-  return new Intl.NumberFormat().format(num)
-}
-
-onMounted(() => {
-  // Load real stats from API
-})
+  return new Intl.NumberFormat().format(num);
+};
 </script>

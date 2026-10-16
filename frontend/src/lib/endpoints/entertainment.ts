@@ -2,10 +2,10 @@ import { apiClient } from '@/lib/apiClient';
 
 export const entertainmentEndpoints = {
 	getGameConfigs: (guildId: string) =>
-		apiClient().get(`/guilds/${guildId}/entertainment/game-configs`),
+		apiClient().get(`/guilds/${guildId}/entertainment/games`),
 
 	updateGameSettings: (guildId: string, payload: Record<string, unknown>) =>
-		apiClient().put(`/guilds/${guildId}/entertainment/game-configs`, payload),
+		apiClient().put(`/guilds/${guildId}/entertainment/games`, payload),
 
 	getEconomySettings: (guildId: string) =>
 		apiClient().get(`/guilds/${guildId}/entertainment/economy`),

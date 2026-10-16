@@ -62,19 +62,38 @@ export interface Config {
 }
 
 const getConfig = (): Config => {
-	// Only require essential variables for basic functionality
-	const requiredEnvVars = ['JWT_SECRET'];
+	const isProduction = (process.env.NODE_ENV || 'development') === 'production';
+	const requiredEnvVars = isProduction
+		? ['JWT_SECRET', 'DISCORD_TOKEN', 'DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DB_URL', 'SESSION_SECRET']
+		: ['JWT_SECRET'];
 
 	for (const envVar of requiredEnvVars) {
 		if (!process.env[envVar]) {
+			if (isProduction) {
+				throw new Error(`Missing required environment variable: ${envVar}`);
+			}
 			console.warn(
 				`Missing required environment variable: ${envVar}. Using default value.`
 			);
 		}
 	}
 
+	if (isProduction) {
+		const jwt = process.env.JWT_SECRET || '';
+		if (jwt.length < 32 || jwt.includes('default-jwt-secret')) {
+			throw new Error('JWT_SECRET must be a strong unique value in production');
+		}
+		const sessionSecret = process.env.SESSION_SECRET || '';
+		if (
+			sessionSecret.length < 32 ||
+			sessionSecret.includes('default-session-secret')
+		) {
+			throw new Error('SESSION_SECRET must be a strong unique value in production');
+		}
+	}
+
 	return {
-		port: parseInt(process.env.API_PORT || process.env.PORT || '3001'),
+		port: parseInt(process.env.PORT || '3001'),
 		nodeEnv: process.env.NODE_ENV || 'development',
 		dbUrl: process.env.DB_URL || 'mongodb://localhost:27017/bubbles',
 		redis: {
@@ -108,9 +127,10 @@ const getConfig = (): Config => {
 			max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
 		},
 		session: {
-			secret:
-				process.env.SESSION_SECRET ||
-				'a-secure-default-session-secret-for-development',
+			secret: isProduction
+				? process.env.SESSION_SECRET || ''
+				: process.env.SESSION_SECRET ||
+				  'a-secure-default-session-secret-for-development',
 		},
 		websocket: {
 			logAll: process.env.WS_LOG_ALL === 'true',

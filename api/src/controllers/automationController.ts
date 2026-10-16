@@ -3,6 +3,7 @@ import { createLogger } from '../types/shared.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getPrismaClient } from '../services/databaseService.js';
 import { wsManager } from '../websocket/manager.js';
+import { hybridCommunicationService } from '../services/hybridCommunicationService.js';
 
 const logger = createLogger('automation-controller');
 
@@ -547,7 +548,14 @@ export const getAvailableTriggers = async (req: AuthRequest, res: Response) => {
 			distinct: ['trigger'],
 		});
 
-		res.success(triggers.map((t: { trigger: string }) => t.trigger));
+		res.success([
+			'MEMBER_JOIN',
+			'MEMBER_LEAVE',
+			'MESSAGE_CREATE',
+			'REACTION_ADD',
+			'SCHEDULED',
+			...triggers.map((t: { trigger: unknown }) => t.trigger),
+		]);
 	} catch (error) {
 		logger.error('Error fetching triggers:', error);
 		res.failure('Failed to fetch triggers', 500);
@@ -570,9 +578,71 @@ export const getAvailableActions = async (req: AuthRequest, res: Response) => {
 			rule.actions.forEach((a: string) => actionSet.add(a));
 		});
 
-		res.success(Array.from(actionSet));
+		res.success(actionSet.size > 0 ? Array.from(actionSet) : [
+			'SEND_MESSAGE',
+			'ASSIGN_ROLE',
+			'TIMEOUT_USER',
+			'DELETE_MESSAGE',
+		]);
 	} catch (error) {
 		logger.error('Error fetching actions:', error);
 		res.failure('Failed to fetch actions', 500);
+	}
+};
+
+export const getDiscordAutoModRules = async (req: AuthRequest, res: Response) => {
+	try {
+		const { guildId } = req.params;
+		const prisma = getPrismaClient();
+		const [live, logsToday] = await Promise.all([
+			hybridCommunicationService.execute(
+				'GET_AUTOMOD_RULES',
+				{ guildId },
+				{ guildId, preferWebSocket: true, waitForResult: true, timeout: 10_000 }
+			),
+			prisma.moderationLog.count({
+				where: {
+					guildId,
+					logType: 'AUTOMOD_ACTION_EXECUTE',
+					timestamp: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+				},
+			}),
+		]);
+
+		if (!live.success) {
+			return res.failure(live.error || 'Could not load Discord AutoMod rules', 502);
+		}
+
+		const payload = (live.data && typeof live.data === 'object' ? live.data : {}) as {
+			rules?: Array<Record<string, unknown>>;
+		};
+
+		res.success({
+			rules: payload.rules ?? [],
+			analytics: {
+				actionsToday: logsToday,
+			},
+		});
+	} catch (error) {
+		logger.error('Error fetching Discord AutoMod rules:', error);
+		res.failure('Failed to fetch Discord AutoMod rules', 500);
+	}
+};
+
+export const toggleDiscordAutoModRule = async (req: AuthRequest, res: Response) => {
+	try {
+		const { guildId, ruleId } = req.params;
+		const result = await hybridCommunicationService.execute(
+			'TOGGLE_AUTOMOD_RULE',
+			{ guildId, ruleId, enabled: req.body.enabled },
+			{ guildId, preferWebSocket: true, waitForResult: true, timeout: 10_000 }
+		);
+		if (!result.success) {
+			return res.failure(result.error || 'Failed to update AutoMod rule', 502);
+		}
+		res.success(result.data);
+	} catch (error) {
+		logger.error('Error toggling Discord AutoMod rule:', error);
+		res.failure('Failed to update Discord AutoMod rule', 500);
 	}
 };

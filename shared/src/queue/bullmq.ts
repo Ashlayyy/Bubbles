@@ -1,4 +1,4 @@
-import { Queue, QueueScheduler, QueueEvents } from 'bullmq';
+import { Queue, QueueEvents } from 'bullmq';
 import type { RedisOptions } from 'ioredis';
 import IORedis from 'ioredis';
 import * as promClient from 'prom-client';
@@ -9,20 +9,30 @@ export interface BullMQConfig {
 }
 
 /**
- * Create a Redis connection for BullMQ that auto-reconnects with sensible defaults.
+ * Redis options for BullMQ.
+ * Do not set commandTimeout: workers and QueueEvents use blocking commands
+ * that wait until a job/event arrives.
  */
-export function createBullMQConnection(options?: Partial<RedisOptions>) {
-	const connection = new IORedis({
+export function getBullMQRedisOptions(
+	options?: Partial<RedisOptions>
+): RedisOptions {
+	return {
 		host: process.env.REDIS_HOST || 'localhost',
 		port: parseInt(process.env.REDIS_PORT || '6379', 10),
 		password: process.env.REDIS_PASSWORD || undefined,
 		db: 0,
-		maxRetriesPerRequest: 3,
-		enableReadyCheck: true,
-		connectTimeout: 5_000,
-		commandTimeout: 5_000,
+		maxRetriesPerRequest: null,
+		enableReadyCheck: false,
+		connectTimeout: 10_000,
 		...(options || {}),
-	});
+	};
+}
+
+/**
+ * Create a Redis connection for BullMQ that auto-reconnects with sensible defaults.
+ */
+export function createBullMQConnection(options?: Partial<RedisOptions>) {
+	const connection = new IORedis(getBullMQRedisOptions(options));
 
 	connection.on('error', (err: Error) => {
 		console.warn(`[BullMQ] Redis error: ${err.message}`);
@@ -43,7 +53,7 @@ export class BullMQRegistry {
 	private queues = new Map<string, any>();
 	private schedulers = new Map<string, any>();
 	private events = new Map<string, any>();
-	private connection = createBullMQConnection();
+	private connectionOptions = getBullMQRedisOptions();
 
 	// Prometheus metrics
 	private jobTotal = new promClient.Counter({
@@ -78,7 +88,7 @@ export class BullMQRegistry {
 		if (this.queues.has(name)) return this.queues.get(name)!;
 
 		const queue = new Queue(name, {
-			connection: this.connection,
+			connection: this.connectionOptions,
 			defaultJobOptions: {
 				removeOnComplete: 100,
 				removeOnFail: 50,
@@ -91,9 +101,15 @@ export class BullMQRegistry {
 			},
 		});
 
-		// Scheduler for delayed / repeatable jobs
-		const scheduler = new QueueScheduler(name, { connection: this.connection });
-		const queueEvents = new QueueEvents(name, { connection: this.connection });
+		const queueEvents = new QueueEvents(name, {
+			connection: this.connectionOptions,
+		});
+		queue.on('error', (err: Error) => {
+			console.warn(`[BullMQ] Queue ${name} error: ${err.message}`);
+		});
+		queueEvents.on('error', (err: Error) => {
+			console.warn(`[BullMQ] QueueEvents ${name} error: ${err.message}`);
+		});
 
 		// Metrics instrumentation
 		queueEvents.on('completed', (evt: any) => {
@@ -109,7 +125,6 @@ export class BullMQRegistry {
 		});
 
 		this.queues.set(name, queue);
-		this.schedulers.set(name, scheduler);
 		this.events.set(name, queueEvents);
 
 		return queue;
@@ -124,8 +139,8 @@ export class BullMQRegistry {
 	async shutdown(): Promise<void> {
 		await Promise.all([
 			...Array.from(this.schedulers.values()).map((s) => s.close()),
+			...Array.from(this.events.values()).map((e) => e.close()),
 			...Array.from(this.queues.values()).map((q) => q.close()),
-			this.connection.quit(),
 		]);
 	}
 }

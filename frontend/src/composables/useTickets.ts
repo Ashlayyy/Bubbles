@@ -33,10 +33,14 @@ export function useTickets() {
 				ticketsEndpoints.getTickets(guildStore.currentGuild.id),
 				ticketsEndpoints.getSettings(guildStore.currentGuild.id),
 			]);
-			allTickets.value = ticketsRes.data;
-			settings.value = settingsRes.data;
-			categories.value = settingsRes.data.categories || [];
-			panels.value = settingsRes.data.panels || [];
+			const ticketsPayload = ticketsRes.data?.data ?? ticketsRes.data;
+			allTickets.value = Array.isArray(ticketsPayload)
+				? ticketsPayload
+				: ticketsPayload?.tickets ?? [];
+			const settingsPayload = settingsRes.data?.data ?? settingsRes.data;
+			settings.value = settingsPayload;
+			categories.value = settingsPayload?.categories || [];
+			panels.value = settingsPayload?.panels || [];
 		} catch (error) {
 			console.error('Failed to fetch ticket data:', error);
 			toastStore.addToast('Failed to load ticket data.', 'error');
@@ -47,10 +51,13 @@ export function useTickets() {
 
 	// Computed properties for ticket lists
 	const openTickets = computed(() =>
-		allTickets.value.filter((t) => t.status === 'open')
+		allTickets.value.filter((t) => {
+			const status = String(t.status || '').toUpperCase();
+			return status === 'OPEN' || status === 'PENDING' || status === 'IN_PROGRESS';
+		})
 	);
 	const closedTickets = computed(() =>
-		allTickets.value.filter((t) => t.status === 'closed')
+		allTickets.value.filter((t) => String(t.status || '').toUpperCase() === 'CLOSED')
 	);
 
 	// Filtering

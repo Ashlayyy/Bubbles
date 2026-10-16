@@ -53,7 +53,7 @@ export const useWelcomeStore = defineStore('welcome', () => {
 	};
 
 	const saveSettings = async () => {
-		const guildId = guildsStore.selectedGuild?.id;
+		const guildId = guildsStore.currentGuild?.id;
 		if (!guildId) throw new Error('No guild selected');
 
 		const payload = {
@@ -65,7 +65,7 @@ export const useWelcomeStore = defineStore('welcome', () => {
 	};
 
 	watch(
-		() => guildsStore.selectedGuild,
+		() => guildsStore.currentGuild,
 		(newGuild) => {
 			if (newGuild) {
 				fetchSettings(newGuild.id);

@@ -46,11 +46,9 @@ export const createRedisConnection = (config?: QueueConfig['redis']): Redis => {
 		password: redisConfig.password,
 		db: redisConfig.db,
 		lazyConnect: true,
-		maxRetriesPerRequest: 3,
-		enableReadyCheck: true,
-		// Connection timeout settings
-		connectTimeout: 5000,
-		commandTimeout: 5000,
+		maxRetriesPerRequest: null,
+		enableReadyCheck: false,
+		connectTimeout: 10000,
 	});
 
 	let reconnectAttempts = 0;
@@ -99,17 +97,19 @@ export const createRedisConnection = (config?: QueueConfig['redis']): Redis => {
 	return redis;
 };
 
-export const createQueue = (name: QueueName, redisConnection?: Redis): any => {
+export const createQueue = (name: QueueName, _redisConnection?: Redis): any => {
 	const config = getQueueConfig();
-	const redis = redisConnection || createRedisConnection();
+	const connection = {
+		port: config.redis.port,
+		host: config.redis.host,
+		password: config.redis.password,
+		db: config.redis.db,
+		maxRetriesPerRequest: null,
+		enableReadyCheck: false,
+	};
 
 	const bullQueue = new BullQueue(name, {
-		connection: {
-			port: config.redis.port,
-			host: config.redis.host,
-			password: config.redis.password,
-			db: config.redis.db,
-		},
+		connection,
 		defaultJobOptions: config.defaultJobOptions,
 	});
 
@@ -120,7 +120,7 @@ export const createQueue = (name: QueueName, redisConnection?: Redis): any => {
 	) => {
 		const handler = typeof processor === 'function' ? processor : callback;
 		const worker = new BullWorker(name, handler, {
-			connection: bullQueue.client,
+			connection,
 		});
 		return worker;
 	};

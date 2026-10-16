@@ -310,12 +310,13 @@ const articles = ref<Article[]>([
 - \`!8ball [question]\` - Ask the magic 8-ball a question
 - \`!quote\` - Shows a random quote
 
-## Music Commands
+## Bot Commands
 
-- \`!play [song]\` - Plays a song
-- \`!skip\` - Skips the current song
-- \`!queue\` - Shows the current queue
-- \`!stop\` - Stops playing and clears the queue`,
+- \`/rank\` - Show your XP and server rank
+- \`/giveaway\` - Create and manage giveaways
+- \`/poll\` - Create a poll
+- \`/ticket\` - Open a support ticket
+- \`/ban\`, \`/kick\`, \`/timeout\`, \`/warn\` - Moderation`,
     tags: ['commands', 'bot', 'help'],
     author: 'BotMaster',
     createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),

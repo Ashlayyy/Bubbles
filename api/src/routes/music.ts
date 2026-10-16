@@ -13,6 +13,10 @@ import {
 	setRepeatMode,
 	getMusicSettings,
 	updateMusicSettings,
+	getPlaylists,
+	createPlaylist,
+	addToPlaylist,
+	getMusicStatistics,
 } from '../controllers/musicController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import {
@@ -118,6 +122,16 @@ addRoute(
 
 addRoute(
 	router,
+	'post',
+	'/volume',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	requireMusicPermissions,
+	setVolume
+);
+
+addRoute(
+	router,
 	'put',
 	'/repeat',
 	{ permissionsOverride: true },
@@ -143,6 +157,44 @@ addRoute(
 	configRateLimit,
 	requireMusicPermissions,
 	updateMusicSettings
+);
+
+addRoute(
+	router,
+	'get',
+	'/playlists',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	getPlaylists
+);
+
+addRoute(
+	router,
+	'post',
+	'/playlists',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	requireMusicPermissions,
+	createPlaylist
+);
+
+addRoute(
+	router,
+	'post',
+	'/playlists/:playlistId/tracks',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	requireMusicPermissions,
+	addToPlaylist
+);
+
+addRoute(
+	router,
+	'get',
+	'/statistics',
+	{ permissionsOverride: true },
+	generalRateLimit,
+	getMusicStatistics
 );
 
 export default router;

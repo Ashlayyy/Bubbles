@@ -126,9 +126,12 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useToastStore } from '@/stores/toast'
+import { voiceEndpoints } from '@/lib/endpoints/voice'
 
 const toastStore = useToastStore()
+const route = useRoute()
 
 // Chart reference
 const activityChart = ref<HTMLCanvasElement>()
@@ -137,95 +140,16 @@ const activityChart = ref<HTMLCanvasElement>()
 const timeRange = ref('7d')
 
 // Voice stats
-const totalVoiceTime = ref(1000 * 60 * 60 * 120) // 120 hours in milliseconds
-const voiceTimeChange = ref(15)
-const activeVoiceUsers = ref(45)
-const activeUsersChange = ref(8)
-const peakConcurrentUsers = ref(12)
-const mostActiveHour = ref('8:00 PM')
-const mostActiveHourUsers = ref(10)
+const totalVoiceTime = ref(0)
+const voiceTimeChange = ref(0)
+const activeVoiceUsers = ref(0)
+const activeUsersChange = ref(0)
+const peakConcurrentUsers = ref(0)
+const mostActiveHour = ref('n/a')
+const mostActiveHourUsers = ref(0)
 
-// Voice channels
-const voiceChannels = ref([
-  {
-    id: '1',
-    name: 'General Voice',
-    currentUsers: 3,
-    maxUsers: 99,
-    usagePercentage: 65,
-    totalTime: 1000 * 60 * 60 * 50, // 50 hours
-    peakUsers: 8,
-    avgSessionTime: 1000 * 60 * 45, // 45 minutes
-    uniqueUsers: 25
-  },
-  {
-    id: '2',
-    name: 'Gaming',
-    currentUsers: 2,
-    maxUsers: 99,
-    usagePercentage: 45,
-    totalTime: 1000 * 60 * 60 * 35, // 35 hours
-    peakUsers: 6,
-    avgSessionTime: 1000 * 60 * 60, // 60 minutes
-    uniqueUsers: 18
-  },
-  {
-    id: '3',
-    name: 'Music',
-    currentUsers: 0,
-    maxUsers: 99,
-    usagePercentage: 25,
-    totalTime: 1000 * 60 * 60 * 20, // 20 hours
-    peakUsers: 4,
-    avgSessionTime: 1000 * 60 * 30, // 30 minutes
-    uniqueUsers: 12
-  },
-  {
-    id: '4',
-    name: 'AFK',
-    currentUsers: 1,
-    maxUsers: 99,
-    usagePercentage: 15,
-    totalTime: 1000 * 60 * 60 * 15, // 15 hours
-    peakUsers: 3,
-    avgSessionTime: 1000 * 60 * 90, // 90 minutes
-    uniqueUsers: 8
-  }
-])
-
-// Top voice users
-const topVoiceUsers = ref([
-  {
-    id: '1',
-    name: 'VoiceKing',
-    totalTime: 1000 * 60 * 60 * 25, // 25 hours
-    sessions: 45
-  },
-  {
-    id: '2',
-    name: 'ChattyUser',
-    totalTime: 1000 * 60 * 60 * 18, // 18 hours
-    sessions: 32
-  },
-  {
-    id: '3',
-    name: 'GamerPro',
-    totalTime: 1000 * 60 * 60 * 15, // 15 hours
-    sessions: 28
-  },
-  {
-    id: '4',
-    name: 'MusicLover',
-    totalTime: 1000 * 60 * 60 * 12, // 12 hours
-    sessions: 20
-  },
-  {
-    id: '5',
-    name: 'NightOwl',
-    totalTime: 1000 * 60 * 60 * 10, // 10 hours
-    sessions: 15
-  }
-])
+const voiceChannels = ref<any[]>([])
+const topVoiceUsers = ref<any[]>([])
 
 const formatDuration = (ms: number) => {
   const seconds = Math.floor(ms / 1000)
@@ -243,22 +167,42 @@ const formatDuration = (ms: number) => {
   return `${seconds}s`
 }
 
-const refreshData = () => {
-  // Simulate data refresh
-  toastStore.addToast('Refreshing voice activity data...', 'info')
-  
-  setTimeout(() => {
-    // Update random values for demo
-    totalVoiceTime.value = 1000 * 60 * 60 * (100 + Math.floor(Math.random() * 50)) // 100-150 hours
-    voiceTimeChange.value = Math.floor(Math.random() * 30) - 10 // -10 to +20%
-    activeVoiceUsers.value = 40 + Math.floor(Math.random() * 20) // 40-60 users
-    activeUsersChange.value = Math.floor(Math.random() * 20) - 5 // -5 to +15%
-    
-    // Redraw chart
+const refreshData = async () => {
+  const guildId = String(route.params.guildId || '')
+  if (!guildId) return
+  try {
+    const { data } = await voiceEndpoints.activity(guildId, { period: timeRange.value })
+    const payload = (data as any)?.data ?? data
+    totalVoiceTime.value = Number(payload.totalVoiceTimeMs ?? 0)
+    activeVoiceUsers.value = Number(payload.activeVoiceUsers ?? 0)
+    peakConcurrentUsers.value = Number(payload.activeVoiceUsers ?? 0)
+    mostActiveHourUsers.value = Number(payload.uniqueVoiceUsers ?? 0)
+    voiceTimeChange.value = 0
+    activeUsersChange.value = 0
+    const live = payload.liveChannels ?? []
+    const history = payload.channels ?? []
+    voiceChannels.value = (live.length ? live : history).map((channel: any) => ({
+      id: channel.id,
+      name: channel.name,
+      currentUsers: channel.memberCount ?? 0,
+      maxUsers: channel.userLimit || 99,
+      usagePercentage: channel.memberCount ? Math.min(100, channel.memberCount * 10) : 0,
+      totalTime: channel.durationMs ?? 0,
+      peakUsers: channel.memberCount ?? 0,
+      avgSessionTime: 0,
+      uniqueUsers: channel.uniqueUsers ?? channel.memberCount ?? 0,
+    }))
+    topVoiceUsers.value = (payload.topUsers ?? []).map((user: any) => ({
+      id: user.userId,
+      name: user.userId,
+      totalTime: user.durationMs,
+      sessions: user.sessions,
+    }))
+    await nextTick()
     drawActivityChart()
-    
-    toastStore.addToast('Voice activity data refreshed', 'success')
-  }, 1000)
+  } catch (error: any) {
+    toastStore.addToast(error.response?.data?.error || 'Could not load voice activity', 'error')
+  }
 }
 
 // Simple chart drawing function
@@ -378,13 +322,12 @@ const drawActivityChart = () => {
 
 // Draw chart when component mounts
 onMounted(async () => {
+  await refreshData()
   await nextTick()
   drawActivityChart()
 })
 
-// Redraw chart when time range changes
 watch(timeRange, async () => {
-  await nextTick()
-  drawActivityChart()
+  await refreshData()
 })
 </script>

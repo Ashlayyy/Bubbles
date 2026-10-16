@@ -77,6 +77,10 @@
         <h2 class="text-lg font-semibold text-card-foreground mb-4">Create Reminder</h2>
         <form @submit.prevent="createReminder" class="space-y-4">
           <div>
+            <label class="block text-sm font-medium text-card-foreground mb-2">Channel ID</label>
+            <input v-model="newReminder.channelId" class="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground" required>
+          </div>
+          <div>
             <label class="block text-sm font-medium text-card-foreground mb-2">Message</label>
             <textarea v-model="newReminder.message" class="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground" rows="3" required></textarea>
           </div>
@@ -99,36 +103,53 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRemindersStore } from '@/stores/reminders'
+import { computed, onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
+import { useRemindersStore } from '@/stores/reminders';
+import { useToastStore } from '@/stores/toast';
 
-const remindersStore = useRemindersStore()
-const { activeReminders, completedReminders, addReminder, completeReminder, deleteReminder } = remindersStore
+const route = useRoute();
+const toast = useToastStore();
+const remindersStore = useRemindersStore();
+const { activeReminders, completedReminders, addReminder, completeReminder, deleteReminder } =
+  remindersStore;
 
-const activeTab = ref<'active' | 'completed'>('active')
-const showCreateModal = ref(false)
-
+const activeTab = ref<'active' | 'completed'>('active');
+const showCreateModal = ref(false);
 const newReminder = ref({
-  userId: '123456789',
-  username: 'CurrentUser',
-  channelId: '987654321',
-  channelName: 'general',
+  channelId: '',
   message: '',
-  remindAt: ''
-})
+  remindAt: '',
+});
 
 const currentReminders = computed(() => {
-  return activeTab.value === 'active' ? activeReminders : completedReminders
-})
+  return activeTab.value === 'active' ? activeReminders : completedReminders;
+});
 
-const createReminder = () => {
-  addReminder(newReminder.value)
-  showCreateModal.value = false
-  newReminder.value.message = ''
-  newReminder.value.remindAt = ''
-}
+onMounted(async () => {
+  try {
+    await remindersStore.load(route.params.guildId as string);
+  } catch {
+    toast.addToast('Failed to load reminders', 'error');
+  }
+});
+
+const createReminder = async () => {
+  try {
+    await addReminder({
+      channelId: newReminder.value.channelId,
+      message: newReminder.value.message,
+      remindAt: new Date(newReminder.value.remindAt).toISOString(),
+    });
+    showCreateModal.value = false;
+    newReminder.value.message = '';
+    newReminder.value.remindAt = '';
+  } catch {
+    toast.addToast('Failed to create reminder', 'error');
+  }
+};
 
 const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleString()
-}
+  return new Date(dateString).toLocaleString();
+};
 </script>

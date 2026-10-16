@@ -267,37 +267,6 @@
 				<span>Command Aliases</span>
 			</router-link>
 
-			<!-- Leveling -->
-			<router-link
-				:to="`/server/${guildId}/leveling`"
-				class="flex items-center space-x-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-				:class="{ 'bg-secondary text-foreground': $route.name === 'Leveling' }"
-			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="20"
-					height="20"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-					<path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-					<path d="M4 22h16" />
-					<path
-						d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"
-					/>
-					<path
-						d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"
-					/>
-					<path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-				</svg>
-				<span>Leveling</span>
-			</router-link>
-
 			<!-- Audit Log -->
 			<router-link
 				:to="`/server/${guildId}/audit-log`"
@@ -381,62 +350,6 @@
 				<span>Automation</span>
 			</router-link>
 
-			<!-- Applications -->
-			<router-link
-				:to="`/server/${guildId}/applications`"
-				class="flex items-center space-x-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-				:class="{
-					'bg-secondary text-foreground': $route.name === 'Applications',
-				}"
-			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="20"
-					height="20"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
-					<line x1="16" y1="2" x2="16" y2="6" />
-					<line x1="8" y1="2" x2="8" y2="6" />
-					<line x1="3" y1="10" x2="21" y2="10" />
-				</svg>
-				<span>Applications</span>
-			</router-link>
-
-			<!-- Entertainment -->
-			<router-link
-				:to="`/server/${guildId}/entertainment`"
-				class="flex items-center space-x-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-				:class="{
-					'bg-secondary text-foreground': $route.name === 'Entertainment',
-				}"
-			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="20"
-					height="20"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<line x1="6" y1="3" x2="6" y2="15" />
-					<circle cx="18" cy="6" r="3" />
-					<circle cx="6" cy="18" r="3" />
-					<path
-						d="m18 9 2.26-2.26a1.5 1.5 0 0 1 2.12 0l1.38 1.38a1.5 1.5 0 0 1 0 2.12L21.5 12.5"
-					/>
-				</svg>
-				<span>Entertainment</span>
-			</router-link>
-
 			<!-- Reminders -->
 			<router-link
 				:to="`/server/${guildId}/reminders`"
@@ -482,6 +395,78 @@
 					/>
 				</svg>
 				<span>Starboard</span>
+			</router-link>
+
+			<!-- Leveling -->
+			<router-link
+				:to="`/server/${guildId}/leveling`"
+				class="flex items-center space-x-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+				:class="{ 'bg-secondary text-foreground': $route.name === 'Leveling' }"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+					<polyline points="16 7 22 7 22 13" />
+				</svg>
+				<span>Leveling</span>
+			</router-link>
+
+			<!-- Entertainment -->
+			<router-link
+				:to="`/server/${guildId}/entertainment`"
+				class="flex items-center space-x-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+				:class="{
+					'bg-secondary text-foreground': $route.name === 'Entertainment',
+				}"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<polygon points="5 3 19 12 5 21 5 3" />
+				</svg>
+				<span>Entertainment</span>
+			</router-link>
+
+			<router-link
+				:to="`/server/${guildId}/music`"
+				class="flex items-center space-x-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+				:class="{
+					'bg-secondary text-foreground': $route.name === 'Music',
+				}"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path d="M9 18V5l12-2v13" />
+					<circle cx="6" cy="18" r="3" />
+					<circle cx="18" cy="16" r="3" />
+				</svg>
+				<span>Music</span>
 			</router-link>
 
 			<!-- Welcome -->

@@ -9,11 +9,32 @@ import { isDevEnvironment } from "./functions/general/environment.js";
 // eslint-disable-next-line @typescript-eslint/unbound-method
 const { capitalize } = lodash;
 
+const ACTIVITY_TYPE_NAMES = ["playing", "streaming", "listening", "watching", "competing"] as const;
+type ActivityTypeName = (typeof ACTIVITY_TYPE_NAMES)[number];
+
+const ACTIVITY_TYPE_FROM_NUMBER: Record<number, ActivityTypeName> = {
+  [ActivityType.Playing]: "playing",
+  [ActivityType.Streaming]: "streaming",
+  [ActivityType.Listening]: "listening",
+  [ActivityType.Watching]: "watching",
+  [ActivityType.Competing]: "competing",
+};
+
+function activityTypeName(value: unknown): unknown {
+  if (typeof value === "number") {
+    return ACTIVITY_TYPE_FROM_NUMBER[value] ?? value;
+  }
+  if (typeof value === "string") {
+    return value.toLowerCase();
+  }
+  return value;
+}
+
 // Zod schemas
 const ActivityOptionSchema = z
   .object({
     name: z.string(),
-    type: z.enum(["playing", "streaming", "listening", "watching", "competing"]),
+    type: z.preprocess(activityTypeName, z.enum(ACTIVITY_TYPE_NAMES)),
     url: z
       .string()
       .regex(/^https:\/\/(www\.)?(twitch\.tv|youtube\.com)\/.+$/, "must be a valid youtube or twitch url")
@@ -82,12 +103,15 @@ export function getConfigFile(): BotConfig {
       console.info(`Generating "${configFileName}"`);
 
       if (isDev) {
-        // Edit and then copy
+        // Copy the default YAML and only suffix the name. Do not round-trip
+        // through parseFile(), which converts activity types to Discord enums.
+        const defaultRaw = parseYaml(readFileSync(DEFAULT_CONFIG_FILE_NAME, "utf-8")) as {
+          name?: string;
+          [key: string]: unknown;
+        };
+        defaultRaw.name = `${defaultRaw.name ?? "Bubbles"}-dev`;
 
-        const defaultConfig = parseFile(DEFAULT_CONFIG_FILE_NAME);
-        defaultConfig.name = defaultConfig.name + "-dev";
-
-        writeFileSync(configFileName, stringifyYaml(defaultConfig), {
+        writeFileSync(configFileName, stringifyYaml(defaultRaw), {
           encoding: "utf-8",
           flag: "wx", // error if already exists
         });

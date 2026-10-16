@@ -5,28 +5,43 @@ import * as promClient from 'prom-client';
 
 const logger = createLogger('monitoring-middleware');
 
-// Prometheus metrics
-const apiRequestsTotal = new promClient.Counter({
+function getOrCreateCounter<T extends string>(
+	config: promClient.CounterConfiguration<T>
+): promClient.Counter<T> {
+	const existing = promClient.register.getSingleMetric(config.name);
+	if (existing) return existing as promClient.Counter<T>;
+	return new promClient.Counter(config);
+}
+
+function getOrCreateHistogram<T extends string>(
+	config: promClient.HistogramConfiguration<T>
+): promClient.Histogram<T> {
+	const existing = promClient.register.getSingleMetric(config.name);
+	if (existing) return existing as promClient.Histogram<T>;
+	return new promClient.Histogram(config);
+}
+
+const apiRequestsTotal = getOrCreateCounter({
 	name: 'api_requests_total',
 	help: 'Total API requests',
 	labelNames: ['method', 'endpoint', 'status'] as const,
 });
 
-const apiRequestDuration = new promClient.Histogram({
+const apiRequestDuration = getOrCreateHistogram({
 	name: 'api_request_duration_ms',
 	help: 'API request duration in milliseconds',
 	labelNames: ['method', 'endpoint'] as const,
 	buckets: [10, 50, 100, 250, 500, 1000, 2000, 5000],
 });
 
-const botCommandLatency = new promClient.Histogram({
+const botCommandLatency = getOrCreateHistogram({
 	name: 'bot_command_latency_ms',
 	help: 'Bot command execution latency in milliseconds',
 	labelNames: ['command'] as const,
 	buckets: [50, 100, 250, 500, 1000, 2000, 5000, 10000],
 });
 
-const moderationActionDuration = new promClient.Histogram({
+const moderationActionDuration = getOrCreateHistogram({
 	name: 'moderation_action_duration_ms',
 	help: 'Moderation action processing duration in milliseconds',
 	labelNames: ['action'] as const,

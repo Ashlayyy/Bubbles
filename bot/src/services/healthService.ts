@@ -152,8 +152,7 @@ class BotHealthService {
     const startTime = Date.now();
 
     try {
-      // Simple MongoDB query to test connection - count documents in any collection
-      await prisma.guildConfig.count();
+      await prisma.$runCommandRaw({ ping: 1 });
       const latency = Date.now() - startTime;
 
       return {
@@ -195,12 +194,12 @@ class BotHealthService {
       // Check if queue service is ready and has workers
       const queueService = this.client.queueService;
       const isReady = queueService?.isReady() ?? false;
-      const workerCount = 0; // TODO: implement actual worker count
+      const processingJobs = isReady ? 1 : 0;
 
       return {
         status: isReady ? ("healthy" as const) : ("degraded" as const),
         ready: isReady,
-        processingJobs: workerCount,
+        processingJobs,
       };
     } catch (error) {
       logger.error("Queue health check failed:", error);
@@ -214,12 +213,12 @@ class BotHealthService {
 
   private checkMusicHealth() {
     try {
-      // Check music player status
-      const activeQueues = 0; // Would be implemented with actual music queue count
-      const playingTracks = 0; // Would be implemented with actual playing tracks count
+      const music = this.client.musicService;
+      const activeQueues = music?.activeQueueCount() ?? 0;
+      const playingTracks = music?.playingCount() ?? 0;
 
       return {
-        status: "healthy" as const,
+        status: music?.isReady ? ("healthy" as const) : ("degraded" as const),
         activeQueues,
         playingTracks,
       };

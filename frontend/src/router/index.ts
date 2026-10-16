@@ -28,6 +28,7 @@ import Analytics from '@/views/Analytics.vue';
 import Automation from '@/views/Automation.vue';
 import Applications from '@/views/Applications.vue';
 import Entertainment from '@/views/Entertainment.vue';
+import Music from '@/views/Music.vue';
 import DashboardLayout from '@/layouts/DashboardLayout.vue';
 import LoginCallback from '@/views/LoginCallback.vue';
 
@@ -70,6 +71,7 @@ const routes: RouteRecordRaw[] = [
 				name: 'Entertainment',
 				component: Entertainment,
 			},
+			{ path: 'music', name: 'Music', component: Music },
 			{ path: 'settings', name: 'Settings', component: Settings },
 			{ path: 'reminders', name: 'Reminders', component: Reminders },
 			{ path: 'starboard', name: 'Starboard', component: Starboard },

@@ -145,23 +145,37 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useStarboardStore } from '@/stores/starboard'
-import { storeToRefs } from 'pinia'
-import { useToastStore } from '@/stores/toast'
+import { onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
+import { useStarboardStore } from '@/stores/starboard';
+import { storeToRefs } from 'pinia';
+import { useToastStore } from '@/stores/toast';
 
-const starboardStore = useStarboardStore()
-const { settings, starredMessages, stats } = storeToRefs(starboardStore)
-const toastStore = useToastStore()
+const route = useRoute();
+const guildId = () => route.params.guildId as string;
+const starboardStore = useStarboardStore();
+const { settings, starredMessages, stats } = storeToRefs(starboardStore);
+const toastStore = useToastStore();
+const activeTab = ref<'overview' | 'messages' | 'settings'>('overview');
 
-const activeTab = ref<'overview' | 'messages' | 'settings'>('overview')
+onMounted(async () => {
+  try {
+    await starboardStore.load(guildId());
+  } catch {
+    toastStore.addToast('Failed to load starboard', 'error');
+  }
+});
 
-const saveSettings = () => {
-  starboardStore.updateSettings(settings.value)
-  toastStore.addToast('Starboard settings saved successfully!', 'success')
-}
+const saveSettings = async () => {
+  try {
+    await starboardStore.updateSettings(guildId(), settings.value);
+    toastStore.addToast('Starboard settings saved', 'success');
+  } catch {
+    toastStore.addToast('Failed to save starboard settings', 'error');
+  }
+};
 
 const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleString()
-}
+  return new Date(dateString).toLocaleString();
+};
 </script>

@@ -230,15 +230,15 @@ export default new TimeoutCommand();
 export const builder = new SlashCommandBuilder()
   .setName("timeout")
   .setDescription("Timeout a user (mute them temporarily)")
+  .addStringOption((option) =>
+    option.setName("duration").setDescription("Duration (e.g., 1d, 3h, 30m) - max 28 days").setRequired(true)
+  )
   .addUserOption((option) => option.setName("user").setDescription("The user to timeout").setRequired(false))
   .addStringOption((opt) =>
     opt.setName("users").setDescription("User IDs separated by space/comma/newline to timeout").setRequired(false)
   )
   .addAttachmentOption((opt) =>
     opt.setName("list").setDescription("Attachment (.txt/.csv) with user IDs").setRequired(false)
-  )
-  .addStringOption((option) =>
-    option.setName("duration").setDescription("Duration (e.g., 1d, 3h, 30m) - max 28 days").setRequired(true)
   )
   .addStringOption((option) => option.setName("reason").setDescription("Reason for the timeout").setRequired(false))
   .addStringOption((option) =>

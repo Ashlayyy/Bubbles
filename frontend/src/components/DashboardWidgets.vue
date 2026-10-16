@@ -96,8 +96,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useToastStore } from '@/stores/toast'
+import ServerStatsWidget from '@/components/widgets/ServerStatsWidget.vue'
+import RecentActivityWidget from '@/components/widgets/RecentActivityWidget.vue'
+import MemberGrowthWidget from '@/components/widgets/MemberGrowthWidget.vue'
+import HealthMonitoring from '@/components/HealthMonitoring.vue'
+import VoiceActivityTracker from '@/components/VoiceActivityTracker.vue'
 
 const toastStore = useToastStore()
 
@@ -213,26 +218,19 @@ const handleDrop = (e: DragEvent, targetWidget: Widget) => {
 }
 
 const getWidgetComponent = (type: string) => {
-  // Return the appropriate widget component based on type
   switch (type) {
     case 'ServerStats':
-      return 'ServerStatsWidget'
+      return ServerStatsWidget
     case 'RecentActivity':
-      return 'RecentActivityWidget'
+      return RecentActivityWidget
     case 'MemberGrowth':
-      return 'MemberGrowthWidget'
-    case 'ModActions':
-      return 'ModActionsWidget'
-    case 'TopChannels':
-      return 'TopChannelsWidget'
+      return MemberGrowthWidget
     case 'SystemHealth':
-      return 'SystemHealthWidget'
-    case 'QuickActions':
-      return 'QuickActionsWidget'
-    case 'Announcements':
-      return 'AnnouncementsWidget'
+      return HealthMonitoring
+    case 'TopChannels':
+      return VoiceActivityTracker
     default:
-      return 'DefaultWidget'
+      return ServerStatsWidget
   }
 }
 

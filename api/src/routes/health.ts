@@ -229,6 +229,7 @@ router.get(
 /** Get dead letter queue metrics */
 router.get(
 	'/dead-letter/:queueName',
+	authenticateToken,
 	async (req: AuthRequest, res: Response) => {
 		try {
 			const { queueName } = req.params;
@@ -251,6 +252,7 @@ router.get(
 /** Retry failed job from dead letter queue */
 router.post(
 	'/dead-letter/:queueName/retry/:jobId',
+	authenticateToken,
 	async (req: AuthRequest, res: Response) => {
 		try {
 			const { queueName, jobId } = req.params;
@@ -273,6 +275,7 @@ router.post(
 /** Get failed jobs from dead letter queue */
 router.get(
 	'/dead-letter/:queueName/jobs',
+	authenticateToken,
 	async (req: AuthRequest, res: Response) => {
 		try {
 			const { queueName } = req.params;

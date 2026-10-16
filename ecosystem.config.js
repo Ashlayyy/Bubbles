@@ -14,8 +14,8 @@ module.exports = {
 				NODE_ENV: 'production',
 				PORT: process.env.PORT || 3001,
 			},
-			exec_mode: 'cluster',
-			instances: 'max',
+			exec_mode: 'fork',
+			instances: 1,
 			merge_logs: true,
 			error_file: '~/.pm2/logs/bubbles.err.log',
 			out_file: '~/.pm2/logs/bubbles.out.log',
@@ -42,7 +42,7 @@ module.exports = {
 			error_file: '~/.pm2/logs/bubbles.err.log',
 			out_file: '~/.pm2/logs/bubbles.out.log',
 			log_date_format: 'YYYY-MM-DD HH:mm:ss',
-			wait_ready: true,
+			wait_ready: false,
 			listen_timeout: 8000,
 			max_memory_restart: '750M',
 		},
@@ -51,7 +51,7 @@ module.exports = {
 		{
 			name: 'bubbles-bot',
 			cwd: './bot',
-			script: 'dist/index.js',
+			script: 'build/index.js',
 			node_args: '--enable-source-maps',
 			env_file: '../.env.production',
 			env: {
@@ -72,7 +72,7 @@ module.exports = {
 		{
 			name: 'bubbles-bot-sharded',
 			cwd: './bot',
-			script: 'dist/shard.js',
+			script: 'build/shard.js',
 			node_args: '--enable-source-maps',
 			env_file: '../.env.production',
 			env: {
@@ -89,6 +89,7 @@ module.exports = {
 			wait_ready: true,
 			listen_timeout: 8000,
 			max_memory_restart: '750M',
+			autorestart: false,
 		},
 	],
 
@@ -107,7 +108,7 @@ module.exports = {
 				'npm ci --workspaces --include-workspace-root',
 				'npm run build',
 				'cp /var/www/bubbles-prod/.env.production /var/www/bubbles-prod/current/.env',
-				'pm2 reload ecosystem.config.js --env production --only bubbles-api,bubbles-frontend,bubbles-bot,bubbles-bot-sharded',
+				'pm2 reload ecosystem.config.js --env production --only bubbles-api,bubbles-frontend,bubbles-bot',
 				'pm2 save',
 			].join(' && '),
 			'pre-setup': [

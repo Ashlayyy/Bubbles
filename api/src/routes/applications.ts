@@ -33,20 +33,6 @@ router.get(
 
 router.post('/', generalRateLimit, submitApplication);
 
-router.get(
-	'/:applicationId',
-	generalRateLimit,
-	requireModerationPermissions,
-	getApplication
-);
-
-router.put(
-	'/:applicationId',
-	generalRateLimit,
-	requireModerationPermissions,
-	updateApplicationStatus
-);
-
 addRoute(
 	router,
 	'get',
@@ -81,6 +67,27 @@ addRoute(
 	{ discordPermissions: ['ADMINISTRATOR'], permissionsOverride: true },
 	generalRateLimit,
 	deleteApplicationForm
+);
+
+router.get(
+	'/:applicationId',
+	generalRateLimit,
+	requireModerationPermissions,
+	getApplication
+);
+
+router.put(
+	'/:applicationId',
+	generalRateLimit,
+	requireModerationPermissions,
+	updateApplicationStatus
+);
+
+router.patch(
+	'/:applicationId/status',
+	generalRateLimit,
+	requireModerationPermissions,
+	updateApplicationStatus
 );
 
 export default router;

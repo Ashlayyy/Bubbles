@@ -28,3 +28,19 @@ export const getGuildMembers = (
 	guildId: string,
 	params?: { limit?: number; offset?: number }
 ) => apiClient().get(`/guilds/${guildId}/members`, { params });
+
+export const getGuildSettings = async (guildId: string) => {
+	const { data } = await apiClient().get(`/guilds/${guildId}/settings`);
+	return (data as { data?: unknown }).data ?? data;
+};
+
+export const updateGuildSettings = async (
+	guildId: string,
+	payload: Record<string, unknown>
+) => {
+	const { data } = await apiClient().put(`/guilds/${guildId}/settings`, payload);
+	return (data as { data?: unknown }).data ?? data;
+};
+
+export const leaveGuild = (guildId: string) =>
+	apiClient().post(`/guilds/${guildId}/leave`);

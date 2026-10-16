@@ -66,7 +66,11 @@ process.on("unhandledRejection", (error) => {
 
 // Start spawning shards
 console.log("🎯 Starting Discord bot with sharding...");
-void manager.spawn({ timeout: -1 });
+void manager.spawn({ timeout: -1 }).then(() => {
+  if (typeof process.send === "function") {
+    process.send("ready");
+  }
+});
 
 // Graceful shutdown handling
 process.on("SIGINT", () => {

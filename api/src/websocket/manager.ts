@@ -42,6 +42,13 @@ export class WebSocketManager extends EventEmitter {
 	private pingInterval: NodeJS.Timeout | null = null;
 	private cleanupInterval: NodeJS.Timeout | null = null;
 	private guildPermissionCache = new Map<string, bigint>();
+	private pendingCommands = new Map<
+		string,
+		{
+			resolve: (value: { success: boolean; data?: unknown; error?: string }) => void;
+			timeout: NodeJS.Timeout;
+		}
+	>();
 
 	constructor() {
 		super();
@@ -368,6 +375,8 @@ export class WebSocketManager extends EventEmitter {
 		}
 
 		// Broadcast bot event to relevant clients
+		this.resolvePendingCommand(message);
+
 		this.broadcastBotEvent(
 			message.data,
 			connection.guildId,
@@ -1301,6 +1310,90 @@ export class WebSocketManager extends EventEmitter {
 				}
 			}
 		}, 30000); // Check every 30 seconds
+	}
+
+	public hasBotConnection(guildId?: string): boolean {
+		for (const connection of this.connections.values()) {
+			if (
+				connection.type === 'BOT' &&
+				connection.authenticated &&
+				(!guildId || !connection.guildId || connection.guildId === guildId)
+			) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public sendBotCommandAndWait(
+		operation: string,
+		data: Record<string, unknown>,
+		options: { guildId?: string; timeoutMs?: number } = {}
+	): Promise<{ success: boolean; data?: unknown; error?: string }> {
+		if (!this.hasBotConnection(options.guildId)) {
+			return Promise.resolve({
+				success: false,
+				error: 'The bot is not connected. Start the Bubbles bot and try again.',
+			});
+		}
+
+		const messageId = this.generateMessageId();
+		const message: WebSocketMessage = {
+			type: 'BOT_COMMAND',
+			event: 'EXECUTE_COMMAND',
+			data: {
+				command: operation,
+				data: { ...data, guildId: options.guildId ?? data.guildId },
+				guildId: options.guildId ?? data.guildId,
+				timestamp: Date.now(),
+			},
+			guildId: options.guildId,
+			timestamp: Date.now(),
+			messageId,
+		};
+
+		return new Promise((resolve) => {
+			const timeout = setTimeout(() => {
+				this.pendingCommands.delete(messageId);
+				resolve({
+					success: false,
+					error: 'The bot did not respond in time.',
+				});
+			}, options.timeoutMs ?? 20_000);
+
+			this.pendingCommands.set(messageId, { resolve, timeout });
+			this.broadcastToAll(message, (connection) => {
+				return (
+					connection.type === 'BOT' &&
+					connection.authenticated &&
+					(!options.guildId ||
+						!connection.guildId ||
+						connection.guildId === options.guildId)
+				);
+			});
+		});
+	}
+
+	private resolvePendingCommand(message: WebSocketMessage): void {
+		const payload =
+			message.data && typeof message.data === 'object'
+				? (message.data as Record<string, unknown>)
+				: {};
+		const requestId =
+			(typeof payload.requestId === 'string' && payload.requestId) ||
+			message.messageId;
+		const pending = this.pendingCommands.get(requestId);
+		if (!pending) return;
+
+		clearTimeout(pending.timeout);
+		this.pendingCommands.delete(requestId);
+		pending.resolve({
+			success:
+				message.event === 'BOT_COMMAND_RESPONSE' && payload.success !== false,
+			data: payload.result ?? payload,
+			error:
+				typeof payload.error === 'string' ? payload.error : undefined,
+		});
 	}
 
 	private generateConnectionId(): string {

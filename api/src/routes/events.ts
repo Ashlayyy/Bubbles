@@ -1,9 +1,9 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { eventStore } from '../services/eventStore.js';
 
 const router = Router();
 
-router.get('/:guildId?', async (req, res) => {
+async function getEvents(req: Request, res: Response) {
 	const { guildId } = req.params;
 	const { type, limit } = req.query as { type?: string; limit?: string };
 
@@ -17,6 +17,9 @@ router.get('/:guildId?', async (req, res) => {
 	} catch (error) {
 		res.status(500).json({ success: false, error: 'Failed to fetch events' });
 	}
-});
+}
+
+router.get('/', getEvents);
+router.get('/:guildId', getEvents);
 
 export default router;

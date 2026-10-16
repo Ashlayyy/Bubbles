@@ -20,26 +20,33 @@ const error = ref<string | null>(null);
 
 onMounted(async () => {
 	const code = route.query.code as string | undefined;
-	const tokenParam = route.query.token as string | undefined;
 	const state = route.query.state as string | undefined;
+	const hashParams = new URLSearchParams(
+		window.location.hash.startsWith('#')
+			? window.location.hash.slice(1)
+			: window.location.hash
+	);
+	const hashToken = hashParams.get('token');
+	const hashExpires = Number.parseInt(hashParams.get('expiresIn') || '86400', 10);
 
 	try {
-		if (code) {
-			// Exchange code for token & user data via API
+		if (hashToken) {
+			await authStore.completeWithToken(
+				hashToken,
+				Number.isFinite(hashExpires) ? hashExpires : 86400
+			);
+		} else if (code) {
 			const payload = await handleCallback(code, state);
 			authStore.setSession(payload);
-		} else if (tokenParam) {
-			// Token already provided – store it then fetch user
-			authStore.token = tokenParam;
+		} else {
 			await authStore.checkAuth();
 			if (!authStore.isAuthenticated) {
-				throw new Error('Failed to verify token.');
+				throw new Error('Login did not complete.');
 			}
-		} else {
-			throw new Error('Missing authorization code or token in callback URL.');
+			await authStore.refreshToken();
 		}
 
-		// Success → go home
+		window.history.replaceState(null, '', '/login/callback');
 		router.replace({ path: '/', query: {} });
 	} catch (err: any) {
 		error.value =

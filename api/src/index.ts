@@ -2,11 +2,15 @@ import express, { RequestHandler } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import session from 'express-session';
+import Redis from 'ioredis';
 import { createServer } from 'http';
 import { createLogger } from './types/shared.js';
 import { config } from './config/index.js';
 import { applySecureRouterPatch } from './utils/secureRouterPatch.js';
 import { responseEnhancer } from './middleware/response.js';
+import { requireMetricsToken } from './middleware/metricsAuth.js';
+import { RedisSessionStore } from './utils/redisSessionStore.js';
+import { monitoringMiddleware } from './middleware/monitoring.js';
 import {
 	metricsMiddleware,
 	register as metricsRegister,
@@ -29,6 +33,10 @@ const QUEUE_NAMES = {
 
 const logger = createLogger('api-server');
 const app = express();
+const redis = new Redis(config.redis.url, {
+	maxRetriesPerRequest: 3,
+	lazyConnect: true,
+});
 
 // Middleware
 app.use(
@@ -59,20 +67,22 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(responseEnhancer);
 
 // Session middleware
-app.use(
-	session({
-		secret: config.session.secret,
-		resave: false,
-		saveUninitialized: false,
-		cookie: {
-			secure: config.nodeEnv === 'production',
-			maxAge: 8 * 60 * 60 * 1000, // 8 hours
-		},
-	}) as unknown as RequestHandler
-);
+const sessionOptions: session.SessionOptions = {
+	secret: config.session.secret,
+	resave: false,
+	saveUninitialized: false,
+	cookie: {
+		secure: config.nodeEnv === 'production',
+		httpOnly: true,
+		sameSite: config.nodeEnv === 'production' ? 'lax' : 'lax',
+		maxAge: 8 * 60 * 60 * 1000, // 8 hours
+	},
+};
+if (config.nodeEnv === 'production') {
+	sessionOptions.store = new RedisSessionStore(redis);
+}
+app.use(session(sessionOptions) as unknown as RequestHandler);
 
-// Add monitoring middleware for integration tracking
-const { monitoringMiddleware } = await import('./middleware/monitoring.js');
 app.use(monitoringMiddleware);
 
 // Add metrics middleware
@@ -81,8 +91,8 @@ app.use(metricsMiddleware);
 // Mount API routes
 app.use('/api/v1', apiRoutes);
 
-// Expose Prometheus metrics (no auth)
-app.get('/metrics', async (_req, res) => {
+// Expose Prometheus metrics
+app.get('/metrics', requireMetricsToken, async (req, res) => {
 	try {
 		res.setHeader('Content-Type', metricsRegister.contentType);
 		res.end(await metricsRegister.metrics());
@@ -186,6 +196,7 @@ const gracefulShutdown = async (signal: string) => {
 			// Close database connection
 			const { closePrisma } = await import('./services/databaseService.js');
 			await closePrisma();
+			await redis.quit();
 
 			// Close WebSocket connections
 			wsManager.shutdown();
@@ -210,9 +221,18 @@ const startServer = async () => {
 		await initializePrisma();
 		logger.info('✅ Database initialized');
 
+		if (config.nodeEnv === 'production') {
+			await redis.connect();
+			await redis.ping();
+			logger.info('✅ Redis session store ready');
+		}
+
 		// Start HTTP server
 		server.listen(PORT, () => {
 			logger.info(`🚀 API Server running on port ${PORT}`);
+			if (typeof process.send === 'function') {
+				process.send('ready');
+			}
 			logger.info(
 				`📋 Health check available at http://localhost:${PORT}/api/v1/health`
 			);

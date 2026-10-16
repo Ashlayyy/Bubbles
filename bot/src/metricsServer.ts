@@ -55,6 +55,17 @@ export function startMetricsServer(client: Client, queueService: UnifiedQueueSer
   // Basic HTTP server
   const server = http.createServer((req, res) => {
     if (req.url === "/metrics") {
+      const token = process.env.METRICS_TOKEN?.trim();
+      if (process.env.NODE_ENV === "production" && !token) {
+        res.writeHead(503);
+        res.end("METRICS_TOKEN is not configured");
+        return;
+      }
+      if (token && req.headers.authorization !== `Bearer ${token}`) {
+        res.writeHead(401);
+        res.end("Unauthorized");
+        return;
+      }
       register
         .metrics()
         .then((metrics) => {

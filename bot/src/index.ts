@@ -1,3 +1,5 @@
+import "./functions/general/environmentLoader.js";
+
 // OpenTelemetry must be imported first for auto-instrumentation
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { NodeSDK } from "@opentelemetry/sdk-node";
@@ -45,11 +47,20 @@ if (process.env.SENTRY_DSN) {
   });
 }
 
-// Load environment variables first, before any other imports
-import { loadEnvironment } from "./functions/general/environmentLoader.js";
-loadEnvironment();
-
+import { isConfiguredEnv, isDevEnvironment } from "./functions/general/environment.js";
 import Client from "./structures/Client.js";
 
-const client = await Client.get();
-await client.start();
+if (!isConfiguredEnv(process.env.DISCORD_TOKEN)) {
+  const hint = isDevEnvironment()
+    ? "Set DISCORD_TOKEN (and DISCORD_CLIENT_ID) in the Bubbles repo-root .env file, then save it. Nodemon will restart."
+    : "DISCORD_TOKEN must be set to start the bot.";
+  console.error(`DISCORD_TOKEN is not set. ${hint}`);
+  if (!isDevEnvironment()) {
+    process.exit(1);
+  }
+  console.error("Waiting instead of crashing so other npm run all processes can keep running.");
+  await new Promise(() => undefined);
+} else {
+  const client = await Client.get();
+  await client.start();
+}

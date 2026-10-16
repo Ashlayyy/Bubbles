@@ -1,5 +1,3 @@
-
-```vue
 <template>
   <div class="max-w-7xl mx-auto">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-4">
@@ -9,6 +7,9 @@
         </div>
     </div>
 
+    <p v-if="loadError" class="text-red-400 mt-4">{{ loadError }}</p>
+    <p v-else-if="loading" class="text-muted-foreground mt-6">Loading audit log…</p>
+
     <AuditLogFilters 
       v-model:searchQuery="searchQuery"
       v-model:actionFilter="selectedAction"
@@ -17,6 +18,7 @@
       v-model:endDate="endDate"
     />
     <AuditLogList :logs="paginatedLogs" @view-user-history="openUserHistoryModal" @view-details="openDetailModal" />
+    <p v-if="!loading && paginatedLogs.length === 0" class="text-muted-foreground mt-6">No audit log events yet.</p>
 
     <div v-if="totalPages > 1" class="mt-6 flex flex-col sm:flex-row items-center justify-between text-sm text-slate-400 gap-4">
       <p>Showing page <span class="font-semibold text-white">{{ currentPage }}</span> of <span class="font-semibold text-white">{{ totalPages }}</span></p>
@@ -46,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { startOfDay, endOfDay } from 'date-fns';
 import type { AuditLogEntry, AuditLogUser } from '@/types/audit-log';
@@ -54,54 +56,113 @@ import AuditLogFilters from '@/components/audit-log/AuditLogFilters.vue';
 import AuditLogList from '@/components/audit-log/AuditLogList.vue';
 import UserModHistoryModal from '@/components/audit-log/UserModHistoryModal.vue';
 import AuditLogDetailModal from '@/components/audit-log/AuditLogDetailModal.vue';
+import { auditEndpoints } from '@/lib/endpoints/audit';
 
-const mockLogs = ref<AuditLogEntry[]>([
-  {
-    id: '1122334455',
-    executor: { id: 'admin1', name: 'Zeta' },
-    action: 'MEMBER_BAN_ADD',
-    target: { id: 'user1', name: 'RogueUser', type: 'user' },
-    reason: 'Repeatedly violating server rules about spam.',
-    timestamp: new Date(Date.now() - 2 * 60 * 1000), // 2 minutes ago
-    source: 'BUBBLES',
-  },
-  {
-    id: '1122334454',
-    executor: { id: 'mod1', name: 'Leo' },
-    action: 'MEMBER_KICK',
-    target: { id: 'user2', name: 'Troublemaker', type: 'user' },
-    reason: 'Being disruptive in voice chat.',
-    timestamp: new Date(Date.now() - 15 * 60 * 1000), // 15 minutes ago
-    source: 'DISCORD',
-  },
-  {
-    id: '1122334453',
-    executor: { id: 'admin1', name: 'Zeta' },
-    action: 'ROLE_UPDATE',
-    target: { id: 'role1', name: 'Moderator', type: 'role' },
-    reason: 'Updated permissions to allow channel management.',
-    timestamp: new Date(Date.now() - 60 * 60 * 1000), // 1 hour ago
-    source: 'DISCORD',
-  },
-  {
-    id: '1122334452',
-    executor: { id: 'bot', name: 'Bubbles' },
-    action: 'MESSAGE_BULK_DELETE',
-    target: { id: 'channel1', name: 'general', type: 'channel' },
-    reason: 'Auto-clear of spam messages (52 messages)',
-    timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000), // 3 hours ago
-    source: 'BUBBLES',
-  },
-  {
-    id: '1122334451',
-    executor: { id: 'admin1', name: 'Zeta' },
-    action: 'ROLE_CREATE',
-    target: { id: 'role2', name: 'Verified', type: 'role' },
-    reason: null,
-    timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
-    source: 'DISCORD',
-  },
-]);
+const ACTION_NAMES: Record<number, string> = {
+  1: 'GUILD_UPDATE',
+  10: 'CHANNEL_CREATE',
+  11: 'CHANNEL_UPDATE',
+  12: 'CHANNEL_DELETE',
+  13: 'CHANNEL_OVERWRITE_CREATE',
+  14: 'CHANNEL_OVERWRITE_UPDATE',
+  15: 'CHANNEL_OVERWRITE_DELETE',
+  20: 'MEMBER_KICK',
+  21: 'MEMBER_PRUNE',
+  22: 'MEMBER_BAN_ADD',
+  23: 'MEMBER_BAN_REMOVE',
+  24: 'MEMBER_UPDATE',
+  25: 'MEMBER_ROLE_UPDATE',
+  26: 'MEMBER_MOVE',
+  27: 'MEMBER_DISCONNECT',
+  28: 'BOT_ADD',
+  30: 'ROLE_CREATE',
+  31: 'ROLE_UPDATE',
+  32: 'ROLE_DELETE',
+  40: 'INVITE_CREATE',
+  41: 'INVITE_UPDATE',
+  42: 'INVITE_DELETE',
+  50: 'WEBHOOK_CREATE',
+  51: 'WEBHOOK_UPDATE',
+  52: 'WEBHOOK_DELETE',
+  60: 'EMOJI_CREATE',
+  61: 'EMOJI_UPDATE',
+  62: 'EMOJI_DELETE',
+  72: 'MESSAGE_DELETE',
+  73: 'MESSAGE_BULK_DELETE',
+  74: 'MESSAGE_PIN',
+  75: 'MESSAGE_UNPIN',
+  80: 'INTEGRATION_CREATE',
+  81: 'INTEGRATION_UPDATE',
+  82: 'INTEGRATION_DELETE',
+  83: 'STAGE_INSTANCE_CREATE',
+  84: 'STAGE_INSTANCE_UPDATE',
+  85: 'STAGE_INSTANCE_DELETE',
+  90: 'STICKER_CREATE',
+  91: 'STICKER_UPDATE',
+  92: 'STICKER_DELETE',
+  100: 'GUILD_SCHEDULED_EVENT_CREATE',
+  101: 'GUILD_SCHEDULED_EVENT_UPDATE',
+  102: 'GUILD_SCHEDULED_EVENT_DELETE',
+  110: 'THREAD_CREATE',
+  111: 'THREAD_UPDATE',
+  112: 'THREAD_DELETE',
+  121: 'APPLICATION_COMMAND_PERMISSION_UPDATE',
+  140: 'AUTO_MODERATION_RULE_CREATE',
+  141: 'AUTO_MODERATION_RULE_UPDATE',
+  142: 'AUTO_MODERATION_RULE_DELETE',
+  143: 'AUTO_MODERATION_BLOCK_MESSAGE',
+  144: 'AUTO_MODERATION_FLAG_TO_CHANNEL',
+  145: 'AUTO_MODERATION_USER_COMMUNICATION_DISABLED',
+};
+
+function snowflakeDate(id: string): Date {
+  try {
+    return new Date(Number(BigInt(id) >> 22n) + 1420070400000);
+  } catch {
+    return new Date();
+  }
+}
+
+function mapAuditPayload(payload: any): AuditLogEntry[] {
+  const root = payload?.data ?? payload;
+  const entries = root?.audit_log_entries ?? root?.auditLogEntries ?? [];
+  const users = new Map(
+    (root?.users ?? []).map((user: any) => [user.id, user])
+  );
+
+  return entries.map((entry: any) => {
+    const executorUser = users.get(entry.user_id) ?? { id: entry.user_id || 'unknown', username: 'Unknown' };
+    const targetUser = users.get(entry.target_id);
+    return {
+      id: String(entry.id),
+      executor: {
+        id: String(executorUser.id || 'unknown'),
+        name: executorUser.global_name || executorUser.username || 'Unknown',
+        avatarUrl: executorUser.avatar
+          ? `https://cdn.discordapp.com/avatars/${executorUser.id}/${executorUser.avatar}.png?size=64`
+          : undefined,
+      },
+      action: ACTION_NAMES[entry.action_type] || `ACTION_${entry.action_type ?? 'UNKNOWN'}`,
+      target: {
+        id: String(entry.target_id || 'unknown'),
+        name: targetUser?.global_name || targetUser?.username || String(entry.target_id || 'Unknown'),
+        type: 'user',
+      },
+      reason: entry.reason ?? null,
+      timestamp: snowflakeDate(String(entry.id)),
+      changes: (entry.changes || []).map((change: any) => ({
+        key: change.key,
+        from: change.old_value,
+        to: change.new_value,
+      })),
+      source: 'DISCORD' as const,
+    };
+  });
+}
+
+const allLogs = ref<AuditLogEntry[]>([]);
+const loading = ref(false);
+const loadError = ref('');
 
 const route = useRoute();
 const searchQuery = ref('');
@@ -114,9 +175,8 @@ const itemsPerPage = ref(5);
 const currentPage = ref(1);
 
 const filteredLogs = computed(() => {
-  let logs = mockLogs.value;
+  let logs = allLogs.value;
 
-  // Date Filter
   if (startDate.value) {
     const start = startOfDay(new Date(startDate.value)).getTime();
     logs = logs.filter(log => log.timestamp.getTime() >= start);
@@ -126,7 +186,6 @@ const filteredLogs = computed(() => {
     logs = logs.filter(log => log.timestamp.getTime() <= end);
   }
   
-  // Text, Action, Source filters
   if (searchQuery.value || selectedAction.value || selectedSource.value) {
     logs = logs.filter(log => {
       const searchLower = searchQuery.value.toLowerCase();
@@ -184,54 +243,22 @@ const isHistoryModalOpen = ref(false);
 const selectedUser = ref<AuditLogUser | null>(null);
 const userModHistory = ref<AuditLogEntry[]>([]);
 
-const mockUserHistories: Record<string, AuditLogEntry[]> = {
-  'admin1': [
-    {
-      id: '1122334455',
-      executor: { id: 'admin1', name: 'Zeta' },
-      action: 'MEMBER_BAN_ADD',
-      target: { id: 'user1', name: 'RogueUser', type: 'user' },
-      reason: 'Repeatedly violating server rules about spam.',
-      timestamp: new Date(Date.now() - 2 * 60 * 1000),
-      source: 'BUBBLES',
-    },
-    {
-      id: '1122334453',
-      executor: { id: 'admin1', name: 'Zeta' },
-      action: 'ROLE_UPDATE',
-      target: { id: 'role1', name: 'Moderator', type: 'role' },
-      reason: 'Updated permissions to allow channel management.',
-      timestamp: new Date(Date.now() - 60 * 60 * 1000),
-      source: 'DISCORD',
-    },
-     {
-      id: '1122334451',
-      executor: { id: 'admin1', name: 'Zeta' },
-      action: 'ROLE_CREATE',
-      target: { id: 'role2', name: 'Verified', type: 'role' },
-      reason: null,
-      timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      source: 'DISCORD',
-    },
-  ],
-  'mod1': [
-      {
-        id: '1122334454',
-        executor: { id: 'mod1', name: 'Leo' },
-        action: 'MEMBER_KICK',
-        target: { id: 'user2', name: 'Troublemaker', type: 'user' },
-        reason: 'Being disruptive in voice chat.',
-        timestamp: new Date(Date.now() - 15 * 60 * 1000),
-        source: 'DISCORD',
-      },
-  ],
-  'bot': [],
-};
-
-const openUserHistoryModal = (user: AuditLogUser) => {
+const openUserHistoryModal = async (user: AuditLogUser) => {
   selectedUser.value = user;
-  userModHistory.value = mockUserHistories[user.id] || [];
+  userModHistory.value = allLogs.value.filter(
+    (log) => log.executor.id === user.id || log.target.id === user.id
+  );
   isHistoryModalOpen.value = true;
+
+  const guildId = String(route.params.guildId || '');
+  if (!guildId) return;
+  try {
+    const { data } = await auditEndpoints.logsByUser(guildId, user.id, { limit: 50 });
+    const mapped = mapAuditPayload(data);
+    if (mapped.length) userModHistory.value = mapped;
+  } catch {
+    // Keep the locally filtered history if Discord's user filter is unavailable.
+  }
 };
 
 const isDetailModalOpen = ref(false);
@@ -242,41 +269,25 @@ const openDetailModal = (log: AuditLogEntry) => {
   isDetailModalOpen.value = true;
 };
 
-// Real-time updates
-let realTimeInterval: number | undefined;
-
-const possibleActions = ['MESSAGE_DELETE', 'ROLE_UPDATE', 'MEMBER_KICK', 'MEMBER_BAN_ADD'];
-const possibleTargets = [
-    { id: 'channel-general', name: 'general', type: 'channel' },
-    { id: 'user-newbie', name: 'Newbie', type: 'user' },
-];
-const possibleExecutors = [
-    { id: 'mod1', name: 'Leo' },
-    { id: 'bot', name: 'Bubbles' },
-    { id: 'admin1', name: 'Zeta' },
-];
-
-onMounted(() => {
+onMounted(async () => {
   if (route.query.userId && typeof route.query.userId === 'string') {
     searchQuery.value = route.query.userId;
   }
-    
-  realTimeInterval = window.setInterval(() => {
-    const newLog: AuditLogEntry = {
-      id: Math.random().toString(36).substring(2, 12),
-      executor: possibleExecutors[Math.floor(Math.random() * possibleExecutors.length)],
-      action: possibleActions[Math.floor(Math.random() * possibleActions.length)],
-      target: possibleTargets[Math.floor(Math.random() * possibleTargets.length)],
-      reason: 'A new event occurred in real-time.',
-      timestamp: new Date(),
-      source: Math.random() > 0.5 ? 'BUBBLES' : 'DISCORD',
-    };
-    mockLogs.value.unshift(newLog);
-  }, 8000); // Add a new log every 8 seconds
-});
 
-onUnmounted(() => {
-  clearInterval(realTimeInterval);
+  const guildId = String(route.params.guildId || '');
+  if (!guildId) {
+    loadError.value = 'Missing server id.';
+    return;
+  }
+
+  loading.value = true;
+  try {
+    const { data } = await auditEndpoints.getLogs(guildId, { limit: 100 });
+    allLogs.value = mapAuditPayload(data);
+  } catch (error: any) {
+    loadError.value = error.response?.data?.error || 'Could not load audit logs.';
+  } finally {
+    loading.value = false;
+  }
 });
 </script>
-```

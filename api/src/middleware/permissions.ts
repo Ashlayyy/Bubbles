@@ -4,6 +4,7 @@ import type { AuthRequest } from './auth.js';
 import { discordApi } from '../services/discordApiService.js';
 import { createLogger } from '../types/shared.js';
 import { permissionService } from '../services/permissionService.js';
+import { getPrismaClient } from '../services/databaseService.js';
 
 // Discord permission flags
 export const DiscordPermissions = {
@@ -133,11 +134,36 @@ const GUILD_ROLES_TTL = 5 * 60 * 1000; // 5 minutes
 
 const userPermsCache: Map<string, CacheEntry<string>> = new Map();
 const guildRolesCache: Map<string, CacheEntry<any[]>> = new Map();
+const memberRolesCache: Map<string, CacheEntry<string[]>> = new Map();
 
 // Map to track in-flight permission fetches to avoid duplicate Discord API requests
 const userPermsInFlight: Map<string, Promise<string>> = new Map();
 
 const permLogger = createLogger('permissions');
+
+async function getMemberRoleIds(
+	guildId: string,
+	userId: string
+): Promise<string[]> {
+	const cacheKey = `${guildId}:${userId}:roles`;
+	const cached = memberRolesCache.get(cacheKey);
+	if (cached && cached.expires > Date.now()) {
+		return cached.value;
+	}
+
+	try {
+		const member = await discordApi.getGuildMember(guildId, userId);
+		const roles = [guildId, ...((member.roles as string[]) || [])];
+		memberRolesCache.set(cacheKey, {
+			value: roles,
+			expires: Date.now() + USER_PERMS_TTL,
+		});
+		return roles;
+	} catch (error) {
+		permLogger.warn('getMemberRoleIds failed', error);
+		return [guildId];
+	}
+}
 
 // Helper to get effective permission bitfield for a user in a guild
 async function getUserGuildPermissions(
@@ -394,13 +420,51 @@ type PermissionIdentifier = string;
 
 // Placeholder for a custom permission system (e.g. database-stored). Returns true if
 // the user possesses the custom permission in the relevant guild context.
+function customNodesInclude(nodes: unknown, permission: string): boolean {
+	if (!nodes) return false;
+	const aliases = [permission, `custom:${permission}`];
+	if (Array.isArray(nodes)) {
+		return aliases.some((alias) => nodes.includes(alias));
+	}
+	if (typeof nodes === 'object') {
+		const record = nodes as Record<string, unknown>;
+		return aliases.some((alias) => Boolean(record[alias]));
+	}
+	if (typeof nodes === 'string') {
+		const parts = nodes.split(',').map((part) => part.trim());
+		return aliases.some((alias) => parts.includes(alias));
+	}
+	return false;
+}
+
 async function hasCustomPermission(
 	userId: string,
 	permission: string,
 	guildId?: string
 ): Promise<boolean> {
-	// TODO: Integrate with real permission storage layer
-	return false;
+	if (!guildId) return false;
+	try {
+		const prisma = getPrismaClient();
+		const userPerm = await prisma.userPermission.findUnique({
+			where: { guildId_userId: { guildId, userId } },
+		});
+		if (customNodesInclude(userPerm?.customNodes, permission)) {
+			return true;
+		}
+
+		const roleIds = await getMemberRoleIds(guildId, userId);
+		if (roleIds.length === 0) return false;
+
+		const rolePerms = await prisma.rolePermission.findMany({
+			where: { guildId, roleId: { in: roleIds } },
+		});
+		return rolePerms.some((rolePerm: { customNodes?: unknown }) =>
+			customNodesInclude(rolePerm.customNodes, permission)
+		);
+	} catch (error) {
+		permLogger.error('hasCustomPermission failed', error);
+		return false;
+	}
 }
 
 export async function checkUniversalPermissions(

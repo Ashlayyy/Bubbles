@@ -36,7 +36,7 @@
 						<p class="text-2xl font-bold text-foreground">
 							{{ formatNumber(analytics.totalMessages) }}
 						</p>
-						<p class="text-xs text-green-500">+12% from last period</p>
+						<p class="text-xs text-muted-foreground">Current period</p>
 					</div>
 					<div
 						class="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center"
@@ -68,7 +68,7 @@
 						<p class="text-2xl font-bold text-foreground">
 							{{ formatNumber(analytics.activeUsers) }}
 						</p>
-						<p class="text-xs text-green-500">+8% from last period</p>
+						<p class="text-xs text-muted-foreground">Current period</p>
 					</div>
 					<div
 						class="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center"
@@ -133,7 +133,7 @@
 						<p class="text-2xl font-bold text-foreground">
 							{{ analytics.engagementRate }}%
 						</p>
-						<p class="text-xs text-red-500">-2% from last period</p>
+						<p class="text-xs text-muted-foreground">Current period</p>
 					</div>
 					<div
 						class="w-12 h-12 bg-orange-500/20 rounded-lg flex items-center justify-center"

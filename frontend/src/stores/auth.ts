@@ -18,13 +18,50 @@ interface AuthResponse {
 	expiresIn: number;
 }
 
+const TOKEN_KEY = 'bubbles.auth.token';
+const USER_KEY = 'bubbles.auth.user';
+const EXPIRES_KEY = 'bubbles.auth.expiresAt';
+
+function readStoredSession(): { token: string; user: User; expiresAt: number } | null {
+	try {
+		const storedToken = localStorage.getItem(TOKEN_KEY);
+		const storedUser = localStorage.getItem(USER_KEY);
+		const storedExpires = localStorage.getItem(EXPIRES_KEY);
+		if (!storedToken || !storedUser || !storedExpires) {
+			return null;
+		}
+		const expiresAt = Number(storedExpires);
+		if (!Number.isFinite(expiresAt) || expiresAt * 1000 < Date.now()) {
+			localStorage.removeItem(TOKEN_KEY);
+			localStorage.removeItem(USER_KEY);
+			localStorage.removeItem(EXPIRES_KEY);
+			return null;
+		}
+		return { token: storedToken, user: JSON.parse(storedUser) as User, expiresAt };
+	} catch {
+		return null;
+	}
+}
+
+function persistSession(token: string, user: User, expiresAt: number) {
+	localStorage.setItem(TOKEN_KEY, token);
+	localStorage.setItem(USER_KEY, JSON.stringify(user));
+	localStorage.setItem(EXPIRES_KEY, String(expiresAt));
+}
+
+function clearSession() {
+	localStorage.removeItem(TOKEN_KEY);
+	localStorage.removeItem(USER_KEY);
+	localStorage.removeItem(EXPIRES_KEY);
+}
+
 export const useAuthStore = defineStore('auth', () => {
-	const user = ref<User | null>(null);
-	const isAuthenticated = ref(false);
+	const stored = typeof window !== 'undefined' ? readStoredSession() : null;
+	const user = ref<User | null>(stored?.user ?? null);
+	const isAuthenticated = ref(Boolean(stored?.token));
 	const loading = ref(false);
-	const isDemoUser = ref(false);
-	const token = ref<string | null>(null);
-	const expiresAt = ref<number | null>(null);
+	const token = ref<string | null>(stored?.token ?? null);
+	const expiresAt = ref<number | null>(stored?.expiresAt ?? null);
 
 	const avatarUrl = computed(() => {
 		if (!user.value) return null;
@@ -39,24 +76,9 @@ export const useAuthStore = defineStore('auth', () => {
 		window.location.href = `${apiClient().defaults.baseURL}/auth/discord/login`;
 	};
 
-	const loginAsDemoUser = () => {
-		loading.value = true;
-		user.value = {
-			id: 'demo-user',
-			username: 'Demo User',
-			discriminator: '0000',
-			avatar: null,
-		};
-		isAuthenticated.value = true;
-		isDemoUser.value = true;
-		loading.value = false;
-	};
-
 	const logout = async () => {
 		try {
-			if (!isDemoUser.value) {
-				await apiClient().post('/auth/logout');
-			}
+			await apiClient().post('/auth/logout');
 		} catch (error) {
 			console.error('Logout failed, logging out locally:', error);
 		} finally {
@@ -64,9 +86,9 @@ export const useAuthStore = defineStore('auth', () => {
 			ws.disconnect();
 			user.value = null;
 			isAuthenticated.value = false;
-			isDemoUser.value = false;
 			token.value = null;
 			expiresAt.value = null;
+			clearSession();
 		}
 	};
 
@@ -75,18 +97,38 @@ export const useAuthStore = defineStore('auth', () => {
 		token.value = payload.token;
 		expiresAt.value = Math.floor(Date.now() / 1000) + payload.expiresIn;
 		isAuthenticated.value = true;
+		persistSession(payload.token, payload.user, expiresAt.value);
 		const ws = useWebsocketStore();
 		ws.connect(token.value);
 	};
 
+	const completeWithToken = async (jwt: string, expiresIn = 86400) => {
+		token.value = jwt;
+		expiresAt.value = Math.floor(Date.now() / 1000) + expiresIn;
+		const { data } = await apiClient().get('/auth/me');
+		const payload =
+			(data as { data?: User; user?: User }).data ??
+			(data as { user?: User }).user;
+		if (!payload) {
+			throw new Error('Invalid user data');
+		}
+		user.value = payload as User;
+		isAuthenticated.value = true;
+		persistSession(jwt, payload as User, expiresAt.value);
+		const ws = useWebsocketStore();
+		ws.connect(jwt);
+	};
+
 	const refreshToken = async () => {
-		// Call refresh endpoint regardless of existing token
 		try {
 			const { data } = await apiClient().get('/auth/refresh');
 			const payload =
 				(data as { data?: AuthResponse }).data ?? (data as AuthResponse);
 			token.value = payload.token;
 			expiresAt.value = Math.floor(Date.now() / 1000) + payload.expiresIn;
+			if (user.value && token.value && expiresAt.value) {
+				persistSession(token.value, user.value, expiresAt.value);
+			}
 			const ws = useWebsocketStore();
 			ws.reauth(token.value);
 		} catch (err) {
@@ -95,9 +137,21 @@ export const useAuthStore = defineStore('auth', () => {
 	};
 
 	const checkAuth = async () => {
-		if (isAuthenticated.value) return;
+		if (isAuthenticated.value && user.value && token.value) {
+			return;
+		}
 
-		if (isDemoUser.value) return;
+		const existing = readStoredSession();
+		if (existing) {
+			token.value = existing.token;
+			user.value = existing.user;
+			expiresAt.value = existing.expiresAt;
+		}
+
+		if (!token.value) {
+			isAuthenticated.value = false;
+			return;
+		}
 
 		loading.value = true;
 		try {
@@ -108,14 +162,16 @@ export const useAuthStore = defineStore('auth', () => {
 			if (!payload) throw new Error('Invalid user data');
 			user.value = payload as User;
 			isAuthenticated.value = true;
-			isDemoUser.value = false;
-			const ws = useWebsocketStore();
-			if (token.value) ws.connect(token.value);
-		} catch (error) {
-			if (!isDemoUser.value) {
-				user.value = null;
-				isAuthenticated.value = false;
+			if (token.value && expiresAt.value) {
+				persistSession(token.value, payload as User, expiresAt.value);
 			}
+			const ws = useWebsocketStore();
+			ws.connect(token.value);
+		} catch (error) {
+			user.value = null;
+			isAuthenticated.value = false;
+			token.value = null;
+			clearSession();
 		} finally {
 			loading.value = false;
 		}
@@ -125,15 +181,14 @@ export const useAuthStore = defineStore('auth', () => {
 		user,
 		isAuthenticated,
 		loading,
-		isDemoUser,
 		token,
 		expiresAt,
 		avatarUrl,
 		login,
-		loginAsDemoUser,
 		logout,
 		refreshToken,
 		checkAuth,
 		setSession,
+		completeWithToken,
 	};
 });

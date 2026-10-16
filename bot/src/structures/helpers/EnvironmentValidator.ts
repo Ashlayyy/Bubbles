@@ -1,30 +1,34 @@
+import { isConfiguredEnv } from "../../functions/general/environment.js";
 import { isOnlyDigits } from "../../functions/general/strings.js";
 
 export function validateRequired(): void {
-  // Always required environment variables
-  if (!process.env.DISCORD_TOKEN) {
-    throw new ReferenceError("DISCORD_TOKEN environment variable was not set!");
+  const missing: string[] = [];
+  if (!isConfiguredEnv(process.env.DISCORD_TOKEN)) {
+    missing.push("DISCORD_TOKEN");
   }
-  if (!process.env.DB_URL) {
-    throw new ReferenceError("DB_URL environment variable was not set!");
+  if (!isConfiguredEnv(process.env.DB_URL)) {
+    missing.push("DB_URL");
   }
-  if (!process.env.DISCORD_CLIENT_ID) {
-    throw new ReferenceError("DISCORD_CLIENT_ID environment variable was not set!");
+  if (!isConfiguredEnv(process.env.DISCORD_CLIENT_ID)) {
+    missing.push("DISCORD_CLIENT_ID");
+  }
+  if (missing.length > 0) {
+    throw new ReferenceError(`${missing.join(", ")} environment variable(s) were not set!`);
   }
 
-  // Validate form of DISCORD_CLIENT_ID
-  if (!isOnlyDigits(process.env.DISCORD_CLIENT_ID)) {
+  const clientId = process.env.DISCORD_CLIENT_ID ?? "";
+  if (!isOnlyDigits(clientId)) {
     throw new TypeError("DISCORD_CLIENT_ID environment variable must contain only digits!");
   }
 }
 
 export function validateDevelopment(): void {
-  if (!process.env.TEST_GUILD_ID) {
-    throw new ReferenceError("TEST_GUILD_ID environment variable was not set!");
+  if (!isConfiguredEnv(process.env.TEST_GUILD_ID)) {
+    console.warn("TEST_GUILD_ID is not set; development command registration will be skipped.");
+    return;
   }
 
-  // Validate form of TEST_GUILD_ID
-  if (!isOnlyDigits(process.env.TEST_GUILD_ID)) {
+  if (!isOnlyDigits(process.env.TEST_GUILD_ID ?? "")) {
     throw new TypeError("TEST_GUILD_ID environment variable must contain only digits!");
   }
 }
