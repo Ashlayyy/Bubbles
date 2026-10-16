@@ -1,85 +1,92 @@
-import { defineStore } from 'pinia';
-import { computed, ref } from 'vue';
-import { remindersEndpoints } from '@/lib/endpoints/reminders';
+
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
 
 export interface Reminder {
-  id: string;
-  userId: string;
-  username: string;
-  channelId: string;
-  channelName: string;
-  message: string;
-  createdAt: string;
-  remindAt: string;
-  completed: boolean;
-}
-
-function unwrap<T>(payload: unknown): T {
-  return ((payload as { data?: T })?.data ?? payload) as T;
-}
-
-function mapReminder(raw: Record<string, unknown>): Reminder {
-  const reminderTime = raw.reminderTime || raw.triggerAt || raw.remindAt;
-  return {
-    id: String(raw.id),
-    userId: String(raw.userId ?? ''),
-    username: String(raw.username ?? raw.userId ?? 'user'),
-    channelId: String(raw.channelId ?? ''),
-    channelName: String(raw.channelName ?? raw.channelId ?? ''),
-    message: String(raw.content ?? raw.message ?? ''),
-    createdAt: String(raw.createdAt ?? new Date().toISOString()),
-    remindAt: String(reminderTime ?? ''),
-    completed: String(raw.status ?? '').toUpperCase() === 'COMPLETED' || Boolean(raw.completed),
-  };
+  id: string
+  userId: string
+  username: string
+  channelId: string
+  channelName: string
+  message: string
+  createdAt: string
+  remindAt: string
+  completed: boolean
+  recurring?: {
+    enabled: boolean
+    interval: 'daily' | 'weekly' | 'monthly'
+    count?: number
+  }
 }
 
 export const useRemindersStore = defineStore('reminders', () => {
-  const reminders = ref<Reminder[]>([]);
-  const guildId = ref('');
+  const reminders = ref<Reminder[]>([
+    {
+      id: '1',
+      userId: '123456789',
+      username: 'JohnDoe',
+      channelId: '987654321',
+      channelName: 'general',
+      message: 'Check server analytics',
+      createdAt: '2024-01-15T10:00:00Z',
+      remindAt: '2024-01-22T10:00:00Z',
+      completed: false,
+      recurring: {
+        enabled: true,
+        interval: 'weekly'
+      }
+    },
+    {
+      id: '2',
+      userId: '234567890',
+      username: 'AdminUser',
+      channelId: '876543210',
+      channelName: 'staff',
+      message: 'Review moderation cases',
+      createdAt: '2024-01-16T14:30:00Z',
+      remindAt: '2024-01-17T14:30:00Z',
+      completed: true
+    }
+  ])
 
-  const activeReminders = computed(() => reminders.value.filter((item) => !item.completed));
-  const completedReminders = computed(() => reminders.value.filter((item) => item.completed));
+  const activeReminders = computed(() => 
+    reminders.value.filter(r => !r.completed)
+  )
 
-  const load = async (id: string) => {
-    guildId.value = id;
-    const res = await remindersEndpoints.getReminders(id);
-    const payload = unwrap<{ reminders?: Record<string, unknown>[] } | Record<string, unknown>[]>(
-      res.data
-    );
-    const list = Array.isArray(payload) ? payload : payload.reminders ?? [];
-    reminders.value = list.map((item) => mapReminder(item));
-  };
+  const completedReminders = computed(() => 
+    reminders.value.filter(r => r.completed)
+  )
 
-  const addReminder = async (reminder: {
-    channelId: string;
-    message: string;
-    remindAt: string;
-  }) => {
-    await remindersEndpoints.create(guildId.value, {
-      channelId: reminder.channelId,
-      content: reminder.message,
-      triggerAt: reminder.remindAt,
-    });
-    await load(guildId.value);
-  };
+  const addReminder = (reminder: Omit<Reminder, 'id' | 'createdAt' | 'completed'>) => {
+    const newReminder: Reminder = {
+      ...reminder,
+      id: Date.now().toString(),
+      createdAt: new Date().toISOString(),
+      completed: false
+    }
+    reminders.value.push(newReminder)
+  }
 
-  const completeReminder = async (id: string) => {
-    await remindersEndpoints.cancel(guildId.value, id);
-    await load(guildId.value);
-  };
+  const completeReminder = (id: string) => {
+    const reminder = reminders.value.find(r => r.id === id)
+    if (reminder) {
+      reminder.completed = true
+    }
+  }
 
-  const deleteReminder = async (id: string) => {
-    await remindersEndpoints.delete(guildId.value, id);
-    await load(guildId.value);
-  };
+  const deleteReminder = (id: string) => {
+    const index = reminders.value.findIndex(r => r.id === id)
+    if (index !== -1) {
+      reminders.value.splice(index, 1)
+    }
+  }
 
   return {
     reminders,
     activeReminders,
     completedReminders,
-    load,
     addReminder,
     completeReminder,
-    deleteReminder,
-  };
-});
+    deleteReminder
+  }
+})

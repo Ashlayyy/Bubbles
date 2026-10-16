@@ -71,13 +71,13 @@ export function useReactionRoles() {
 				await reactionRolesEndpoints.updateReactionRole(
 					guildStore.currentGuild.id,
 					messageData.id,
-					{ ...messageData }
+					messageData
 				);
 			} else {
 				// Create
 				await reactionRolesEndpoints.createReactionRole(
 					guildStore.currentGuild.id,
-					{ ...messageData }
+					messageData
 				);
 			}
 			await fetchReactionRoles();

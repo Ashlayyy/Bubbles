@@ -2,7 +2,6 @@ import { EventEmitter } from "events";
 import { SignJWT } from "jose";
 import { WebSocket } from "ws";
 import logger from "../logger.js";
-import { executeBotAction, normalizeIncomingAction } from "./botActionExecutor.js";
 import type Client from "../structures/Client.js";
 
 interface WebSocketMessage {
@@ -213,39 +212,41 @@ export class WebSocketService extends EventEmitter {
       return;
     }
 
-    const action = normalizeIncomingAction(message);
-    if (!action?.command) {
-      logger.warn("Received command without a usable command field", {
-        type: message.type,
-        event: message.event,
-      });
-      return;
-    }
+    try {
+      const command = message.data as BotCommand;
+      if (!command.command) {
+        logger.warn("Received command without command field");
+        return;
+      }
 
-    logger.info(`Executing bot command: ${action.command}`);
-    const result = await executeBotAction(this.client, action);
+      logger.info(`Executing bot command: ${command.command}`);
 
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(
-        JSON.stringify({
-          type: "BOT_EVENT",
-          event: result.success ? "BOT_COMMAND_RESPONSE" : "BOT_COMMAND_FAILED",
-          data: {
-            requestId: message.messageId,
-            command: action.command,
-            success: result.success,
-            error: result.error,
-            result: result.data,
-          },
-          guildId: action.guildId,
-          timestamp: Date.now(),
-          messageId: message.messageId,
-        })
-      );
-    }
+      switch (command.command) {
+        case "SEND_MESSAGE":
+          await this.executeSendMessage(command);
+          break;
 
-    if (!result.success) {
-      logger.warn(`Bot command ${action.command} failed: ${result.error ?? "unknown"}`);
+        case "BAN_USER":
+          await this.executeBanUser(command);
+          break;
+
+        case "KICK_USER":
+          await this.executeKickUser(command);
+          break;
+
+        case "DELETE_MESSAGE":
+          await this.executeDeleteMessage(command);
+          break;
+
+        case "TIMEOUT_USER":
+          await this.executeTimeoutUser(command);
+          break;
+
+        default:
+          logger.warn(`Unknown bot command: ${command.command}`);
+      }
+    } catch (error) {
+      logger.error("Error executing bot command:", error);
     }
   }
 

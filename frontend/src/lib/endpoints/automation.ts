@@ -36,12 +36,4 @@ export const automationEndpoints = {
 
 	getAvailableActions: (guildId: string) =>
 		apiClient().get(`/guilds/${guildId}/automation/actions`),
-
-	getDiscordRules: (guildId: string) =>
-		apiClient().get(`/guilds/${guildId}/automation/discord`),
-
-	toggleDiscordRule: (guildId: string, ruleId: string, enabled?: boolean) =>
-		apiClient().patch(`/guilds/${guildId}/automation/discord/${ruleId}`, {
-			enabled,
-		}),
 };

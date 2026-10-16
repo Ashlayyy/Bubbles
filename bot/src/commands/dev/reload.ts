@@ -1,28 +1,29 @@
 import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
-import { createRequire } from "node:module";
-
 import logger from "../../logger.js";
-import type { CommandConfig, CommandResponse } from "../_core/index.js";
-import { DevCommand } from "../_core/specialized/DevCommand.js";
+import { BaseCommand } from "../_core/BaseCommand.js";
+import type { CommandResponse } from "../_core/types.js";
 
-const require = createRequire(import.meta.url);
+export const builder = new SlashCommandBuilder()
+  .setName("reload")
+  .setDescription("[DEV] Hot-reload commands and events")
+  .addStringOption((option) =>
+    option
+      .setName("type")
+      .setDescription("What to reload")
+      .setRequired(false)
+      .addChoices(
+        { name: "commands", value: "commands" },
+        { name: "events", value: "events" },
+        { name: "all", value: "all" }
+      )
+  )
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-class ReloadCommand extends DevCommand {
-  constructor() {
-    const config: CommandConfig = {
-      name: "reload",
-      description: "[DEV] Hot-reload commands and events",
-      category: "dev",
-      ephemeral: true,
-      guildOnly: false,
-    };
-
-    super(config);
-  }
+export default class ReloadCommand extends BaseCommand {
+  enabledOnDev = true;
 
   protected async execute(): Promise<CommandResponse> {
-    this.validateDevPermissions();
-
+    // Only allow in development mode
     if (!this.client.devMode) {
       return {
         content: "❌ This command is only available in development mode!",
@@ -61,12 +62,17 @@ class ReloadCommand extends DevCommand {
   private async reloadCommands(): Promise<void> {
     logger.info("Reloading commands...");
 
+    // Clear existing commands
     this.client.commands.clear();
     this.client.commandCategories.length = 0;
-    this.invalidateModules((key) => key.includes("/commands/") && !key.includes("/_core/") && !key.includes("/_shared/"));
 
+    // Invalidate module cache for command files
+    this.invalidateCommandModules();
+
+    // Reload commands using the command loader
     const { commands, commandCategories } = await (this.client as any).commandLoader.loadCommands();
 
+    // Update client collections
     commands.forEach((command: any, name: string) => this.client.commands.set(name, command));
     this.client.commandCategories.push(...commandCategories);
 
@@ -76,40 +82,47 @@ class ReloadCommand extends DevCommand {
   private async reloadEvents(): Promise<void> {
     logger.info("Reloading events...");
 
+    // Remove all existing listeners
     this.client.removeAllListeners();
-    this.invalidateModules((key) => key.includes("/events/"));
+
+    // Invalidate module cache for event files
+    this.invalidateEventModules();
+
+    // Reload events using the event loader
     await (this.client as any).eventLoader.loadEvents(this.client);
 
     logger.info("Events reloaded successfully");
   }
 
-  private invalidateModules(filter: (key: string) => boolean): void {
-    const moduleKeys = Object.keys(require.cache);
-    const matched = moduleKeys.filter(filter);
+  private invalidateCommandModules(): void {
+    // Get all loaded modules and invalidate command-related ones
+    const moduleCache = require.cache;
 
-    for (const moduleKey of matched) {
+    const moduleKeys = Object.keys(moduleCache);
+    const commandModules = moduleKeys.filter(
+      (key) => key.includes("/commands/") && !key.includes("/_core/") && !key.includes("/_shared/")
+    );
+
+    for (const moduleKey of commandModules) {
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete require.cache[moduleKey];
+      delete moduleCache[moduleKey];
     }
 
-    logger.debug(`Invalidated ${matched.length} modules from cache`);
+    logger.debug(`Invalidated ${commandModules.length} command modules from cache`);
+  }
+
+  private invalidateEventModules(): void {
+    // Get all loaded modules and invalidate event-related ones
+    const moduleCache = require.cache;
+
+    const moduleKeys = Object.keys(moduleCache);
+    const eventModules = moduleKeys.filter((key) => key.includes("/events/"));
+
+    for (const moduleKey of eventModules) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete moduleCache[moduleKey];
+    }
+
+    logger.debug(`Invalidated ${eventModules.length} event modules from cache`);
   }
 }
-
-export default new ReloadCommand();
-
-export const builder = new SlashCommandBuilder()
-  .setName("reload")
-  .setDescription("[DEV] Hot-reload commands and events")
-  .addStringOption((option) =>
-    option
-      .setName("type")
-      .setDescription("What to reload")
-      .setRequired(false)
-      .addChoices(
-        { name: "commands", value: "commands" },
-        { name: "events", value: "events" },
-        { name: "all", value: "all" }
-      )
-  )
-  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);

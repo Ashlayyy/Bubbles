@@ -6,7 +6,6 @@
 	"type": "module",
 	"scripts": {
 		"build": "npm --prefix ../shared run build && tsc",
-		"predev": "npm --prefix ../shared run db:generate && npm --prefix ../shared run build",
 		"dev": "nodemon",
 		"start": "node dist/index.js",
 		"setup": "npm install && npm run build",

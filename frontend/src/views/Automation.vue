@@ -191,12 +191,12 @@
           <div class="bg-secondary/50 rounded-lg p-4">
             <h4 class="font-semibold text-foreground">Actions Today</h4>
             <p class="text-2xl font-bold text-primary">{{ autoModAnalytics.actionsToday }}</p>
-            <p class="text-sm text-muted-foreground">Current period</p>
+            <p class="text-sm text-green-500">-15% from yesterday</p>
           </div>
           <div class="bg-secondary/50 rounded-lg p-4">
             <h4 class="font-semibold text-foreground">False Positives</h4>
             <p class="text-2xl font-bold text-yellow-600">{{ autoModAnalytics.falsePositives }}</p>
-            <p class="text-sm text-muted-foreground">Not tracked separately</p>
+            <p class="text-sm text-red-500">+2% this week</p>
           </div>
           <div class="bg-secondary/50 rounded-lg p-4">
             <h4 class="font-semibold text-foreground">Top Trigger</h4>
@@ -206,7 +206,7 @@
           <div class="bg-secondary/50 rounded-lg p-4">
             <h4 class="font-semibold text-foreground">Accuracy Rate</h4>
             <p class="text-2xl font-bold text-green-600">{{ autoModAnalytics.accuracyRate }}%</p>
-            <p class="text-sm text-muted-foreground">Successful executions</p>
+            <p class="text-sm text-green-500">+3% this month</p>
           </div>
         </div>
       </div>
@@ -413,14 +413,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
-import { automationEndpoints } from '@/lib/endpoints/automation'
+import { ref } from 'vue'
 import { useToastStore } from '@/stores/toast'
 
 const toastStore = useToastStore()
-const route = useRoute()
-const guildId = () => String(route.params.guildId || '')
 
 const activeTab = ref('discord-automod')
 const showAutoModSetupModal = ref(false)
@@ -428,261 +424,198 @@ const showRuleModal = ref(false)
 const showScheduleModal = ref(false)
 const showTriggerModal = ref(false)
 const showTemplateModal = ref(false)
-const loadError = ref('')
 
-const triggerTypeNames: Record<number, string> = {
-  1: 'Keyword',
-  3: 'Spam',
-  4: 'Keyword Preset',
-  5: 'Mention Spam',
-  6: 'Member Profile',
-}
-
-const discordAutoModRules = ref<Array<{
-  id: string
-  name: string
-  description: string
-  enabled: boolean
-  triggerType: string
-  actions: string[]
-  triggerCount: number
-}>>([])
+// Discord AutoMod Integration
+const discordAutoModRules = ref([
+  {
+    id: '1',
+    name: 'Spam Prevention',
+    description: 'Detects and prevents spam messages',
+    enabled: true,
+    triggerType: 'Spam',
+    actions: ['Delete Message', 'Timeout User'],
+    triggerCount: 156
+  },
+  {
+    id: '2',
+    name: 'Keyword Filter',
+    description: 'Blocks messages containing prohibited words',
+    enabled: true,
+    triggerType: 'Keyword',
+    actions: ['Delete Message', 'Flag for Review'],
+    triggerCount: 89
+  },
+  {
+    id: '3',
+    name: 'Mention Spam',
+    description: 'Prevents excessive mentions in messages',
+    enabled: false,
+    triggerType: 'Mention Spam',
+    actions: ['Delete Message', 'Warn User'],
+    triggerCount: 23
+  }
+])
 
 const autoModExtensions = ref({
-  contextAnalysis: false,
-  advancedSpam: false,
+  contextAnalysis: true,
+  advancedSpam: true,
   escalation: false,
-  customKeywords: false
+  customKeywords: true
 })
 
 const autoModAnalytics = ref({
-  actionsToday: 0,
-  falsePositives: 0,
-  topTrigger: 'None',
-  topTriggerCount: 0,
-  accuracyRate: 0
+  actionsToday: 47,
+  falsePositives: 3,
+  topTrigger: 'Spam Prevention',
+  topTriggerCount: 156,
+  accuracyRate: 94
 })
 
-const customAutoModRules = ref<Array<{
-  id: string
-  name: string
-  description: string
-  trigger: string
-  action: string
-  condition: string
-  enabled: boolean
-  triggerCount: number
-}>>([])
+// Custom Rules
+const customAutoModRules = ref([
+  {
+    id: '1',
+    name: 'Link Spam Detection',
+    description: 'Advanced detection of suspicious links and spam patterns',
+    trigger: 'Multiple links in short time',
+    action: 'Delete + timeout',
+    condition: 'User posts >3 links in 30s',
+    enabled: true,
+    triggerCount: 45
+  },
+  {
+    id: '2',
+    name: 'Raid Protection',
+    description: 'Detects coordinated raids and mass join events',
+    trigger: 'Mass user join',
+    action: 'Lock server + alert staff',
+    condition: '>10 users join in 60s',
+    enabled: true,
+    triggerCount: 12
+  }
+])
 
-const scheduledEvents = ref<Array<{
-  id: string
-  name: string
-  description: string
-  type: string
-  schedule: string
-  nextRun: Date
-  enabled: boolean
-}>>([])
+// Scheduled Events
+const scheduledEvents = ref([
+  {
+    id: '1',
+    name: 'Daily Announcements',
+    description: 'Send daily server announcements',
+    type: 'Message',
+    schedule: 'Daily at 9:00 AM',
+    nextRun: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    enabled: true
+  },
+  {
+    id: '2',
+    name: 'Weekly Role Rotation',
+    description: 'Rotate featured member role',
+    type: 'Role Assignment',
+    schedule: 'Weekly on Sunday',
+    nextRun: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    enabled: false
+  }
+])
 
-const triggerActions = ref<Array<{
-  id: string
-  name: string
-  description: string
-  condition: string
-  action: string
-  enabled: boolean
-  triggerCount: number
-  lastTriggered: Date
-}>>([])
+// Trigger Actions
+const triggerActions = ref([
+  {
+    id: '1',
+    name: 'Welcome New Members',
+    description: 'Send welcome message when user joins',
+    condition: 'User joins server',
+    action: 'Send welcome message',
+    enabled: true,
+    triggerCount: 234,
+    lastTriggered: new Date(Date.now() - 2 * 60 * 60 * 1000)
+  },
+  {
+    id: '2',
+    name: 'Auto-Role Assignment',
+    description: 'Assign role when user reacts',
+    condition: 'User reacts with 👍',
+    action: 'Assign Member role',
+    enabled: true,
+    triggerCount: 89,
+    lastTriggered: new Date(Date.now() - 30 * 60 * 1000)
+  }
+])
 
-const messageTemplates = ref<Array<{
-  id: string
-  name: string
-  category: string
-  content: string
-  usageCount: number
-}>>([])
+// Message Templates
+const messageTemplates = ref([
+  {
+    id: '1',
+    name: 'Welcome Message',
+    category: 'Greetings',
+    content: 'Welcome to our server, {{user}}! Please read the rules and enjoy your stay.',
+    usageCount: 156
+  },
+  {
+    id: '2',
+    name: 'Rule Reminder',
+    category: 'Moderation',
+    content: 'Please remember to follow our server rules. You can find them in #rules.',
+    usageCount: 89
+  },
+  {
+    id: '3',
+    name: 'Event Announcement',
+    category: 'Events',
+    content: '🎉 Exciting event coming up! Join us for {{event_name}} on {{date}}.',
+    usageCount: 23
+  }
+])
 
 const formatDate = (date: Date) => {
-  return new Date(date).toLocaleString()
+  return date.toLocaleString()
 }
 
-function unwrap(payload: any) {
-  return payload?.data ?? payload
-}
-
-function stringifyTrigger(trigger: unknown) {
-  if (typeof trigger === 'string') return trigger
-  if (trigger && typeof trigger === 'object') {
-    const obj = trigger as Record<string, unknown>
-    return String(obj.type ?? obj.name ?? JSON.stringify(trigger))
-  }
-  return 'Unknown'
-}
-
-function stringifyActions(actions: unknown) {
-  if (Array.isArray(actions)) {
-    return actions
-      .map((action) => {
-        if (typeof action === 'string') return action
-        if (action && typeof action === 'object') {
-          const obj = action as Record<string, unknown>
-          return String(obj.type ?? obj.name ?? JSON.stringify(action))
-        }
-        return String(action)
-      })
-      .join(', ')
-  }
-  return String(actions ?? 'None')
-}
-
-async function loadAutomation() {
-  const id = guildId()
-  if (!id) return
-  try {
-    const [discordRes, rulesRes, statsRes] = await Promise.all([
-      automationEndpoints.getDiscordRules(id).catch(() => null),
-      automationEndpoints.getRules(id),
-      automationEndpoints.stats(id, { period: '7d' }).catch(() => null),
-    ])
-
-    const discord = unwrap(discordRes?.data)
-    discordAutoModRules.value = (discord?.rules ?? []).map((rule: any) => ({
-      id: rule.id,
-      name: rule.name,
-      description: `Discord AutoMod • event ${rule.eventType ?? ''}`,
-      enabled: Boolean(rule.enabled),
-      triggerType: triggerTypeNames[rule.triggerType] ?? String(rule.triggerType ?? 'Unknown'),
-      actions: Array.isArray(rule.actions)
-        ? rule.actions.map((action: any) => String(action.type ?? action))
-        : [],
-      triggerCount: Number(rule.triggerCount ?? 0),
-    }))
-    autoModAnalytics.value.actionsToday = Number(discord?.analytics?.actionsToday ?? 0)
-    autoModAnalytics.value.topTrigger = discordAutoModRules.value[0]?.name ?? 'None'
-    autoModAnalytics.value.topTriggerCount = discordAutoModRules.value[0]?.triggerCount ?? 0
-
-    const rulesPayload = unwrap(rulesRes.data)
-    const rules = Array.isArray(rulesPayload) ? rulesPayload : rulesPayload?.rules ?? []
-    customAutoModRules.value = rules.map((rule: any) => ({
-      id: rule.id,
-      name: rule.name,
-      description: rule.description || '',
-      trigger: stringifyTrigger(rule.trigger),
-      action: stringifyActions(rule.actions),
-      condition: stringifyTrigger(rule.conditions),
-      enabled: Boolean(rule.enabled),
-      triggerCount: Number(rule.currentExecutions ?? 0),
-    }))
-
-    scheduledEvents.value = rules
-      .filter((rule: any) => stringifyTrigger(rule.trigger).toUpperCase().includes('SCHEDULE'))
-      .map((rule: any) => ({
-        id: rule.id,
-        name: rule.name,
-        description: rule.description || '',
-        type: stringifyActions(rule.actions),
-        schedule: stringifyTrigger(rule.trigger),
-        nextRun: rule.lastExecuted ? new Date(rule.lastExecuted) : new Date(),
-        enabled: Boolean(rule.enabled),
-      }))
-
-    triggerActions.value = rules.map((rule: any) => ({
-      id: rule.id,
-      name: rule.name,
-      description: rule.description || '',
-      condition: stringifyTrigger(rule.trigger),
-      action: stringifyActions(rule.actions),
-      enabled: Boolean(rule.enabled),
-      triggerCount: Number(rule.currentExecutions ?? 0),
-      lastTriggered: rule.lastExecuted ? new Date(rule.lastExecuted) : new Date(0),
-    }))
-
-    messageTemplates.value = rules
-      .filter((rule: any) => String(rule.category || '').toLowerCase() === 'templates')
-      .map((rule: any) => ({
-        id: rule.id,
-        name: rule.name,
-        category: rule.category || 'General',
-        content: stringifyActions(rule.actions),
-        usageCount: Number(rule.currentExecutions ?? 0),
-      }))
-
-    const stats = unwrap(statsRes?.data)
-    if (stats?.overview) {
-      autoModAnalytics.value.accuracyRate = Number(stats.overview.successRate ?? 0)
-      autoModAnalytics.value.falsePositives = Math.max(
-        0,
-        Number(stats.overview.totalExecutions ?? 0) - Number(stats.overview.successfulExecutions ?? 0)
-      )
-    }
-  } catch (error: any) {
-    loadError.value = error.response?.data?.error || 'Could not load automation.'
-    toastStore.addToast(loadError.value, 'error')
-  }
-}
-
-const toggleAutoModRule = async (id: string) => {
+const toggleAutoModRule = (id: string) => {
   const rule = discordAutoModRules.value.find(r => r.id === id)
-  if (!rule) return
-  try {
-    await automationEndpoints.toggleDiscordRule(guildId(), id, !rule.enabled)
+  if (rule) {
     rule.enabled = !rule.enabled
-    toastStore.addToast(`AutoMod rule "${rule.name}" ${rule.enabled ? 'enabled' : 'disabled'}`, 'success')
-  } catch (error: any) {
-    toastStore.addToast(error.response?.data?.error || 'Could not update Discord AutoMod rule', 'error')
+    toastStore.addToast(`AutoMod rule "${rule.name}" ${rule.enabled ? 'enabled' : 'disabled'}!`, 'success')
   }
 }
 
-const editAutoModRule = (_rule: any) => {
-  toastStore.addToast('Edit Discord AutoMod rules in Server Settings > AutoMod, or toggle them here.', 'info')
+const editAutoModRule = (rule: any) => {
+  console.log('Edit AutoMod rule:', rule)
+  toastStore.addToast('AutoMod rule configuration would open here', 'info')
 }
 
-const viewAutoModLogs = (_rule: any) => {
-  toastStore.addToast('AutoMod actions are written to the server audit and logging pages.', 'info')
+const viewAutoModLogs = (rule: any) => {
+  console.log('View AutoMod logs for:', rule)
+  toastStore.addToast('AutoMod logs would open here', 'info')
 }
 
-const toggleRule = async (id: string) => {
+const toggleRule = (id: string) => {
   const rule = customAutoModRules.value.find(r => r.id === id)
-  if (!rule) return
-  try {
-    await automationEndpoints.updateRule(guildId(), id, { enabled: !rule.enabled })
+  if (rule) {
     rule.enabled = !rule.enabled
-    toastStore.addToast(`Custom rule "${rule.name}" ${rule.enabled ? 'enabled' : 'disabled'}`, 'success')
-  } catch (error: any) {
-    toastStore.addToast(error.response?.data?.error || 'Could not update rule', 'error')
+    toastStore.addToast(`Custom rule "${rule.name}" ${rule.enabled ? 'enabled' : 'disabled'}!`, 'success')
   }
 }
 
-const toggleEvent = async (id: string) => {
+const toggleEvent = (id: string) => {
   const event = scheduledEvents.value.find(e => e.id === id)
-  if (!event) return
-  try {
-    await automationEndpoints.updateRule(guildId(), id, { enabled: !event.enabled })
+  if (event) {
     event.enabled = !event.enabled
-    toastStore.addToast(`Event "${event.name}" ${event.enabled ? 'enabled' : 'disabled'}`, 'success')
-  } catch (error: any) {
-    toastStore.addToast(error.response?.data?.error || 'Could not update event', 'error')
+    toastStore.addToast(`Event "${event.name}" ${event.enabled ? 'enabled' : 'disabled'}!`, 'success')
   }
 }
 
-const editEvent = (_event: any) => {
-  toastStore.addToast('Update scheduled automations from Custom Rules for now.', 'info')
+const editEvent = (event: any) => {
+  console.log('Edit event:', event)
+  toastStore.addToast('Edit event functionality would open here', 'info')
 }
 
-const useTemplate = async (template: any) => {
-  try {
-    await automationEndpoints.executeRule(guildId(), template.id)
-    template.usageCount++
-    toastStore.addToast(`Template "${template.name}" executed`, 'success')
-  } catch (error: any) {
-    toastStore.addToast(error.response?.data?.error || 'Could not run template', 'error')
-  }
+const useTemplate = (template: any) => {
+  template.usageCount++
+  toastStore.addToast(`Template "${template.name}" used successfully!`, 'success')
 }
 
-const editTemplate = (_template: any) => {
-  toastStore.addToast('Templates are automation rules in the templates category.', 'info')
+const editTemplate = (template: any) => {
+  console.log('Edit template:', template)
+  toastStore.addToast('Edit template functionality would open here', 'info')
 }
-
-onMounted(loadAutomation)
 </script>

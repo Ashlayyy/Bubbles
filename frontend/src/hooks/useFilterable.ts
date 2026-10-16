@@ -16,7 +16,7 @@ export function useFilterable<T>(items: T[] | (() => T[])) {
     
     return getItems().filter(item => {
       return filters.value.every(filter => {
-        const value = item[filter.field as keyof T]
+        const value = item[filter.field]
         const filterValue = filter.value
         
         switch (filter.operator) {
@@ -46,7 +46,7 @@ export function useFilterable<T>(items: T[] | (() => T[])) {
   })
   
   const addFilter = (filter: FilterOption<T>) => {
-    filters.value.push(filter as never)
+    filters.value.push(filter)
   }
   
   const removeFilter = (index: number) => {
@@ -54,7 +54,7 @@ export function useFilterable<T>(items: T[] | (() => T[])) {
   }
   
   const updateFilter = (index: number, filter: FilterOption<T>) => {
-    filters.value[index] = filter as never
+    filters.value[index] = filter
   }
   
   const clearFilters = () => {

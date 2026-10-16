@@ -75,8 +75,8 @@ export function useForm<T extends Record<string, any>>(options: FormOptions<T>) 
   }
   
   const resetForm = () => {
-    Object.keys(values).forEach((key) => {
-      (values as Record<string, unknown>)[key] = (initialValues as Record<string, unknown>)[key]
+    Object.keys(values).forEach(key => {
+      values[key] = initialValues[key]
     })
     Object.keys(errors).forEach(key => {
       delete errors[key]

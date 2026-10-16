@@ -280,11 +280,9 @@ const CLIENT_ID =
 	import.meta.env.VITE_APP_DISCORD_CLIENT_ID ||
 	import.meta.env.VITE_DISCORD_CLIENT ||
 	'';
+console.log(import.meta.env);
 const getInviteUrl = (guildId?: string) => {
-	// Least-privilege invite: Kick, Ban, Manage Channels/Guild, View Audit Log,
-	// Send/Manage Messages, Embed/Attach, History, Slash Commands, Threads,
-	// Moderate Members, Roles/Nicknames/Webhooks. Not Administrator (8).
-	const base = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&permissions=1429116153088&scope=bot%20applications.commands`;
+	const base = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&permissions=8&scope=bot%20applications.commands`;
 	return guildId
 		? `${base}&guild_id=${guildId}&disable_guild_select=true`
 		: base;

@@ -96,80 +96,31 @@
       </div>
       
       <div class="p-6 bg-card/50 border-t border-border rounded-b-xl flex justify-end">
-        <button @click="saveChanges" class="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-4 py-2 rounded-lg transition-colors">Save Changes</button>
+        <button class="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-4 py-2 rounded-lg transition-colors">Save Changes</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref } from 'vue';
 import DiscordItemSelector from '@/components/common/DiscordItemSelector.vue';
 import type { DiscordItem } from '@/types/discord';
-import { guildsApi } from '@/lib/endpoints';
-import { welcomeEndpoints } from '@/lib/endpoints/welcome';
-import { useToastStore } from '@/stores/toast';
 
-const route = useRoute();
-const toast = useToastStore();
-const guildId = () => route.params.guildId as string;
+const autoroleEnabled = ref(true);
 
-const autoroleEnabled = ref(false);
-const allRoles = ref<DiscordItem[]>([]);
-const assignedRoles = ref<string[]>([]);
+const allRoles = ref<DiscordItem[]>([
+  { id: 'r1', name: 'Member' },
+  { id: 'r2', name: 'Verified' },
+  { id: 'r3', name: 'Newcomer' },
+  { id: 'r4', name: 'Server Booster' },
+  { id: 'r5', name: 'Level 10+' },
+]);
+const assignedRoles = ref<string[]>(['r1']);
+
 const delayEnabled = ref(false);
 const delayTime = ref(10);
 const delayUnit = ref<'minutes' | 'hours' | 'days'>('minutes');
 const rolePersistenceEnabled = ref(false);
 const ignoreBotsEnabled = ref(true);
-
-function unwrap<T>(payload: unknown): T {
-  return ((payload as { data?: T })?.data ?? payload) as T;
-}
-
-onMounted(async () => {
-  try {
-    const [rolesRes, welcomeRes] = await Promise.all([
-      guildsApi.getGuildRoles(guildId()),
-      welcomeEndpoints.getSettings(guildId()),
-    ]);
-    const roles = unwrap<Array<{ id: string; name: string }>>(rolesRes);
-    allRoles.value = (Array.isArray(roles) ? roles : []).map((role) => ({
-      id: role.id,
-      name: role.name,
-    }));
-    const welcome = unwrap<{ welcome?: { roles?: string[]; enabled?: boolean }; extra?: Record<string, unknown> }>(
-      welcomeRes.data ?? welcomeRes
-    );
-    assignedRoles.value = welcome.welcome?.roles ?? [];
-    autoroleEnabled.value = assignedRoles.value.length > 0;
-  } catch {
-    toast.addToast('Failed to load autorole settings', 'error');
-  }
-});
-
-async function saveChanges() {
-  try {
-    await welcomeEndpoints.updateSettings(guildId(), {
-      welcome: {
-        roles: autoroleEnabled.value ? assignedRoles.value : [],
-      },
-    });
-    await guildsApi.updateGuildSettings(guildId(), {
-      config: {
-        welcomeStats: {
-          delayEnabled: delayEnabled.value,
-          delayTime: delayTime.value,
-          delayUnit: delayUnit.value,
-          persistRoles: rolePersistenceEnabled.value,
-          ignoreBots: ignoreBotsEnabled.value,
-        },
-      },
-    });
-    toast.addToast('Autorole settings saved', 'success');
-  } catch {
-    toast.addToast('Failed to save autorole settings', 'error');
-  }
-}
 </script>

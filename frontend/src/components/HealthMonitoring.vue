@@ -220,7 +220,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useToastStore } from '@/stores/toast'
-import { apiClient } from '@/lib/apiClient'
 
 const toastStore = useToastStore()
 
@@ -363,25 +362,24 @@ const formatMemory = (bytes: number) => {
   return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
 }
 
-const refreshData = async () => {
-  try {
-    const { data } = await apiClient().get('/health/system')
-    const health = (data as any)?.data ?? data
-    const overall = String(health.overall || 'unknown')
-    systemStatus.value = overall === 'healthy' ? 'Operational' : overall === 'degraded' ? 'Degraded' : 'Partial Outage'
-    const mem = health.metrics?.memoryUsage
-    if (mem?.heapUsed && mem?.heapTotal) {
-      memoryUsage.value = Math.round((mem.heapUsed / mem.heapTotal) * 100)
-    }
-    cpuUsage.value = Number(health.metrics?.cpuUsage ?? cpuUsage.value)
-    apiUsage.value = health.components?.websocket?.status === 'healthy' ? 20 : 80
+const refreshData = () => {
+  // Simulate data refresh
+  toastStore.addToast('Refreshing health data...', 'info')
+  
+  setTimeout(() => {
+    // Update random values for demo
+    memoryUsage.value = Math.floor(Math.random() * 30) + 30 // 30-60%
+    cpuUsage.value = Math.floor(Math.random() * 40) + 20 // 20-60%
+    apiUsage.value = Math.floor(Math.random() * 50) + 10 // 10-60%
+    apiRequests.value = Math.floor(apiUsage.value * 10)
     lastUpdated.value = new Date()
-    await nextTick()
+    
+    // Redraw charts
     drawResponseTimeChart()
     drawCommandUsageChart()
-  } catch (error: any) {
-    toastStore.addToast(error.response?.data?.error || 'Could not load system health', 'error')
-  }
+    
+    toastStore.addToast('Health data refreshed', 'success')
+  }, 1000)
 }
 
 const saveNotificationSettings = () => {
@@ -541,7 +539,6 @@ const drawCommandUsageChart = () => {
 
 // Draw charts when component mounts
 onMounted(async () => {
-  await refreshData()
   await nextTick()
   drawResponseTimeChart()
   drawCommandUsageChart()

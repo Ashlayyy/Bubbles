@@ -106,13 +106,6 @@ export class ConfigProcessor extends BaseProcessor<ConfigUpdateJob> {
       "ticketAccessRoleId",
       "ticketAccessPermission",
       "ticketLogChannelId",
-      "welcomeRoleIds",
-      "preferredLanguage",
-      "notify_user",
-      "reportChannelId",
-      "reportPingRoleId",
-      "levelingSettings",
-      "musicSettings",
       "logSettingsId",
       "appealSettingsId",
     ];

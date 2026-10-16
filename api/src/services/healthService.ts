@@ -2,8 +2,36 @@ import { createLogger } from '../types/shared.js';
 import { checkDatabaseHealth, getPrismaClient } from './databaseService.js';
 import { wsManager } from '../websocket/manager.js';
 import { bullMQManager } from '../queue/bullmqManager.js';
+import * as promClient from 'prom-client';
 
 const logger = createLogger('health-service');
+
+// Prometheus metrics
+const healthCheckDuration = new promClient.Histogram({
+	name: 'health_check_duration_ms',
+	help: 'Duration of health checks in milliseconds',
+	labelNames: ['component'] as const,
+	buckets: [10, 50, 100, 250, 500, 1000, 2000, 5000],
+});
+
+const healthCheckStatus = new promClient.Gauge({
+	name: 'health_check_status',
+	help: 'Health status of components (1=healthy, 0.5=degraded, 0=unhealthy)',
+	labelNames: ['component'] as const,
+});
+
+const apiRequestsTotal = new promClient.Counter({
+	name: 'api_requests_total',
+	help: 'Total API requests',
+	labelNames: ['method', 'endpoint', 'status'] as const,
+});
+
+const apiRequestDuration = new promClient.Histogram({
+	name: 'api_request_duration_ms',
+	help: 'API request duration in milliseconds',
+	labelNames: ['method', 'endpoint'] as const,
+	buckets: [10, 50, 100, 250, 500, 1000, 2000, 5000],
+});
 
 export interface ComponentHealth {
 	status: 'healthy' | 'degraded' | 'unhealthy';

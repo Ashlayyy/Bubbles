@@ -1,85 +1,71 @@
 import logger from "../logger.js";
 import { DeadLetterQueue } from "../queue/DeadLetterQueue.js";
-import { QueueWorkerService } from "../queue/QueueWorkerService.js";
-import type { UnifiedRequest, UnifiedResponse } from "../queue/types.js";
-import { executeBotAction } from "./botActionExecutor.js";
+import { ProcessorFactory } from "../queue/processors/ProcessorFactory.js";
+import type { SystemHealth, UnifiedRequest, UnifiedResponse } from "../queue/types.js";
 import type Client from "../structures/Client.js";
 
 export class UnifiedQueueService {
-  private workers: QueueWorkerService;
+  private client: Client;
   public deadLetterQueue: DeadLetterQueue;
+  private processorFactory: ProcessorFactory;
   private isShuttingDown = false;
 
-  constructor(private client: Client) {
-    this.workers = new QueueWorkerService(client);
+  constructor(client: Client) {
+    this.client = client;
     this.deadLetterQueue = new DeadLetterQueue(client);
+    this.processorFactory = new ProcessorFactory(client);
   }
 
   initialize(): void {
-    logger.info("Starting BullMQ workers for API dashboard jobs...");
-    this.workers.start();
-    logger.info("Queue workers ready");
+    logger.info("Initializing Unified Queue Service...");
+    logger.warn("Queue functionality moved to BullMQ - this service is deprecated");
+    logger.info("✅ Unified Queue Service initialized (deprecated)");
   }
 
-  async processRequest(request: UnifiedRequest): Promise<UnifiedResponse> {
-    const started = Date.now();
-    const result = await executeBotAction(this.client, {
-      command: request.type,
-      guildId: request.guildId,
-      data: {
-        ...request.data,
-        guildId: request.guildId,
-        userId: request.userId,
-      },
-    });
+  processRequest(request: UnifiedRequest): UnifiedResponse {
+    logger.warn("processRequest called - use BullMQ directly instead");
     return {
-      success: result.success,
-      requestId: request.id ?? `${request.type}-${started}`,
-      data: result.data,
-      error: result.error,
-      executionTime: Date.now() - started,
+      success: false,
+      error: "Queue functionality moved to BullMQ",
+      requestId: request.id ?? "unknown",
+      executionTime: 0,
       method: "queue",
       timestamp: Date.now(),
     };
   }
 
-  getSystemHealth() {
-    const ready = this.workers.isReady();
+  getSystemHealth(): SystemHealth {
+    logger.warn("getSystemHealth called - use BullMQ metrics instead");
     return {
-      overall: ready,
-      protocols: { bullmq: ready },
-      redis: ready,
-      discord: true,
-      websocket: this.clientHasWs(),
+      overall: false,
+      protocols: {},
+      redis: false,
+      discord: false,
+      websocket: false,
       overloaded: false,
       timestamp: Date.now(),
     };
   }
 
-  private clientHasWs(): boolean {
+  getMetrics() {
+    logger.warn("getMetrics called - use BullMQ metrics instead");
+    return {
+      workers: { activeWorkers: 0 },
+      queues: {},
+      message: "Queue functionality moved to BullMQ",
+    };
+  }
+
+  isReady(): boolean {
+    logger.warn("isReady called - use BullMQ health checks instead");
     return true;
   }
 
   shutdown(): void {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
-    void this.workers.shutdown();
-  }
 
-  isReady(): boolean {
-    return this.workers.isReady();
-  }
-
-  getMetrics() {
-    return {
-      workers: { activeWorkers: this.workers.isReady() ? 4 : 0 },
-      queues: {
-        "bot-commands": {},
-        notifications: {},
-        "critical-operations": {},
-        "background-tasks": {},
-      },
-      message: "BullMQ workers consuming API jobs",
-    };
+    logger.info("Shutting down Unified Queue Service...");
+    logger.info("✅ Unified Queue Service shutdown complete");
   }
 }

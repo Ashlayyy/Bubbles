@@ -4,7 +4,7 @@ export const musicEndpoints = {
 	status: (guildId: string) =>
 		apiClient().get(`/guilds/${guildId}/music/status`),
 
-	play: (guildId: string, payload: { query: string; voiceChannelId?: string }) =>
+	play: (guildId: string, payload: { query: string }) =>
 		apiClient().post(`/guilds/${guildId}/music/play`, payload),
 
 	pause: (guildId: string) =>
@@ -19,8 +19,5 @@ export const musicEndpoints = {
 		apiClient().delete(`/guilds/${guildId}/music/queue`),
 
 	setVolume: (guildId: string, volume: number) =>
-		apiClient().put(`/guilds/${guildId}/music/volume`, { volume }),
-
-	shuffle: (guildId: string) =>
-		apiClient().post(`/guilds/${guildId}/music/queue/shuffle`),
+		apiClient().post(`/guilds/${guildId}/music/volume`, { volume }),
 };

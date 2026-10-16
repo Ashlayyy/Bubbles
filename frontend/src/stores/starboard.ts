@@ -1,131 +1,109 @@
-import { defineStore } from 'pinia';
-import { ref } from 'vue';
-import { starboardEndpoints } from '@/lib/endpoints/starboard';
+
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
 
 export interface StarboardMessage {
-  id: string;
-  messageId: string;
-  channelId: string;
-  channel: string;
-  authorId: string;
+  id: string
+  messageId: string
+  channelId: string
+  channel: string
+  authorId: string
   author: {
-    username: string;
-    avatar: string;
-  };
-  content: string;
-  attachments: string[];
-  starCount: number;
-  starboardMessageId?: string;
-  createdAt: string;
-  starredAt: string;
-  timestamp: string;
-  jumpUrl: string;
+    username: string
+    avatar: string
+  }
+  content: string
+  attachments: string[]
+  starCount: number
+  starboardMessageId?: string
+  createdAt: string
+  starredAt: string
+  timestamp: string
+  jumpUrl: string
 }
 
 export interface StarboardSettings {
-  enabled: boolean;
-  channelId: string;
-  channelName: string;
-  minStars: number;
-  emoji: string;
-  allowSelfStar: boolean;
-  removeOnUnstar: boolean;
-  ignoredChannels: string[];
-  ignoredRoles: string[];
-  deleteInvalid: boolean;
-}
-
-function unwrap<T>(payload: unknown): T {
-  return ((payload as { data?: T })?.data ?? payload) as T;
+  enabled: boolean
+  channelId: string
+  channelName: string
+  minStars: number
+  emoji: string
+  allowSelfStar: boolean
+  removeOnUnstar: boolean
+  ignoredChannels: string[]
+  ignoredRoles: string[]
+  deleteInvalid: boolean
 }
 
 export const useStarboardStore = defineStore('starboard', () => {
   const settings = ref<StarboardSettings>({
-    enabled: false,
-    channelId: '',
-    channelName: '',
+    enabled: true,
+    channelId: '123456789',
+    channelName: 'starboard',
     minStars: 3,
     emoji: '⭐',
     allowSelfStar: false,
     removeOnUnstar: true,
     ignoredChannels: [],
     ignoredRoles: [],
-    deleteInvalid: true,
-  });
-  const starredMessages = ref<StarboardMessage[]>([]);
+    deleteInvalid: true
+  })
+
+  const starredMessages = ref<StarboardMessage[]>([
+    {
+      id: '1',
+      messageId: '987654321',
+      channelId: '111111111',
+      channel: 'general',
+      authorId: '222222222',
+      author: {
+        username: 'CoolUser',
+        avatar: 'https://cdn.discordapp.com/avatars/222222222/avatar.png'
+      },
+      content: 'This is an amazing meme! 😂',
+      attachments: ['https://example.com/meme.png'],
+      starCount: 5,
+      starboardMessageId: '333333333',
+      createdAt: '2024-01-15T12:00:00Z',
+      starredAt: '2024-01-15T12:15:00Z',
+      timestamp: '2024-01-15T12:00:00Z',
+      jumpUrl: 'https://discord.com/channels/123/111111111/987654321'
+    },
+    {
+      id: '2',
+      messageId: '987654322',
+      channelId: '111111111',
+      channel: 'memes',
+      authorId: '222222223',
+      author: {
+        username: 'FunnyUser',
+        avatar: 'https://cdn.discordapp.com/avatars/222222223/avatar2.png'
+      },
+      content: 'Check out this cool feature! 🚀',
+      attachments: [],
+      starCount: 8,
+      starboardMessageId: '333333334',
+      createdAt: '2024-01-16T10:30:00Z',
+      starredAt: '2024-01-16T10:45:00Z',
+      timestamp: '2024-01-16T10:30:00Z',
+      jumpUrl: 'https://discord.com/channels/123/111111111/987654322'
+    }
+  ])
+
   const stats = ref({
-    totalStars: 0,
-    totalMessages: 0,
-    topMessage: 0,
-  });
+    totalStars: 13,
+    totalMessages: 2,
+    topMessage: 8
+  })
 
-  const load = async (guildId: string) => {
-    const [settingsRes, messagesRes, statsRes] = await Promise.all([
-      starboardEndpoints.getSettings(guildId),
-      starboardEndpoints.getMessages(guildId),
-      starboardEndpoints.stats(guildId),
-    ]);
-    const raw = unwrap<{
-      isEnabled?: boolean;
-      channelId?: string | null;
-      threshold?: number;
-      emoji?: string;
-      selfStar?: boolean;
-      ignoredChannels?: string[];
-      ignoredRoles?: string[];
-    }>(settingsRes.data);
-    settings.value = {
-      enabled: Boolean(raw.isEnabled),
-      channelId: raw.channelId || '',
-      channelName: '',
-      minStars: raw.threshold ?? 3,
-      emoji: raw.emoji || '⭐',
-      allowSelfStar: Boolean(raw.selfStar),
-      removeOnUnstar: true,
-      ignoredChannels: raw.ignoredChannels || [],
-      ignoredRoles: raw.ignoredRoles || [],
-      deleteInvalid: true,
-    };
-
-    const messagePayload = unwrap<{ messages?: StarboardMessage[] } | StarboardMessage[]>(
-      messagesRes.data
-    );
-    starredMessages.value = Array.isArray(messagePayload)
-      ? messagePayload
-      : messagePayload.messages ?? [];
-
-    const statsPayload = unwrap<{
-      totalStars?: number;
-      totalMessages?: number;
-      topMessage?: number;
-    }>(statsRes.data);
-    stats.value = {
-      totalStars: statsPayload.totalStars ?? starredMessages.value.reduce((sum, msg) => sum + (msg.starCount || 0), 0),
-      totalMessages: statsPayload.totalMessages ?? starredMessages.value.length,
-      topMessage:
-        statsPayload.topMessage ??
-        starredMessages.value.reduce((max, msg) => Math.max(max, msg.starCount || 0), 0),
-    };
-  };
-
-  const updateSettings = async (guildId: string, newSettings: Partial<StarboardSettings>) => {
-    settings.value = { ...settings.value, ...newSettings };
-    await starboardEndpoints.updateSettings(guildId, {
-      enabled: settings.value.enabled,
-      channelId: settings.value.channelId,
-      minStars: settings.value.minStars,
-      emoji: settings.value.emoji,
-      allowSelfStar: settings.value.allowSelfStar,
-      ignoredChannels: settings.value.ignoredChannels,
-      ignoredRoles: settings.value.ignoredRoles,
-    });
-  };
+  const updateSettings = (newSettings: Partial<StarboardSettings>) => {
+    settings.value = { ...settings.value, ...newSettings }
+  }
 
   return {
     settings,
     starredMessages,
     stats,
-    load,
-    updateSettings,
-  };
-});
+    updateSettings
+  }
+})

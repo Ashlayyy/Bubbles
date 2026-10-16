@@ -1,8 +1,5 @@
 <template>
-  <div v-if="channels.length === 0" class="text-sm text-muted-foreground">
-    No heatmap data yet.
-  </div>
-  <div v-else class="space-y-4">
+  <div class="space-y-4">
     <div class="grid grid-cols-25 gap-1">
       <div class="text-xs text-muted-foreground"></div>
       <div v-for="hour in 24" :key="hour" class="text-xs text-muted-foreground text-center">
@@ -36,14 +33,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = defineProps<{
+defineProps<{
   data: Array<{ channel: string; hour: number; messages: number }>
 }>()
 
-const channels = computed(() => [...new Set((props.data ?? []).map((entry) => entry.channel))])
+const channels = ['general', 'memes', 'gaming', 'music', 'art']
 
 const getMessageCount = (channel: string, hour: number) => {
-  return (props.data ?? []).find((entry) => entry.channel === channel && entry.hour === hour)?.messages ?? 0
+  // Mock data - in real implementation, this would come from props.data
+  return Math.floor(Math.random() * 100)
 }
 
 const getHeatmapColor = (count: number) => {

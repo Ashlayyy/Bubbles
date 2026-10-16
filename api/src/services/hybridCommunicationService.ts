@@ -10,7 +10,6 @@ export interface OperationResult {
 	jobId?: string;
 	error?: string;
 	executionTime?: number;
-	data?: unknown;
 }
 
 export interface BulkOperationOptions {
@@ -26,8 +25,6 @@ interface HybridOptions {
 	requireReliability?: boolean;
 	notifyCompletion?: boolean;
 	guildId?: string;
-	waitForResult?: boolean;
-	timeout?: number;
 }
 
 /**
@@ -44,13 +41,8 @@ export class HybridCommunicationService {
 		// Real-time interactions
 		'PLAY_MUSIC',
 		'PAUSE_MUSIC',
-		'RESUME_MUSIC',
 		'SKIP_MUSIC',
-		'STOP_MUSIC',
 		'SET_VOLUME',
-		'SET_REPEAT',
-		'SHUFFLE_QUEUE',
-		'CLEAR_QUEUE',
 		'GET_ONLINE_MEMBERS',
 		'GET_VOICE_STATUS',
 		'GET_MEMBER_COUNT',
@@ -66,9 +58,6 @@ export class HybridCommunicationService {
 		'GET_QUEUE_STATUS',
 		'GET_NOW_PLAYING',
 		'GET_ACTIVE_POLLS',
-		'GET_AUTOMOD_RULES',
-		'TOGGLE_AUTOMOD_RULE',
-		'UPDATE_AUTOMOD_RULE',
 	]);
 
 	private readonly QUEUE_OPERATIONS = new Set([
@@ -369,19 +358,6 @@ export class HybridCommunicationService {
 		data: any,
 		options: HybridOptions
 	): Promise<OperationResult> {
-		if (options.waitForResult !== false) {
-			const response = await wsManager.sendBotCommandAndWait(operation, data, {
-				guildId: options.guildId,
-				timeoutMs: options.timeout ?? 20_000,
-			});
-			return {
-				success: response.success,
-				method: 'websocket',
-				data: response.data,
-				error: response.error,
-			};
-		}
-
 		const command = {
 			command: operation,
 			data,

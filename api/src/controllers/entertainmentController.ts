@@ -10,6 +10,7 @@ const defaultGameSettings = {
 	enabled: true,
 	allowedChannels: [],
 	triviaEnabled: true,
+	triviaReward: 10,
 };
 
 // Get game configurations
@@ -38,6 +39,7 @@ export const updateGameSettings = async (req: AuthRequest, res: Response) => {
 			enabled: gameSettings.enabled,
 			allowedChannels: gameSettings.allowedChannels,
 			triviaEnabled: gameSettings.triviaEnabled,
+			triviaReward: gameSettings.triviaReward,
 		};
 
 		const updated = await prisma.gameSettings.upsert({
@@ -86,6 +88,7 @@ export const updateEconomySettings = async (
 			enabled: economySettings.enabled,
 			allowedChannels: economySettings.allowedChannels,
 			triviaEnabled: economySettings.triviaEnabled,
+			triviaReward: economySettings.triviaReward,
 		};
 
 		const updated = await prisma.gameSettings.upsert({

@@ -18,5 +18,5 @@ export const starboardEndpoints = {
 		),
 
 	stats: (guildId: string, params?: { period?: string }) =>
-		apiClient().get(`/guilds/${guildId}/starboard/statistics`, { params }),
+		apiClient().get(`/guilds/${guildId}/starboard/stats`, { params }),
 };

@@ -396,14 +396,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed } from 'vue';
 import { useWelcomeStore } from '@/stores/welcome';
 import { useGuildsStore } from '@/stores/guilds';
 import { storeToRefs } from 'pinia';
 import DiscordItemSelector from '@/components/common/DiscordItemSelector.vue';
 import MultiMessageInput from '@/components/common/MultiMessageInput.vue';
 import { useToastStore } from '@/stores/toast';
-import { getGuildChannels } from '@/lib/endpoints/guilds';
 
 const welcomeStore = useWelcomeStore();
 const { welcomeSettings, leaveSettings } = storeToRefs(welcomeStore);
@@ -411,27 +410,13 @@ const toastStore = useToastStore();
 const guildsStore = useGuildsStore();
 
 const activeTab = ref<'welcome' | 'leave'>('welcome');
-const channelItems = ref<Array<{ id: string; name: string; type?: number }>>([]);
 
-const channels = computed(() =>
-	channelItems.value
-		.filter((c) => c.type === 0 || c.type === undefined)
-		.map((c) => ({ id: c.id, name: c.name }))
+const channels = computed(
+	() =>
+		guildsStore.selectedGuild?.channels
+			.filter((c) => c.type === 0)
+			.map((c) => ({ id: c.id, name: c.name })) ?? []
 );
-
-onMounted(async () => {
-	const guildId = guildsStore.currentGuild?.id;
-	if (!guildId) return;
-	try {
-		const data = await getGuildChannels(guildId);
-		const payload = (data as { data?: unknown }).data ?? data;
-		channelItems.value = Array.isArray(payload)
-			? payload
-			: ((payload as { channels?: typeof channelItems.value })?.channels ?? []);
-	} catch (error) {
-		console.error('Failed to load channels:', error);
-	}
-});
 
 const save = async () => {
 	try {

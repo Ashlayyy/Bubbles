@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
 import { discordApi } from '../services/discordApiService.js';
-import { getDiscordAccessToken } from '../services/discordTokenStore.js';
 import { wsManager } from '../websocket/manager.js';
 import { getPrismaClient } from '../services/databaseService.js';
 import { createLogger } from '../types/shared.js';
@@ -40,8 +39,7 @@ export const getGuilds = async (req: AuthenticatedRequest, res: Response) => {
 	}
 
 	try {
-		const accessToken =
-			req.session.accessToken || getDiscordAccessToken(req.user?.id);
+		const accessToken = req.session.accessToken;
 		if (!accessToken) {
 			return res.failure('Not authenticated', 401);
 		}
@@ -105,6 +103,8 @@ export const getGuild = async (req: AuthenticatedRequest, res: Response) => {
 		logger.debug('Discord guild payload:', guild);
 		const channels = await discordApi.getGuildChannels(guildId);
 		const roles = await discordApi.getGuildRoles(guildId);
+
+		console.log(guild);
 
 		const guildData = {
 			id: guild.id,
@@ -394,9 +394,6 @@ export const getGuildSettings = async (
 				goodbyeChannelId: guildConfig.goodbyeChannelId,
 				welcomeEnabled: guildConfig.welcomeEnabled,
 				goodbyeEnabled: guildConfig.goodbyeEnabled,
-				welcomeRoleIds: guildConfig.welcomeRoleIds,
-				preferredLanguage: guildConfig.preferredLanguage,
-				notify_user: (guildConfig as any).notify_user ?? false,
 				ticketChannelId: guildConfig.ticketChannelId,
 				ticketCategoryId: guildConfig.ticketCategoryId,
 				useTicketThreads: guildConfig.useTicketThreads,

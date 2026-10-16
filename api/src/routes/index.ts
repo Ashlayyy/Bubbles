@@ -24,12 +24,10 @@ import invitesRoutes from './invites.js';
 import auditRoutes from './audit.js';
 import hybridRoutes from './hybrid.js';
 import devRoutes from './dev.js';
-import voiceRoutes from './voice.js';
 import healthRoutes from './health.js';
 import metricsRoutes from './metrics.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requireUniversalPermissions } from '../middleware/permissions.js';
-import { requireMetricsToken } from '../middleware/metricsAuth.js';
 import eventsRoutes from './events.js';
 
 const router = Router();
@@ -47,7 +45,6 @@ router.use('/guilds/:guildId/channels', channelsRoutes);
 router.use('/guilds/:guildId/roles', rolesRoutes);
 router.use('/guilds/:guildId/invites', invitesRoutes);
 router.use('/guilds/:guildId/music', musicRoutes);
-router.use('/guilds/:guildId/voice', voiceRoutes);
 router.use('/guilds/:guildId/analytics', analyticsRoutes);
 router.use('/guilds/:guildId/starboard', starboardRoutes);
 router.use('/guilds/:guildId/appeals', appealsRoutes);
@@ -60,7 +57,7 @@ router.use('/guilds/:guildId/messages', messagesRoutes);
 router.use('/guilds/:guildId/audit', auditRoutes);
 router.use('/hybrid', hybridRoutes);
 router.use('/health', healthRoutes);
-router.use('/metrics', requireMetricsToken, metricsRoutes);
+router.use('/metrics', metricsRoutes);
 router.use('/events', eventsRoutes);
 
 // Global security: every /guilds/:guildId/... request requires token & MANAGE_GUILD

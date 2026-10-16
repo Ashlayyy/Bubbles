@@ -601,91 +601,8 @@ async function claimTicket(client: Client, interaction: ChatInputCommandInteract
   }
 }
 
-async function assignTicket(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) return;
-
-  const assignee = interaction.options.getUser("user", true);
-  const ticketNumber = interaction.options.getInteger("ticket");
-
-  try {
-    let ticket = ticketNumber
-      ? await prisma.ticket.findFirst({
-          where: {
-            guildId: interaction.guild.id,
-            ticketNumber,
-            status: { in: ["OPEN", "PENDING"] },
-          },
-        })
-      : await detectCurrentTicket(interaction);
-
-    if (!ticket) {
-      await interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xe74c3c)
-            .setTitle("❌ Ticket Not Found")
-            .setDescription("Could not find an open ticket to assign. Specify a ticket number or run this in the ticket channel.")
-            .setTimestamp(),
-        ],
-        ephemeral: true,
-      });
-      return;
-    }
-
-    await prisma.ticket.update({
-      where: { id: ticket.id },
-      data: {
-        assignedTo: assignee.id,
-        status: "PENDING",
-      },
-    });
-
-    await interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0x2ecc71)
-          .setTitle("✅ Ticket Assigned")
-          .setDescription(`Ticket #${ticket.ticketNumber.toString().padStart(4, "0")} was assigned to <@${assignee.id}>.`)
-          .setTimestamp(),
-      ],
-      ephemeral: true,
-    });
-
-    const ticketChannel = interaction.guild.channels.cache.get(ticket.channelId);
-    if (ticketChannel?.isTextBased() && "send" in ticketChannel) {
-      await ticketChannel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0x3498db)
-            .setTitle("👨‍💼 Ticket Assigned")
-            .setDescription(`This ticket has been assigned to <@${assignee.id}> by <@${interaction.user.id}>.`)
-            .setTimestamp(),
-        ],
-      });
-    }
-
-    await client.logManager.log(interaction.guild.id, "TICKET_ASSIGN", {
-      userId: interaction.user.id,
-      channelId: interaction.channel?.id,
-      metadata: {
-        ticketId: ticket.id,
-        ticketNumber: ticket.ticketNumber,
-        assignedTo: assignee.id,
-      },
-    });
-  } catch (error) {
-    logger.error("Error assigning ticket:", error);
-    await interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("❌ Error")
-          .setDescription("Failed to assign ticket. Please try again.")
-          .setTimestamp(),
-      ],
-      ephemeral: true,
-    });
-  }
+async function assignTicket(_client: Client, _interaction: ChatInputCommandInteraction): Promise<void> {
+  // TODO: Implement ticket assignment functionality
 }
 
 async function listTickets(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
@@ -939,94 +856,12 @@ async function generateTranscript(client: Client, interaction: ChatInputCommandI
   }
 }
 
-async function addUserToTicket(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) return;
-  const user = interaction.options.getUser("user", true);
-  const ticket = await detectCurrentTicket(interaction);
-
-  if (!ticket) {
-    await interaction.reply({
-      content: "❌ Could not detect a ticket in this channel.",
-      ephemeral: true,
-    });
-    return;
-  }
-
-  const channel = interaction.guild.channels.cache.get(ticket.channelId);
-  if (!channel || !channel.isTextBased() || !("permissionOverwrites" in channel)) {
-    await interaction.reply({
-      content: "❌ Ticket channel is not available.",
-      ephemeral: true,
-    });
-    return;
-  }
-
-  await channel.permissionOverwrites.create(user, {
-    ViewChannel: true,
-    SendMessages: true,
-    ReadMessageHistory: true,
-  });
-
-  await interaction.reply({
-    content: `✅ Added ${user} to the ticket.`,
-    ephemeral: true,
-  });
-
-  await client.logManager.log(interaction.guild.id, "TICKET_USER_ADDED", {
-    userId: interaction.user.id,
-    metadata: {
-      ticketId: ticket.id,
-      channelId: channel.id,
-      addedUser: user.id,
-    },
-  });
+async function addUserToTicket(_client: Client, _interaction: ChatInputCommandInteraction): Promise<void> {
+  // TODO: Implement add user to ticket functionality
 }
 
-async function removeUserFromTicket(client: Client, interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) return;
-  const user = interaction.options.getUser("user", true);
-  const ticket = await detectCurrentTicket(interaction);
-
-  if (!ticket) {
-    await interaction.reply({
-      content: "❌ Could not detect a ticket in this channel.",
-      ephemeral: true,
-    });
-    return;
-  }
-
-  if (user.id === ticket.userId) {
-    await interaction.reply({
-      content: "❌ Cannot remove the ticket owner from their own ticket.",
-      ephemeral: true,
-    });
-    return;
-  }
-
-  const channel = interaction.guild.channels.cache.get(ticket.channelId);
-  if (!channel || !channel.isTextBased() || !("permissionOverwrites" in channel)) {
-    await interaction.reply({
-      content: "❌ Ticket channel is not available.",
-      ephemeral: true,
-    });
-    return;
-  }
-
-  await channel.permissionOverwrites.delete(user);
-
-  await interaction.reply({
-    content: `✅ Removed ${user} from the ticket.`,
-    ephemeral: true,
-  });
-
-  await client.logManager.log(interaction.guild.id, "TICKET_USER_REMOVED", {
-    userId: interaction.user.id,
-    metadata: {
-      ticketId: ticket.id,
-      channelId: channel.id,
-      removedUser: user.id,
-    },
-  });
+async function removeUserFromTicket(_client: Client, _interaction: ChatInputCommandInteraction): Promise<void> {
+  // TODO: Implement remove user from ticket functionality
 }
 
 // Ticket-related setting keys from GuildConfig
@@ -1077,8 +912,6 @@ export class TicketCommand extends AdminCommand {
       switch (subcommand) {
         case "close":
           return await this.handleClose();
-        case "assign":
-          return await this.handleAssign();
         case "add":
           return await this.handleAdd();
         case "remove":
@@ -1208,64 +1041,6 @@ export class TicketCommand extends AdminCommand {
       logger.error("Error closing ticket:", error);
       return {
         content: `❌ Failed to close ticket: ${error instanceof Error ? error.message : "Unknown error"}`,
-        ephemeral: true,
-      };
-    }
-  }
-
-  private async handleAssign(): Promise<CommandResponse> {
-    const user = this.getUserOption("user", true);
-    const channel = this.interaction.channel as TextChannel;
-
-    try {
-      const ticket = await prisma.ticket.findFirst({
-        where: {
-          guildId: this.guild.id,
-          channelId: channel.id,
-          status: { in: ["OPEN", "PENDING"] },
-        },
-      });
-
-      if (!ticket) {
-        return {
-          content: "❌ This is not an active ticket channel.",
-          ephemeral: true,
-        };
-      }
-
-      await prisma.ticket.update({
-        where: { id: ticket.id },
-        data: {
-          assignedTo: user.id,
-          status: "PENDING",
-        },
-      });
-
-      const embed = new EmbedBuilder()
-        .setColor(0x2ecc71)
-        .setTitle("✅ Ticket Assigned")
-        .setDescription(`${user} has been assigned to this ticket.`)
-        .setTimestamp();
-
-      await channel.send({ embeds: [embed] });
-
-      await this.client.logManager.log(this.guild.id, "TICKET_ASSIGN", {
-        userId: this.user.id,
-        metadata: {
-          ticketId: ticket.id,
-          channelId: channel.id,
-          assignedTo: user.id,
-        },
-      });
-
-      return {
-        content: `✅ Assigned ${user} to the ticket.`,
-        ephemeral: true,
-      };
-    } catch (error) {
-      logger.error("Error assigning ticket:", error);
-      return {
-        content: `❌ Failed to assign ticket: ${error instanceof Error ? error.message : "Unknown error"}`,
         ephemeral: true,
       };
     }
@@ -1557,12 +1332,6 @@ export const builder = new SlashCommandBuilder()
       .setName("close")
       .setDescription("Close the current ticket")
       .addStringOption((opt) => opt.setName("reason").setDescription("Reason for closing the ticket"))
-  )
-  .addSubcommand((sub) =>
-    sub
-      .setName("assign")
-      .setDescription("Assign a staff member to the current ticket")
-      .addUserOption((opt) => opt.setName("user").setDescription("User to assign").setRequired(true))
   )
   .addSubcommand((sub) =>
     sub

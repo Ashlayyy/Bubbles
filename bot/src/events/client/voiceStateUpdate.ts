@@ -2,7 +2,6 @@ import type { VoiceState } from "discord.js";
 import { Events } from "discord.js";
 
 import logger from "../../logger.js";
-import { trackVoiceStateChange } from "../../services/voiceActivityService.js";
 import type Client from "../../structures/Client.js";
 import { ClientEvent } from "../../structures/Event.js";
 
@@ -15,7 +14,7 @@ export default new ClientEvent(Events.VoiceStateUpdate, async (oldState: VoiceSt
     const member = newState.member ?? oldState.member;
     if (!member || member.user.bot) return;
 
-    await trackVoiceStateChange(oldState, newState);
+    // Log voice state changes for moderation
     await logVoiceStateChange(client, oldState, newState, guild.id, member.id);
   } catch (error) {
     logger.error("Error in voiceStateUpdate event:", error);

@@ -32,7 +32,6 @@ import { isDevEnvironment } from "../functions/general/environment.js";
 import logger from "../logger.js";
 import { startMetricsServer } from "../metricsServer.js";
 import { ScheduledActionService } from "../services/scheduledActionService.js";
-import { MusicService } from "../services/musicService.js";
 import { UnifiedQueueService } from "../services/unifiedQueueService.js";
 import { WebSocketService } from "../services/websocketService.js";
 import Command from "./Command.js";
@@ -84,7 +83,6 @@ export default class Client extends DiscordClient {
   // Health service for monitoring
   public healthService: any = null;
   public scheduledActionService: ScheduledActionService | null = null;
-  public musicService: MusicService | null = null;
 
   /** Get/Generate singleton instance */
   static async get() {
@@ -133,12 +131,6 @@ export default class Client extends DiscordClient {
 
       this.version = process.env.npm_package_version ?? "UNKNOWN";
       logger.verbose(`Bot version: ${this.version}`);
-
-      if (!process.env.JWT_SECRET || /your_.+_here/i.test(process.env.JWT_SECRET)) {
-        logger.warn(
-          "JWT_SECRET is missing or still a placeholder. Set the same JWT_SECRET in Bubbles/.env for the bot and API so dashboard actions can reach Discord."
-        );
-      }
 
       logger.verbose("Verifying environment variables are set in a valid form... ");
 
@@ -204,14 +196,6 @@ export default class Client extends DiscordClient {
       logger.info("Logging into Discord... ");
       await this.login(process.env.DISCORD_TOKEN);
 
-      try {
-        this.musicService = new MusicService(this);
-        await this.musicService.initialize();
-      } catch (error) {
-        logger.error("Failed to initialize music service:", error);
-        logger.warn("Voice playback will be unavailable until the music extractors load successfully.");
-      }
-
       // Start queue processing
       logger.info("Starting queue processors...");
       void this.startQueueProcessors();
@@ -270,10 +254,6 @@ export default class Client extends DiscordClient {
       }
 
       this.started = true;
-
-      if (typeof process.send === "function") {
-        process.send("ready");
-      }
 
       // Log cache statistics after startup
       const stats = cacheService.getStats();
@@ -379,17 +359,15 @@ export default class Client extends DiscordClient {
         commandDataArr = commandsToRegister.map((command) => {
           // All commands in this array are BaseCommand instances due to filtering above
           // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-          return putRequiredOptionsFirst((command as BaseCommand).builder.toJSON());
+          return (command as BaseCommand).builder.toJSON();
         });
 
         // Prune obsolete commands before registering new ones
         await this.pruneObsoleteCommands(commandDataArr);
 
-        logger.info(
-          `Registering ${commandDataArr.length} commands with Discord API: ${commandDataArr
-            .map((command) => command.name)
-            .join(", ")}`
-        );
+        logger.info("Registering commands with Discord API", {
+          commands: { raw: this.commands, json: commandDataArr },
+        });
         break;
       }
       case DiscordAPIAction.Reset: {
@@ -411,16 +389,11 @@ export default class Client extends DiscordClient {
       const clientId = process.env.DISCORD_CLIENT_ID;
       const testGuildId = process.env.TEST_GUILD_ID;
 
-      if (!clientId) {
-        throw new Error("DISCORD_CLIENT_ID must be set in the environment variables");
+      if (!clientId || !testGuildId) {
+        throw new Error("DISCORD_CLIENT_ID and TEST_GUILD_ID must be set in the environment variables");
       }
 
       if (this.devMode) {
-        if (!testGuildId) {
-          logger.warn("TEST_GUILD_ID is not set; skipping development command registration.");
-          return;
-        }
-
         logger.info(`\tDEVELOPMENT MODE. Only working in guild with "TEST_GUILD_ID" environment variable`);
 
         const fullRoute = Routes.applicationGuildCommands(clientId, testGuildId);
@@ -446,7 +419,8 @@ export default class Client extends DiscordClient {
         } commands with Discord API!`
       );
     } catch (error) {
-      logger.error(error, `Errored attempting to ${actionDescriptor} commands with Discord API!`);
+      logger.error(error);
+      logger.error(new Error(`Errored attempting to ${actionDescriptor} commands with Discord API!`));
     }
   }
 
@@ -780,16 +754,4 @@ export default class Client extends DiscordClient {
   async shutdown(): Promise<void> {
     await this.shutdownManager.shutdown();
   }
-}
-
-function putRequiredOptionsFirst<T extends { options?: unknown[]; required?: boolean }>(data: T): T {
-  if (!Array.isArray(data.options)) return data;
-
-  const options = data.options.map((option) =>
-    putRequiredOptionsFirst(option as { options?: unknown[]; required?: boolean })
-  );
-  const required = options.filter((option) => option.required === true);
-  const optional = options.filter((option) => option.required !== true);
-
-  return { ...data, options: [...required, ...optional] };
 }

@@ -1,89 +1,88 @@
-import { copyFileSync, existsSync } from "fs";
-import { dirname, resolve } from "path";
-import { fileURLToPath } from "url";
-import dotenv from "dotenv";
 import dotenvExpand from "dotenv-expand";
+import * as dotenvFlow from "dotenv-flow";
+import { resolve } from "path";
+import { fileURLToPath } from "url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, "../../../../");
-const botDir = resolve(__dirname, "../../../");
-const sharedDir = resolve(repoRoot, "shared");
+// Get current directory for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = resolve(__filename, "..");
 
 let environmentLoaded = false;
 
-function loadEnvFile(filePath: string, override = true): boolean {
-  if (!existsSync(filePath)) {
-    return false;
-  }
-
-  const result = dotenv.config({ path: filePath, override });
-  if (result.parsed) {
-    dotenvExpand.expand({ parsed: result.parsed });
-    console.log(`Loaded environment file ${filePath}`);
-    return true;
-  }
-
-  if (result.error) {
-    console.warn(`Could not parse ${filePath}: ${result.error.message}`);
-  }
-  return false;
-}
-
-function ensureRootEnvFile(): void {
-  const rootEnv = resolve(repoRoot, ".env");
-  const example = resolve(repoRoot, "env.example");
-  if (existsSync(rootEnv) || !existsSync(example)) {
-    return;
-  }
-
-  copyFileSync(example, rootEnv);
-  console.warn(`Created ${rootEnv} from env.example. Fill in DISCORD_TOKEN to log the bot into Discord.`);
-}
-
 /**
- * Load environment files from the Bubbles repo root, shared package, and bot directory.
- * Called on import so ESM import hoisting cannot start the client before env exists.
+ * Centralized environment variable loading with support for both local development and PM2
+ * This should be called ONCE at the very start of the application before any other imports
  */
 export function loadEnvironment(): void {
   if (environmentLoaded) {
-    return;
+    return; // Already loaded, don't load again
   }
 
   try {
-    ensureRootEnvFile();
+    // Determine if we're running under PM2 or locally
+    const isRunningUnderPM2 = process.env.PM2_HOME !== undefined || process.env.name?.startsWith("bubbles-") === true;
 
-    const nodeEnv = process.env.NODE_ENV ?? "development";
-    // Later files override earlier ones. Shared defaults first, then repo root, then bot.
-    const files = [
-      resolve(sharedDir, ".env"),
-      resolve(repoRoot, ".env"),
-      resolve(repoRoot, `.env.${nodeEnv}`),
-      resolve(botDir, ".env"),
-      resolve(botDir, `.env.${nodeEnv}`),
-      resolve(process.cwd(), ".env"),
-    ];
+    if (isRunningUnderPM2) {
+      // PM2 mode - use current working directory paths (PM2 handles this)
+      console.log("🔧 Loading environment variables for PM2...");
 
-    let loaded = 0;
-    for (const file of files) {
-      if (loadEnvFile(file, true)) {
-        loaded += 1;
+      // Use dotenv-flow for PM2 mode
+      const result = dotenvFlow.config({
+        path: process.cwd(),
+        pattern: ".env[.node_env][.local]",
+        node_env: process.env.NODE_ENV ?? "development",
+      }) as { parsed?: Record<string, string>; error?: Error };
+
+      if (result?.parsed && !result.error) {
+        // Enable variable expansion
+        dotenvExpand.expand({ parsed: result.parsed });
+        console.log(`✅ Loaded environment files from ${process.cwd()}`);
+      }
+    } else {
+      // Local development mode - use relative paths from bot directory
+      console.log("🔧 Loading environment variables for local development...");
+
+      // Get the project root (3 levels up from this file: bot/src/functions/general/)
+      const projectRoot = resolve(__dirname, "../../../../");
+
+      // Load from project root with dotenv-flow
+      const result = dotenvFlow.config({
+        path: projectRoot,
+        pattern: ".env[.node_env][.local]",
+        node_env: process.env.NODE_ENV ?? "development",
+      }) as { parsed?: Record<string, string>; error?: Error };
+
+      if (result?.parsed && !result.error) {
+        // Enable variable expansion
+        dotenvExpand.expand({ parsed: result.parsed });
+        console.log(`✅ Loaded environment files from ${projectRoot}`);
+      }
+
+      // Also try bot-specific files as final override
+      const botDir = resolve(__dirname, "../../../");
+      const botResult = dotenvFlow.config({
+        path: botDir,
+        pattern: ".env[.node_env][.local]",
+        node_env: process.env.NODE_ENV ?? "development",
+      }) as { parsed?: Record<string, string>; error?: Error };
+
+      if (botResult?.parsed && !botResult.error) {
+        dotenvExpand.expand({ parsed: botResult.parsed });
+        console.log(`✅ Loaded bot-specific environment files from ${botDir}`);
       }
     }
 
     environmentLoaded = true;
-    if (loaded === 0) {
-      console.warn(
-        `No .env file found. Looked in ${repoRoot}, ${sharedDir}, ${botDir}, and ${process.cwd()}. Copy env.example to .env.`
-      );
-    }
-    console.log(`Environment loading complete. NODE_ENV=${process.env.NODE_ENV ?? "development"}`);
+    console.log(`✅ Environment loading complete. NODE_ENV=${process.env.NODE_ENV ?? "development"}`);
   } catch (error) {
-    console.error("Failed to load environment variables:", error);
+    console.error("❌ Failed to load environment variables:", error);
+    // Don't exit here, let the application handle missing vars
   }
 }
 
+/**
+ * Check if environment has been loaded
+ */
 export function isEnvironmentLoaded(): boolean {
   return environmentLoaded;
 }
-
-loadEnvironment();

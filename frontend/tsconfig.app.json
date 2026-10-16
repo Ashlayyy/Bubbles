@@ -27,6 +27,5 @@
 			"@shared/*": ["../shared/dist/*"]
 		}
 	},
-	"include": ["src"],
-	"exclude": ["src/components/ui"]
+	"include": ["src"]
 }
